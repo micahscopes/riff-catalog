@@ -329,6 +329,13 @@ pub fn spec_for(node_type: &str) -> Option<NodeSpec> {
         "FunctionCall" => NodeSpec {
             kind: "sol.call",
             children: &[("expression", "callee"), ("arguments", "arg")],
+            // `names` (named arguments) map argument expressions to
+            // parameters, ORDER-SENSITIVELY: f({x: a, y: b}) and
+            // f({y: a, x: b}) differ. The walker emits the array as indexed
+            // Names fields (names0, names1, …). Residual, documented: the
+            // names-blind facet still blurs this binding (external review
+            // P2; full canonicalization would reorder args by name).
+            names: &["names"],
             structure: &["kind", "tryCall"],
             types: TS,
             ..NodeSpec::EMPTY
@@ -336,6 +343,7 @@ pub fn spec_for(node_type: &str) -> Option<NodeSpec> {
         "FunctionCallOptions" => NodeSpec {
             kind: "sol.call-options",
             children: &[("expression", "callee"), ("options", "opt")],
+            names: &["names"],
             types: TS,
             ..NodeSpec::EMPTY
         },
@@ -468,7 +476,13 @@ pub fn spec_for(node_type: &str) -> Option<NodeSpec> {
         },
         "YulCase" => NodeSpec {
             kind: "yul.case",
-            children: &[("body", "body")],
+            // `value` is a YulLiteral object for `case X` and the bare
+            // string "default" for the default case — the walker only
+            // recurses into objects, so default cases simply lack the value
+            // child (arity distinguishes them). Without this child,
+            // `case 0`/`case 1`/`default` with equal bodies collided
+            // (external review P2).
+            children: &[("value", "value"), ("body", "body")],
             ..NodeSpec::EMPTY
         },
         "YulForLoop" => NodeSpec {

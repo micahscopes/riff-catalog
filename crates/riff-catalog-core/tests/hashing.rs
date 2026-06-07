@@ -500,3 +500,54 @@ fn wl_separates_asymmetric_members() {
         .collect();
     assert_eq!(colors.len(), 2, "f (has body child) and g must color apart");
 }
+
+/// Regression (external review, P1): flat edges must fold through EVERY
+/// dimension. Rewiring a Data edge between two nodes that agree at
+/// Structure but differ at Constants must move the Constants digest (and
+/// therefore the full facet), not collide.
+#[test]
+fn flat_edge_rewiring_visible_outside_structure() {
+    let owner = "demo";
+    let build = |target_b: bool| {
+        let mut graph = Graph::new(graph_key(owner));
+        let user = entity("test.expr", owner, "use:0");
+        let a = entity("test.lit", owner, "lit:a");
+        let b = entity("test.lit", owner, "lit:b");
+        graph.add_node(user.clone(), "use").unwrap();
+        graph.add_node(a.clone(), "literal").unwrap();
+        graph.add_node(b.clone(), "literal").unwrap();
+        // a and b agree at Structure (same kind), differ at Constants
+        graph
+            .add_field(&a, Dimension::Constants, "value", 1u64)
+            .unwrap();
+        graph
+            .add_field(&b, Dimension::Constants, "value", 2u64)
+            .unwrap();
+        let target = if target_b { &b } else { &a };
+        graph
+            .add_edge(&user, "def", target, EdgeRole::Data)
+            .unwrap();
+        graph
+    };
+    let left = digests(
+        &build(false),
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    );
+    let right = digests(
+        &build(true),
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    );
+    // Structure may legitimately agree; Constants must not.
+    assert_eq!(
+        left.graph.get(Dimension::Structure),
+        right.graph.get(Dimension::Structure),
+        "endpoints are structure-equal, so Structure should agree"
+    );
+    assert_ne!(
+        left.graph.get(Dimension::Constants),
+        right.graph.get(Dimension::Constants),
+        "rewiring between constants-distinct nodes must move Constants"
+    );
+}

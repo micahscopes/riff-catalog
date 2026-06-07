@@ -91,65 +91,20 @@ fn lower_object_cfg(
     .map_err(YulLowerError::Core)?;
     let mut graph = Graph::new(graph_key.clone());
 
-    let object_node =
-        NodeKey::entity(EntityKey::new("yulssa.object", owner, path).map_err(YulLowerError::Core)?);
-    graph
-        .add_node(object_node.clone(), "yulssa.object")
-        .map_err(YulLowerError::Core)?;
-    graph
-        .add_field(&object_node, Dimension::Names, "name", name)
-        .map_err(YulLowerError::Core)?;
+    // The object graph contains the FULL subtree (sub-objects included, as
+    // ordered children) so the object-level digest commits to the deployed
+    // code, matching the yul-ast level's semantics. (External review P2:
+    // the earlier version emitted sub-objects only as separate units, so a
+    // parent digest stayed unchanged when its deployed CFG changed.)
+    build_object_tree(&mut graph, owner, object, name, path)?;
 
-    // Function nodes pre-registered so call instructions can edge to them.
     let functions = object
         .get("functions")
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    let mut fn_keys: BTreeMap<String, NodeKey> = BTreeMap::new();
-    for fn_name in functions.keys() {
-        let fn_path = format!("{path}/fn:{fn_name}");
-        let key = NodeKey::entity(
-            EntityKey::new("yulssa.fn", owner, fn_path.as_str()).map_err(YulLowerError::Core)?,
-        );
-        graph
-            .add_node(key.clone(), "yulssa.fn")
-            .map_err(YulLowerError::Core)?;
-        graph
-            .add_field(&key, Dimension::Names, "name", fn_name.as_str())
-            .map_err(YulLowerError::Core)?;
-        graph
-            .add_child(&object_node, "fn", 0, &key)
-            .map_err(YulLowerError::Core)?;
-        fn_keys.insert(fn_name.clone(), key);
-    }
 
-    // Object-level (dispatch) blocks: first block is the entry.
-    if let Some(blocks) = object.get("blocks").and_then(Value::as_array) {
-        let entry = blocks
-            .first()
-            .and_then(|block| block.get("id"))
-            .and_then(Value::as_str);
-        lower_blocks(
-            &mut graph,
-            owner,
-            &object_node,
-            blocks,
-            entry,
-            &format!("{path}/code"),
-            &fn_keys,
-            &BTreeMap::new(),
-        )?;
-    }
-
-    // Functions: full bodies inside the object graph...
-    for (fn_name, function) in &functions {
-        let fn_path = format!("{path}/fn:{fn_name}");
-        lower_function_body(&mut graph, owner, function, &fn_keys, &fn_path)?;
-    }
-
-    // sub-objects (deployed object lives here), recursed as separate graphs;
-    // the parent graph records the containment as a multiset child.
+    // Sub-objects also get their own standalone full-subtree graphs.
     if let Some(subs) = object.get("subObjects").and_then(Value::as_object) {
         for (sub_index, (sub_name, sub)) in subs
             .iter()
@@ -197,6 +152,92 @@ fn lower_object_cfg(
         name: name.to_string(),
     });
     Ok(())
+}
+
+/// Lower one object's node, functions, code blocks, and (recursively) its
+/// sub-objects into `graph`, returning the object node so parents can attach
+/// it as a child.
+fn build_object_tree(
+    graph: &mut Graph,
+    owner: &str,
+    object: &Value,
+    name: &str,
+    path: &str,
+) -> Result<NodeKey, YulLowerError> {
+    let object_node =
+        NodeKey::entity(EntityKey::new("yulssa.object", owner, path).map_err(YulLowerError::Core)?);
+    graph
+        .add_node(object_node.clone(), "yulssa.object")
+        .map_err(YulLowerError::Core)?;
+    graph
+        .add_field(&object_node, Dimension::Names, "name", name)
+        .map_err(YulLowerError::Core)?;
+
+    // Function nodes pre-registered so call instructions can edge to them.
+    let functions = object
+        .get("functions")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let mut fn_keys: BTreeMap<String, NodeKey> = BTreeMap::new();
+    for fn_name in functions.keys() {
+        let fn_path = format!("{path}/fn:{fn_name}");
+        let key = NodeKey::entity(
+            EntityKey::new("yulssa.fn", owner, fn_path.as_str()).map_err(YulLowerError::Core)?,
+        );
+        graph
+            .add_node(key.clone(), "yulssa.fn")
+            .map_err(YulLowerError::Core)?;
+        graph
+            .add_field(&key, Dimension::Names, "name", fn_name.as_str())
+            .map_err(YulLowerError::Core)?;
+        graph
+            .add_child(&object_node, "fn", 0, &key)
+            .map_err(YulLowerError::Core)?;
+        fn_keys.insert(fn_name.clone(), key);
+    }
+
+    // Object-level (dispatch) blocks: first block is the entry.
+    if let Some(blocks) = object.get("blocks").and_then(Value::as_array) {
+        let entry = blocks
+            .first()
+            .and_then(|block| block.get("id"))
+            .and_then(Value::as_str);
+        lower_blocks(
+            graph,
+            owner,
+            &object_node,
+            blocks,
+            entry,
+            &format!("{path}/code"),
+            &fn_keys,
+            &BTreeMap::new(),
+        )?;
+    }
+
+    // Function bodies inside this graph.
+    for (fn_name, function) in &functions {
+        let fn_path = format!("{path}/fn:{fn_name}");
+        lower_function_body(graph, owner, function, &fn_keys, &fn_path)?;
+    }
+
+    // Sub-objects: full recursive containment (multiset children — map
+    // order is not semantics).
+    if let Some(subs) = object.get("subObjects").and_then(Value::as_object) {
+        for (sub_index, (sub_name, sub)) in subs
+            .iter()
+            .filter(|(_, value)| value.is_object() && value.get("blocks").is_some())
+            .enumerate()
+        {
+            let sub_path = format!("{path}.{sub_index}");
+            let sub_node = build_object_tree(graph, owner, sub, sub_name, &sub_path)?;
+            graph
+                .add_child(&object_node, "object", 0, &sub_node)
+                .map_err(YulLowerError::Core)?;
+        }
+    }
+
+    Ok(object_node)
 }
 
 /// Lower one function's arguments + blocks under its (pre-registered) node.
