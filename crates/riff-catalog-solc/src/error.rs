@@ -27,6 +27,8 @@ pub enum SolcError {
     VersionParse(String),
     #[error("unsupported solc version {found}, need {required}")]
     VersionMismatch { found: String, required: String },
+    #[error("solc resolver: {0}")]
+    Resolver(String),
     #[error("invalid bytecode hex: {0}")]
     BytecodeHex(String),
     #[error(transparent)]

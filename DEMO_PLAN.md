@@ -118,12 +118,11 @@ sentence, exactly once: "fe-emitted Yul ingests through the same two doors
       the dedup table screenshot, repo link.
 
 **P1 — strongly raises the demo's ceiling**
-- [ ] Multi-version solc resolver (svm-style, argotorg/solc-bin backend)
-      behind the existing `SolcResolver` trait — the Sourcify person's
-      first question will be "what about contracts pinned to 0.8.17?"
-      (Permit2 currently takes the polite-skip path). Even a 2-version
-      proof (download + cache one pinned binary) changes the answer from
-      "future work" to "works, watch".
+- [x] Multi-version solc resolver — DONE: `SolcBinResolver` downloads the
+      exact pinned build from binaries.soliditylang.org (cached forever),
+      `PinnedOrDownload` prefers a matching local install. Verified live:
+      Permit2 (pinned 0.8.17) fetches, recompiles with the verified
+      compiler, and ingests. Demo-able as an Act III beat.
 - [ ] Visual companion for Act I/III: revive the facet-hashing playground
       (the React bipartite-overlap view) fed by `riffcat overlap --json` /
       `bucket --json` over the real corpus instead of its toy parser.

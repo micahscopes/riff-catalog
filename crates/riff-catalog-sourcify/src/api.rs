@@ -22,17 +22,22 @@ pub struct ContractId {
 }
 
 impl ContractId {
-    pub fn new(chain_id: u64, address: &str) -> Self {
-        Self {
-            chain_id,
-            address: address.to_lowercase(),
+    /// Validates the address shape (0x + 40 hex): the address is later used
+    /// in cache file paths and URLs, so anything else (incl. `../`) is
+    /// rejected here (external review pass 2, P2).
+    pub fn new(chain_id: u64, address: &str) -> Option<Self> {
+        let address = address.to_lowercase();
+        let hex = address.strip_prefix("0x")?;
+        if hex.len() != 40 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
         }
+        Some(Self { chain_id, address })
     }
 
     /// Parse "chainId:address".
     pub fn parse(text: &str) -> Option<Self> {
         let (chain, address) = text.split_once(':')?;
-        Some(Self::new(chain.parse().ok()?, address))
+        Self::new(chain.parse().ok()?, address)
     }
 }
 

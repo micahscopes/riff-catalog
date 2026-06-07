@@ -78,11 +78,25 @@ impl Corpus {
         })
     }
 
+    /// Append records (claims/attestations: genuinely accumulating logs).
     pub fn append(&self, file_stem: &str, records: &[Record]) -> Result<()> {
+        self.write(file_stem, records, true)
+    }
+
+    /// Replace an artifact's records wholesale: re-ingesting the same
+    /// artifact is idempotent instead of doubling every digest row and
+    /// skewing bucket/overlap statistics (external review pass 2, P2).
+    pub fn replace(&self, file_stem: &str, records: &[Record]) -> Result<()> {
+        self.write(file_stem, records, false)
+    }
+
+    fn write(&self, file_stem: &str, records: &[Record], append: bool) -> Result<()> {
         let path = self.dir.join(format!("{file_stem}.jsonl"));
         let mut file = std::fs::OpenOptions::new()
             .create(true)
-            .append(true)
+            .append(append)
+            .write(true)
+            .truncate(!append)
             .open(&path)
             .with_context(|| format!("opening {}", path.display()))?;
         for record in records {

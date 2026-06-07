@@ -75,6 +75,18 @@ pub fn run(corpus: &Corpus, args: &IngestArgs) -> Result<()> {
         sources.push((path.display().to_string(), name, content));
     }
 
+    {
+        let mut seen = std::collections::BTreeMap::new();
+        for (origin, name, _) in &sources {
+            if let Some(previous) = seen.insert(name.clone(), origin.clone()) {
+                eprintln!(
+                    "warning: `{name}` ingested from both {previous} and {origin}; \
+                     artifacts stay distinct but identity-mode owners collide"
+                );
+            }
+        }
+    }
+
     for (origin, name, content) in &sources {
         if name.ends_with(".yul") {
             ingest_yul(corpus, &solc, args, origin, name, content)?;
@@ -94,11 +106,24 @@ fn want_unit(args: &IngestArgs, unit: &str) -> bool {
     args.units.iter().any(|wanted| wanted == unit)
 }
 
-fn artifact_id(owner: &str, optimize: bool) -> String {
+/// Includes the origin (full user-supplied path / sourcify ref), so
+/// src/Foo.sol and test/Foo.sol stay distinct artifacts even though their
+/// basenames — and therefore their owner strings — collide (external review
+/// pass 2, P2). Owner collisions still merge IDENTITY-mode node keys; the
+/// ingester warns when that happens.
+fn artifact_id(owner: &str, origin: &str, optimize: bool) -> String {
     let mut hasher = Sha256::new();
     hasher.update(owner.as_bytes());
+    hasher.update([0x1f]);
+    hasher.update(origin.as_bytes());
     hasher.update([u8::from(optimize)]);
     hex::encode(hasher.finalize())[..16].to_string()
+}
+
+fn short_origin_hash(origin: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(origin.as_bytes());
+    hex::encode(hasher.finalize())[..8].to_string()
 }
 
 /// Hash a unit graph under both view modes and emit graph + digest records.
@@ -169,7 +194,7 @@ fn ingest_solidity(
         // Source-level AST (identical across optimizer settings; ingest once)
         if !optimize || args.optimize == OptimizeChoice::On {
             let owner = format!("sol:{name}");
-            let artifact = artifact_id(&owner, false);
+            let artifact = artifact_id(&owner, origin, false);
             records.push(artifact_record(
                 &artifact, &owner, origin, "via-ir", false, args,
             ));
@@ -220,10 +245,11 @@ fn ingest_solidity(
         }
 
         let stem = format!(
-            "{}-{opt_tag}",
-            name.trim_end_matches(".sol").replace(['/', '\\'], "_")
+            "{}-{}-{opt_tag}",
+            name.trim_end_matches(".sol").replace(['/', '\\'], "_"),
+            short_origin_hash(origin),
         );
-        corpus.append(&stem, &records)?;
+        corpus.replace(&stem, &records)?;
         println!("ingested {name} ({opt_tag}): {} records", records.len());
     }
     Ok(())
@@ -247,7 +273,7 @@ fn ingest_contract_ir(
     ] {
         let Some(ast_value) = ast_value else { continue };
         let owner = format!("yulir:{source}:{contract}:{variant}:{opt_tag}");
-        let artifact = artifact_id(&owner, optimize);
+        let artifact = artifact_id(&owner, origin, optimize);
         records.push(artifact_record(
             &artifact, &owner, origin, "via-ir", optimize, args,
         ));
@@ -285,7 +311,7 @@ fn ingest_contract_ir(
     if want_unit(args, "ssa") {
         if let Ok(cfg) = output.yul_cfg_json(source, contract) {
             let owner = format!("yulssa:{source}:{contract}:{opt_tag}");
-            let artifact = artifact_id(&owner, optimize);
+            let artifact = artifact_id(&owner, origin, optimize);
             records.push(artifact_record(
                 &artifact, &owner, origin, "via-ir", optimize, args,
             ));
@@ -308,7 +334,7 @@ fn ingest_contract_ir(
     // EVM level
     if want_unit(args, "evm") {
         let owner = format!("evm:{source}:{contract}:via-ir:{opt_tag}");
-        let artifact = artifact_id(&owner, optimize);
+        let artifact = artifact_id(&owner, origin, optimize);
         records.push(artifact_record(
             &artifact, &owner, origin, "via-ir", optimize, args,
         ));
@@ -356,7 +382,7 @@ fn ingest_yul(
 
     // yul-ast level via our parser
     let owner = format!("yul:{name}");
-    let artifact = artifact_id(&owner, false);
+    let artifact = artifact_id(&owner, origin, false);
     records.push(artifact_record(
         &artifact, &owner, origin, "yul", false, args,
     ));
@@ -397,7 +423,7 @@ fn ingest_yul(
             for (source, contract) in output.contract_names() {
                 if let Ok(cfg) = output.yul_cfg_json(&source, &contract) {
                     let ssa_owner = format!("yulssa:{name}:{contract}");
-                    let ssa_artifact = artifact_id(&ssa_owner, false);
+                    let ssa_artifact = artifact_id(&ssa_owner, origin, false);
                     records.push(artifact_record(
                         &ssa_artifact,
                         &ssa_owner,
@@ -424,8 +450,12 @@ fn ingest_yul(
         }
     }
 
-    let stem = name.trim_end_matches(".yul").replace(['/', '\\'], "_");
-    corpus.append(&stem, &records)?;
+    let stem = format!(
+        "{}-{}",
+        name.trim_end_matches(".yul").replace(['/', '\\'], "_"),
+        short_origin_hash(origin),
+    );
+    corpus.replace(&stem, &records)?;
     println!("ingested {name}: {} records", records.len());
     Ok(())
 }
@@ -443,12 +473,21 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
         contract.contract_name, contract.match_kind, contract.compiler_version
     );
 
-    let resolver = riff_catalog_solc::InstalledSolc::new(
-        semver::VersionReq::parse("^0.8").expect("valid range"),
-        args.solc_path.as_deref(),
-    );
+    // Faithful recompilation: use the locally installed solc only when it
+    // matches the verified pin exactly; otherwise download THE pinned build
+    // from binaries.soliditylang.org (cached forever after).
+    let resolver = riff_catalog_sourcify::PinnedOrDownload {
+        download: riff_catalog_sourcify::SolcBinResolver::new(&args.cache_dir),
+        installed: args.solc_path.clone(),
+    };
     let output = match riff_catalog_sourcify::compile(&contract, &resolver, Pipeline::ViaIr) {
         Ok(output) => output,
+        Err(riff_catalog_sourcify::SourcifyError::Solc(
+            riff_catalog_solc::SolcError::Resolver(reason),
+        )) => {
+            println!("skipped {spec}: could not resolve pinned solc ({reason})");
+            return Ok(());
+        }
         Err(riff_catalog_sourcify::SourcifyError::Solc(
             riff_catalog_solc::SolcError::VersionMismatch { found, required },
         )) => {
@@ -471,7 +510,7 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
             continue;
         };
         let owner = format!("sf:{}:{}:{source_path}", id.chain_id, id.address);
-        let artifact = artifact_id(&owner, false);
+        let artifact = artifact_id(&owner, &origin, false);
         records.push(artifact_record(
             &artifact, &owner, &origin, "via-ir", false, args,
         ));
@@ -517,9 +556,10 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
     let stem = format!(
         "sf_{}_{}",
         id.chain_id,
-        &id.address[2..10.min(id.address.len())]
+        // address validated as 0x + 40 hex by ContractId::parse
+        &id.address[2..10]
     );
-    corpus.append(&stem, &records)?;
+    corpus.replace(&stem, &records)?;
     println!("ingested {spec}: {} records", records.len());
     Ok(())
 }

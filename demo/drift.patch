@@ -1,0 +1,13 @@
+diff --git a/crates/riff-catalog-yul/src/parser.rs b/crates/riff-catalog-yul/src/parser.rs
+index 7481269..5bfe855 100644
+--- a/crates/riff-catalog-yul/src/parser.rs
++++ b/crates/riff-catalog-yul/src/parser.rs
+@@ -295,6 +295,8 @@ impl Parser {
+         if cases.is_empty() {
+             return Err(self.error_here("switch needs at least one case"));
+         }
++        // DRIFT DEMO: one path quietly reorders cases. Conformance dies loudly.
++        cases.reverse();
+         Ok(Statement::Switch(Switch { expression, cases }))
+     }
+ 
