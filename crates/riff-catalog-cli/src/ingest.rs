@@ -267,11 +267,14 @@ fn ingest_contract_ir(
     optimize: bool,
 ) -> Result<()> {
     // yul-ast level: unoptimized + optimized IR ASTs
+    // Interfaces/abstract contracts surface these keys as JSON null.
     for (variant, ast_value) in [
         ("ir", output.ir_ast(source, contract).ok()),
         ("iropt", output.ir_optimized_ast(source, contract).ok()),
     ] {
-        let Some(ast_value) = ast_value else { continue };
+        let Some(ast_value) = ast_value.filter(|value| value.is_object()) else {
+            continue;
+        };
         let owner = format!("yulir:{source}:{contract}:{variant}:{opt_tag}");
         let artifact = artifact_id(&owner, origin, optimize);
         records.push(artifact_record(
@@ -307,9 +310,13 @@ fn ingest_contract_ir(
         }
     }
 
-    // SSA level
+    // SSA level (key is JSON null for interfaces/abstract contracts)
     if want_unit(args, "ssa") {
-        if let Ok(cfg) = output.yul_cfg_json(source, contract) {
+        if let Some(cfg) = output
+            .yul_cfg_json(source, contract)
+            .ok()
+            .filter(|value| value.is_object())
+        {
             let owner = format!("yulssa:{source}:{contract}:{opt_tag}");
             let artifact = artifact_id(&owner, origin, optimize);
             records.push(artifact_record(
