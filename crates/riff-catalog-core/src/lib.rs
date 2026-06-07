@@ -20,6 +20,7 @@ pub mod graph;
 pub mod hash;
 pub mod index;
 pub mod key;
+pub mod meta;
 pub mod policy;
 pub mod reference;
 pub mod text;

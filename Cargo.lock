@@ -102,6 +102,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "riff-catalog-claims"
+version = "0.1.0"
+dependencies = [
+ "riff-catalog-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "riff-catalog-core"
 version = "0.1.0"
 dependencies = [
