@@ -1,0 +1,49 @@
+//! riff-catalog-core: facet-relative content addressing for compiler artifacts.
+//!
+//! An artifact is lowered into a [`Graph`] — nodes with dimension-tagged fields,
+//! ordered labeled children (the Merkle skeleton), and labeled role-tagged edges.
+//! [`digest_graph`] computes one digest *per dimension* under a [`HashPolicy`];
+//! "equal at facet F" is equality of the digests for F's dimension subset
+//! ([`FacetAddress::address_digest`]).
+//!
+//! Design invariants (see PLAN.md at the workspace root for the full list):
+//! - I1: every digest record's header commits to schema version, algorithm,
+//!   level, view mode, cycle policy, and dimension — a bare hash never overclaims.
+//! - I5: in [`ViewMode::AnonymousShape`], no node-key-derived bytes influence any
+//!   digest; WL colors replace key order inside SCCs.
+//! - I8: any change to the encoding requires a [`SCHEMA_VERSION`] bump; golden
+//!   tests enforce this mechanically.
+
+pub mod dimension;
+pub mod error;
+pub mod graph;
+pub mod hash;
+pub mod index;
+pub mod key;
+pub mod policy;
+pub mod reference;
+pub mod text;
+pub mod value;
+
+mod encode;
+mod serde_pairs;
+
+pub use dimension::Dimension;
+pub use error::CatalogError;
+pub use graph::{ChildEdge, Edge, EdgeRole, Field, Graph, GraphSink, Node};
+pub use hash::{
+    ComponentHash, DigestRequest, DigestResult, DimensionDigests, GraphHashes, NodeHashes,
+    digest_graph,
+};
+pub use index::{
+    DigestIndex, DigestIndexEntry, FacetIndex, FacetIndexEntry, LookupRequest, LookupResult,
+};
+pub use key::{EntityKey, GraphKey, NodeKey};
+pub use policy::{Algorithm, CyclePolicy, HashPolicy, PolicyId, ViewMode};
+pub use reference::{ArtifactRef, Facet, FacetAddress};
+pub use text::{Digest, Name};
+pub use value::Value;
+
+/// Version of the canonical encoding contract. Any change to record layouts,
+/// tags, or canonicalization rules requires bumping this (invariant I8).
+pub const SCHEMA_VERSION: u32 = 1;

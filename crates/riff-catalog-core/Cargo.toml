@@ -1,0 +1,18 @@
+[package]
+name = "riff-catalog-core"
+description = "Facet-relative content addressing: canonical graph encoding, multi-dimensional digests, WL-refined SCC hashing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+blake3.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
