@@ -1,0 +1,18 @@
+[package]
+name = "riff-catalog-claims"
+description = "Witnessed equivalence claims and attestations over facet addresses: union-find closure, claim-gated lookup"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+riff-catalog-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
