@@ -1,0 +1,18 @@
+[package]
+name = "riff-catalog-solc"
+description = "solc standard-json driver: compile Solidity/Yul, request AST/IR/SSA-CFG outputs, cache results"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+semver.workspace = true
+sha2.workspace = true
+hex.workspace = true
