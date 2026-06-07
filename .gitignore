@@ -1,0 +1,4 @@
+/target
+corpus/
+*.jsonl
+!testdata/**/*.jsonl
