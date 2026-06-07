@@ -176,6 +176,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "riff-catalog-evm"
+version = "0.1.0"
+dependencies = [
+ "riff-catalog-core",
+ "thiserror",
+]
+
+[[package]]
 name = "riff-catalog-solc"
 version = "0.1.0"
 dependencies = [

@@ -21,6 +21,7 @@ pub mod canon;
 pub mod error;
 pub mod lower;
 pub mod parser;
+pub mod ssa;
 
 mod lexer;
 
