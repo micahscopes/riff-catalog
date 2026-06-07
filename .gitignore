@@ -2,3 +2,6 @@
 corpus/
 *.jsonl
 !testdata/**/*.jsonl
+demo/corpus/
+target-drift/
+demo/double.yul

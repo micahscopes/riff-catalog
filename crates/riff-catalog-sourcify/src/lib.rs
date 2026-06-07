@@ -7,9 +7,11 @@
 
 mod api;
 mod error;
+mod resolver;
 
 pub use api::{ContractId, SourcifyClient, VerifiedContract};
 pub use error::SourcifyError;
+pub use resolver::{PinnedOrDownload, SolcBinResolver};
 
 use riff_catalog_solc::{Pipeline, SolcOutput, SolcResolver, with_output_selection};
 
@@ -31,7 +33,29 @@ pub fn to_standard_json(contract: &VerifiedContract) -> Result<serde_json::Value
         .unwrap_or_else(|| serde_json::json!({}));
     if let Some(map) = settings.as_object_mut() {
         map.remove("compilationTarget");
-        map.remove("libraries");
+        // Metadata spells libraries flat ("file.sol:Lib": addr); standard
+        // JSON nests them ({file: {Lib: addr}}). Dropping them entirely
+        // produced unlinked placeholders in recompiled bytecode (external
+        // review pass 2, P2) — convert instead.
+        if let Some(libraries) = map.remove("libraries") {
+            if let Some(flat) = libraries.as_object() {
+                let mut nested = serde_json::Map::new();
+                for (qualified, address) in flat {
+                    let (file, library) = qualified
+                        .split_once(':')
+                        .unwrap_or(("", qualified.as_str()));
+                    nested
+                        .entry(file.to_string())
+                        .or_insert_with(|| serde_json::json!({}))
+                        .as_object_mut()
+                        .expect("just inserted object")
+                        .insert(library.to_string(), address.clone());
+                }
+                if !nested.is_empty() {
+                    map.insert("libraries".into(), nested.into());
+                }
+            }
+        }
     }
     let sources: serde_json::Map<String, serde_json::Value> = contract
         .sources

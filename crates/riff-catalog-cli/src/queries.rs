@@ -58,20 +58,11 @@ pub fn bucket(
         None
     };
 
-    // property gate (attestations): drop rows whose address lacks it
-    let permitted: Option<BTreeSet<Digest>> = match &args.require {
-        Some(property) => {
-            let mut set = riff_catalog_claims::AttestationSet::new();
-            for attestation in corpus.attestations()? {
-                set.insert(attestation);
-            }
-            Some(set.subjects_with(property))
-        }
-        None => None,
-    };
+    let permitted = permitted_addresses(corpus, args)?;
 
     let mut classes: BTreeMap<Digest, Vec<&DigestRow>> = BTreeMap::new();
     let mut excluded = 0usize;
+    let mut considered = 0usize;
     for row in &rows {
         let address = address_of(row, &dimensions)?;
         if let Some(permitted) = &permitted {
@@ -80,6 +71,7 @@ pub fn bucket(
                 continue;
             }
         }
+        considered += 1;
         let key = match closure.as_mut() {
             Some(closure) => closure.representative(&address),
             None => address,
@@ -111,19 +103,24 @@ pub fn bucket(
         ]);
     }
 
-    let total = rows.len();
+    // Denominator counts only gated-in rows: one attested row in a large
+    // corpus is 0% dedup, not ~100% (external review pass 2, P2).
     let dedup_classes = classes.len();
+    let percent = if considered == 0 {
+        0.0
+    } else {
+        100.0 * (1.0 - dedup_classes as f64 / considered as f64)
+    };
     if json {
         println!("{}", table.to_json());
     } else {
         table.print();
         println!(
-            "\n{total} {unit} graphs -> {dedup_classes} classes at facet {facet} ({mode}); \
+            "\n{considered} {unit} graphs -> {dedup_classes} classes at facet {facet} ({mode}); \
              dedup {percent:.1}%{gate}",
             unit = args.unit,
             facet = args.facet,
             mode = args.mode,
-            percent = 100.0 * (1.0 - dedup_classes as f64 / total as f64),
             gate = match (&args.require, excluded) {
                 (Some(property), n) => format!("; {n} rows excluded (lack `{property}`)"),
                 _ => String::new(),
@@ -131,6 +128,22 @@ pub fn bucket(
         );
     }
     Ok(())
+}
+
+/// The attestation gate: addresses carrying `--require`'s property. Shared
+/// by bucket AND overlap — overlap silently bypassing the gate was external
+/// review pass 2's P1.
+fn permitted_addresses(corpus: &Corpus, args: &QueryArgs) -> Result<Option<BTreeSet<Digest>>> {
+    match &args.require {
+        Some(property) => {
+            let mut set = riff_catalog_claims::AttestationSet::new();
+            for attestation in corpus.attestations()? {
+                set.insert(attestation);
+            }
+            Ok(Some(set.subjects_with(property)))
+        }
+        None => Ok(None),
+    }
 }
 
 pub fn overlap(
@@ -157,13 +170,22 @@ pub fn overlap(
         None
     };
 
+    let permitted = permitted_addresses(corpus, args)?;
+
     let mut left_classes: BTreeMap<Digest, Vec<&DigestRow>> = BTreeMap::new();
     let mut right_classes: BTreeMap<Digest, Vec<&DigestRow>> = BTreeMap::new();
+    let mut excluded = 0usize;
     for row in &rows {
         let on_left = matches_selector(row, left);
         let on_right = matches_selector(row, right);
         if !on_left && !on_right {
             continue;
+        }
+        if let Some(permitted) = &permitted {
+            if !permitted.contains(&address_of(row, &dimensions)?) {
+                excluded += 1;
+                continue;
+            }
         }
         let key = class_key(row, &dimensions, closure.as_mut())?;
         if on_left {
@@ -173,6 +195,12 @@ pub fn overlap(
             right_classes.entry(key).or_default().push(row);
         }
     }
+    if excluded > 0 {
+        eprintln!(
+            "note: {excluded} rows excluded by --require {}",
+            args.require.as_deref().unwrap_or_default()
+        );
+    }
 
     let left_keys: BTreeSet<&Digest> = left_classes.keys().collect();
     let right_keys: BTreeSet<&Digest> = right_classes.keys().collect();
@@ -180,11 +208,25 @@ pub fn overlap(
 
     let mut table = Table::new(&["class", &format!("A: {left}"), &format!("B: {right}")]);
     for digest in &shared {
+        // Projector-friendly: cap member lists, count the rest.
         let names = |classes: &BTreeMap<Digest, Vec<&DigestRow>>| {
             let mut names: Vec<&str> = classes[**digest].iter().map(|r| r.name.as_str()).collect();
             names.sort();
             names.dedup();
-            names.join(", ")
+            let total = names.len();
+            let mut joined = String::new();
+            for (index, name) in names.iter().enumerate() {
+                let next_len = joined.len() + name.len() + 2;
+                if index > 0 && next_len > 56 {
+                    joined.push_str(&format!(" (+{})", total - index));
+                    break;
+                }
+                if index > 0 {
+                    joined.push_str(", ");
+                }
+                joined.push_str(name);
+            }
+            joined
         };
         table.row(vec![
             digest.display_short(),
@@ -238,12 +280,34 @@ pub fn diff(
                 _ => raw.to_string(),
             }
         };
+        // Collisions after normalization (helpers in multiple objects,
+        // duplicate ingests) stay VISIBLE as distinct keyed rows instead of
+        // silently keeping the last one (external review pass 2, P2).
         let pick = |selector: &str| -> BTreeMap<String, &DigestRow> {
-            rows.iter()
+            let mut grouped: BTreeMap<String, Vec<&DigestRow>> = BTreeMap::new();
+            for row in rows
+                .iter()
                 .filter(|row| matches_selector(row, selector))
                 .filter(|row| name.is_none_or(|n| row.name.contains(n)))
-                .map(|row| (normalized(&row.name), row))
-                .collect()
+            {
+                grouped.entry(normalized(&row.name)).or_default().push(row);
+            }
+            let mut picked = BTreeMap::new();
+            for (norm, group) in grouped {
+                if let [only] = group.as_slice() {
+                    picked.insert(norm, *only);
+                } else {
+                    for (index, row) in group.into_iter().enumerate() {
+                        let key = if index == 0 {
+                            row.name.clone()
+                        } else {
+                            format!("{}#{}", row.name, index + 1)
+                        };
+                        picked.insert(key, row);
+                    }
+                }
+            }
+            picked
         };
         let left_rows = pick(left);
         let right_rows = pick(right);
