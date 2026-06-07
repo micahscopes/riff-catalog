@@ -100,17 +100,15 @@ sentence, exactly once: "fe-emitted Yul ingests through the same two doors
 ## 5. Prep checklist (the actual work — ultraplan: refine/estimate these)
 
 **P0 — must exist before the demo**
-- [ ] `demo/` directory in-repo: `stage.sh` (ingest all 9 rosetta contracts +
-      2 sourcify fetches into `demo/corpus`, warm every cache) and
-      `runsheet.md` with the exact commands. Idempotent; runnable on a
-      borrowed laptop.
-- [ ] Output polish pass on `riffcat`: truncate over-wide overlap member
-      lists (Act I table currently overflows), stable column widths,
-      `--top` defaults tuned for a projector (≤ 12 rows, short digests).
-- [ ] Drift-demo packaging: a `demo/drift.patch` that perturbs
-      `canon_number`, plus a script that builds the perturbed binary to a
-      scratch target dir so flipping between green/red is one command.
-      Record the 15-second fallback screencast.
+- [x] `demo/` directory in-repo — DONE: `stage.sh` (idempotent staging,
+      both binaries, cache warming) + `runsheet.md` (the full show,
+      offline after staging).
+- [x] Output polish — overlap member lists truncate for projectors;
+      remaining nice-to-have: colored DIFF cells (P2 below).
+- [x] Drift-demo packaging — DONE as `demo/drift.patch` (switch-case
+      reorder in the parser: fires on every dispatcher, level-0 red) +
+      `target-drift` build in stage.sh. Still TODO: record the 15-second
+      fallback screencast.
 - [ ] Dry run against a clean checkout + recorded full-run fallback video
       (projector/Wi-Fi insurance).
 - [ ] The one slide ("what this is NOT") + a one-page handout: the five
