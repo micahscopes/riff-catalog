@@ -4,6 +4,12 @@
 //! event: bump `SCHEMA_VERSION`, regenerate the constants (see
 //! `examples/golden_probe.rs`), and record the migration in the changelog.
 //! Never "fix" a golden value to make a refactor pass.
+//!
+//! Pre-release exception, exercised once (2026-06-07): the flat-edge
+//! per-dimension folding fix (external review P1) changed non-Structure
+//! digests; since no schema has ever been published, the constants were
+//! regenerated without a version bump. After the first release this path
+//! is closed — bump SCHEMA_VERSION instead.
 
 use riff_catalog_core::*;
 
@@ -67,19 +73,19 @@ fn golden_identity_reject_fixture() {
         ),
         (
             Dimension::Names,
-            "7f084f2aa551d718cd473ff9d41cba9c1779b732f509ee5d2f30fadda5250420",
+            "8e89a8898f19c751fbaee2923569b20638bc57ad2b8c82f3b3e647e9f5520637",
         ),
         (
             Dimension::Constants,
-            "2ebe331bbe690aed87fc17df452a8d786bfd5ec27d740e64b27e391eb6ccea2a",
+            "76b365a5842819c19788500f191d983f298deb905a158c1c4c70c3d703dc6dc5",
         ),
         (
             Dimension::Types,
-            "d360cd7e3d5245fc634626891547db808c5b2cbb4ad44f5f95c6a76df8dc8c52",
+            "f0843ae7b5022968121719a1e4f1a687d11e723836756c43434d9452852b7117",
         ),
         (
             Dimension::TraceEvents,
-            "54756a629124474ea488fd8103fdeec31f8da9c7ea3cd1765c357291fdaf3938",
+            "357d41cb491523f5e11f57eec2f3549c4916915c85c616224983e1dc58180f4a",
         ),
     ];
     for (dimension, hex) in expect {
@@ -103,19 +109,19 @@ fn golden_anonymous_condense_fixture() {
         ),
         (
             Dimension::Names,
-            "5a128bcd6a7459ce015e3edb327914f614841ffd83b810b77f7f5a66bcad0a8c",
+            "263794a276babe9a8a9b7bc6d908d3aeb93a34b315286926d3a67642265bc9eb",
         ),
         (
             Dimension::Constants,
-            "e8b151e495d4b1b3bdd5338ab72190f70ef808d57bbabe8bb966eee57d294914",
+            "11605a82066058f15f7c8212d983de9e90e35fa6b77f28a58789497fdfb67381",
         ),
         (
             Dimension::Types,
-            "bcdc3767899dbd0058204716affb3444f090ee655fd90ac22360d6ce2827d75e",
+            "e39af97974a08ceb187a093dfba712838e82e7a594071b187836c3b8a5e91069",
         ),
         (
             Dimension::TraceEvents,
-            "aae15e93fe3214750575f6f6d5fad143fd3043ece14be0a46f6febeb8b7574ce",
+            "76f591bef6ed4e9154bba4d6fcb404728fc5a58e1f6e09a0b12cfa76b1b170a6",
         ),
     ];
     for (dimension, hex) in expect {

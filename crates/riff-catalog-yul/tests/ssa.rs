@@ -140,3 +140,53 @@ fn ssa_conformance_loop() {
         "SSA conformance loop: direct vs ir-round-trip digests diverge"
     );
 }
+
+/// Regression (external review, P2): the parent object's digest must commit
+/// to its sub-objects' CFGs — a change inside the deployed object must move
+/// the creation object's digest.
+#[test]
+fn parent_object_digest_commits_to_subobjects() {
+    let cfg = |sstore_key: &str| {
+        serde_json::json!({
+            "Demo": {
+                "blocks": [{
+                    "id": "Block0",
+                    "instructions": [],
+                    "exit": { "type": "Terminated" }
+                }],
+                "functions": {},
+                "subObjects": {
+                    "Demo_deployed": {
+                        "blocks": [{
+                            "id": "Block0",
+                            "instructions": [
+                                { "op": "sstore", "in": [sstore_key, "0x01"], "out": [] }
+                            ],
+                            "exit": { "type": "Terminated" }
+                        }],
+                        "functions": {},
+                        "subObjects": {}
+                    },
+                    "type": "SubObjects"
+                }
+            },
+            "type": "Object"
+        })
+    };
+    let left = lower_yul_cfg(&cfg("0x00"), "ssa:sub-test").unwrap();
+    let right = lower_yul_cfg(&cfg("0x05"), "ssa:sub-test").unwrap();
+    // both emit parent + deployed object units; compare the PARENT ("Demo")
+    let parent = |lowered: &riff_catalog_yul::ssa::LoweredSsa| {
+        let unit = lowered
+            .objects
+            .iter()
+            .find(|unit| unit.name == "Demo")
+            .expect("parent object unit");
+        hash(unit, ViewMode::AnonymousShape).graph
+    };
+    assert_ne!(
+        parent(&left).get(Dimension::Constants),
+        parent(&right).get(Dimension::Constants),
+        "deployed-code change must move the parent object digest"
+    );
+}

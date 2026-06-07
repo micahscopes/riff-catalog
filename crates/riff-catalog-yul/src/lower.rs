@@ -184,6 +184,14 @@ struct CollectedFn<'a> {
 /// shadowing), so `<object_path>/fn:<name>` is collision-free; same-named
 /// helpers in different objects (creation vs deployed — routine in solc
 /// output) get distinct object paths.
+///
+/// Known v1 limitation (external review P2, deliberate): SIBLING blocks may
+/// each legally declare a same-named block-local function. This flat
+/// per-object collection then produces duplicate keys and lowering fails
+/// LOUDLY with `DuplicateNode` — it never mis-resolves a call on valid
+/// input (out-of-scope calls are invalid Yul and rejected by solc upstream).
+/// Full lexical scope chains are the fix if such code ever matters; solc
+/// IR never emits it.
 fn collect_functions<'a>(object: &'a Object, object_path: &str, out: &mut Vec<CollectedFn<'a>>) {
     collect_functions_in_block(&object.code.block, object_path, out);
     for (index, child) in object.sub_objects.iter().enumerate() {
