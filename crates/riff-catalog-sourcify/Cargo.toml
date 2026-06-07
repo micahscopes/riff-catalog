@@ -1,0 +1,19 @@
+[package]
+name = "riff-catalog-sourcify"
+description = "Fetch verified contracts from Sourcify and reconstruct standard-json inputs for riff-catalog ingestion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+riff-catalog-solc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ureq.workspace = true
+sha2.workspace = true
+hex.workspace = true

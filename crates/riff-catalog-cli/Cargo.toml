@@ -1,0 +1,27 @@
+[package]
+name = "riff-catalog-cli"
+description = "riffcat: ingest compiler artifacts into a facet corpus; bucket, overlap, diff, conformance, claims"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "riffcat"
+path = "src/main.rs"
+
+[dependencies]
+riff-catalog-core.workspace = true
+riff-catalog-claims.workspace = true
+riff-catalog-solc.workspace = true
+riff-catalog-yul.workspace = true
+riff-catalog-solidity.workspace = true
+riff-catalog-evm.workspace = true
+riff-catalog-sourcify.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+semver.workspace = true
