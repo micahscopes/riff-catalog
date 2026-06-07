@@ -1,0 +1,19 @@
+[package]
+name = "riff-catalog-yul"
+description = "Yul AST (solc irAst-compatible), zero-dep text parser, and lowerings to riff-catalog graphs (tree + SSA CFG levels)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+riff-catalog-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+riff-catalog-solc.workspace = true
