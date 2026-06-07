@@ -27,7 +27,7 @@ introduced through the demo result, not as a slogan. The words we do use:
 
 | persona | background | the hook | the trap to avoid |
 |---|---|---|---|
-| Argot generalists | application-focused, funding-anxious | "your compilers already emit the same code constantly — watch 536 functions collapse to 216" | abstraction talk before the table renders |
+| Argot generalists | application-focused, funding-anxious | "your compilers already emit the same code constantly — watch 7,939 functions collapse to 1,713 (78.4% dedup, full rosetta corpus)" | abstraction talk before the table renders |
 | Solidity member, **distributed-systems** background | consensus, replication, determinism | the conformance loop: two independent ingestion paths, byte-equal canonical form, drift detector that *visibly fails* when perturbed; WL-refined hashing of cyclic graphs (Merkle alone can't); self-describing references with schema versioning | overclaiming: 1-WL ≠ isomorphism — say it before they do |
 | Sourcify **frontend** dev | verified-contract corpus, product UX | live fetch of ENS PublicResolver → 39 structural twins against a local build; pitch: "similar contracts" tab, helper-provenance badges, and Constants-blind bytecode matching for *unverified* contract triage | API/scale promises we can't keep yet (be explicit the store is JSONL today) |
 
@@ -39,7 +39,8 @@ load-bearing here, not bypassed.
 
 **Act I — "Your compilers rhyme" (2 min).** No slides. Terminal with a
 pre-ingested corpus (all 9 rosetta contracts, both optimizer settings, all
-four levels). Run `bucket`, let the dedup table land, name what they're
+four levels — 7,939 yul-fn graphs staged). Run `bucket`, let the dedup
+table land (1,713 classes, 78.4% dedup), name what they're
 seeing: every digest is computed *per dimension* — structure, names,
 constants, types — so "names-blind" or "constants-blind" is a query-time
 choice, not a re-hash. Then `overlap` ERC20↔AMM at names-blind:
