@@ -1,0 +1,19 @@
+[package]
+name = "riff-catalog-solidity"
+description = "Generic nodeType-profile walker lowering solc Solidity AST JSON into riff-catalog graphs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+riff-catalog-core.workspace = true
+riff-catalog-yul.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+riff-catalog-solc.workspace = true

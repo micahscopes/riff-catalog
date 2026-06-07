@@ -188,6 +188,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "riff-catalog-solidity"
+version = "0.1.0"
+dependencies = [
+ "riff-catalog-core",
+ "riff-catalog-solc",
+ "riff-catalog-yul",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "riff-catalog-yul"
+version = "0.1.0"
+dependencies = [
+ "riff-catalog-core",
+ "riff-catalog-solc",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
