@@ -266,14 +266,26 @@ fn ingest_contract_ir(
     opt_tag: &str,
     optimize: bool,
 ) -> Result<()> {
-    // yul-ast level: unoptimized + optimized IR ASTs
-    // Interfaces/abstract contracts surface these keys as JSON null.
-    for (variant, ast_value) in [
-        ("ir", output.ir_ast(source, contract).ok()),
-        ("iropt", output.ir_optimized_ast(source, contract).ok()),
+    // yul-ast level: unoptimized + optimized IR ASTs.
+    // Interfaces/abstract contracts surface these keys as JSON null (Ok(null)),
+    // which we skip quietly. A *missing* key (Err) means solc emitted no IR AST
+    // at all — typically a compiler older than irAst support (< ~0.8.21), e.g. a
+    // version-pinned sourcify contract — so warn loudly rather than silently
+    // staging a corpus with no IR units (which makes IR-level queries empty).
+    for (variant, ast_result) in [
+        ("ir", output.ir_ast(source, contract)),
+        ("iropt", output.ir_optimized_ast(source, contract)),
     ] {
-        let Some(ast_value) = ast_value.filter(|value| value.is_object()) else {
-            continue;
+        let ast_value = match ast_result {
+            Ok(value) if value.is_object() => value,
+            Ok(_) => continue,
+            Err(_) => {
+                eprintln!(
+                    "WARN: {source}:{contract}: solc emitted no {variant} AST \
+                     (irAst needs solc >= ~0.8.21); no {variant} yul units staged"
+                );
+                continue;
+            }
         };
         let owner = format!("yulir:{source}:{contract}:{variant}:{opt_tag}");
         let artifact = artifact_id(&owner, origin, optimize);
@@ -310,30 +322,37 @@ fn ingest_contract_ir(
         }
     }
 
-    // SSA level (key is JSON null for interfaces/abstract contracts)
+    // SSA level. As above: Ok(null) is an interface (skip quietly); Err means
+    // solc emitted no yulCFGJson at all (the experimental SSA pipeline needs a
+    // recent solc, ~0.8.29+), which is worth a warning.
     if want_unit(args, "ssa") {
-        if let Some(cfg) = output
-            .yul_cfg_json(source, contract)
-            .ok()
-            .filter(|value| value.is_object())
-        {
-            let owner = format!("yulssa:{source}:{contract}:{opt_tag}");
-            let artifact = artifact_id(&owner, origin, optimize);
-            records.push(artifact_record(
-                &artifact, &owner, origin, "via-ir", optimize, args,
-            ));
-            let lowered = lower_yul_cfg(cfg, &owner)?;
-            for unit in lowered.objects.iter().chain(&lowered.functions) {
-                emit_unit(
-                    records,
-                    &artifact,
-                    &owner,
-                    YUL_SSA_LEVEL,
-                    unit.unit,
-                    &unit.name,
-                    &unit.graph_key,
-                    &unit.graph,
-                )?;
+        match output.yul_cfg_json(source, contract) {
+            Ok(cfg) if cfg.is_object() => {
+                let owner = format!("yulssa:{source}:{contract}:{opt_tag}");
+                let artifact = artifact_id(&owner, origin, optimize);
+                records.push(artifact_record(
+                    &artifact, &owner, origin, "via-ir", optimize, args,
+                ));
+                let lowered = lower_yul_cfg(cfg, &owner)?;
+                for unit in lowered.objects.iter().chain(&lowered.functions) {
+                    emit_unit(
+                        records,
+                        &artifact,
+                        &owner,
+                        YUL_SSA_LEVEL,
+                        unit.unit,
+                        &unit.name,
+                        &unit.graph_key,
+                        &unit.graph,
+                    )?;
+                }
+            }
+            Ok(_) => {}
+            Err(_) => {
+                eprintln!(
+                    "WARN: {source}:{contract}: solc emitted no yulCFGJson \
+                     (the SSA pipeline needs a recent solc, ~0.8.29+); no SSA units staged"
+                );
             }
         }
     }

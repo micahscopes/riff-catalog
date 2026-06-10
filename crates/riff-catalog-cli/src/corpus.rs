@@ -10,6 +10,19 @@ use riff_catalog_claims::{Attestation, Claim};
 use riff_catalog_core::{Digest, Dimension, Graph, GraphKey, PolicyId};
 use serde::{Deserialize, Serialize};
 
+/// Cheaply decide whether a raw JSONL line is a `Graph` record without parsing
+/// it. `Record` is internally tagged (`#[serde(tag = "record")]`) and written
+/// compactly, so the tag is the first field on every line. We scan only a short
+/// prefix, keeping this O(1) regardless of the graph payload's size (a single
+/// graph line can be hundreds of MB). The tag is ASCII, so a byte-level search
+/// is robust to any UTF-8 content further along the line.
+fn line_is_graph_record(line: &str) -> bool {
+    const PREFIX: usize = 64;
+    const TAG: &[u8] = b"\"record\":\"graph\"";
+    let head = &line.as_bytes()[..line.len().min(PREFIX)];
+    head.windows(TAG.len()).any(|window| window == TAG)
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "record", rename_all = "snake_case")]
 pub enum Record {
@@ -106,7 +119,12 @@ impl Corpus {
         Ok(())
     }
 
-    pub fn load_all(&self) -> Result<Vec<Record>> {
+    /// Load every record except `Graph`. Digest/claim/attestation queries never
+    /// read the graph payloads, which dominate the corpus on disk (hundreds of
+    /// MB), so skipping them before JSON parsing turns a multi-second full-corpus
+    /// load into a cheap one. (Graph records are still persisted by `ingest`;
+    /// add a graph-aware loader if a graph-level query ever needs them.)
+    pub fn load_non_graph_records(&self) -> Result<Vec<Record>> {
         let mut records = Vec::new();
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return Ok(records);
@@ -121,6 +139,9 @@ impl Corpus {
                 if line.trim().is_empty() {
                     continue;
                 }
+                if line_is_graph_record(line) {
+                    continue;
+                }
                 let record: Record = serde_json::from_str(line)
                     .with_context(|| format!("parsing {}:{}", path.display(), line_no + 1))?;
                 records.push(record);
@@ -131,7 +152,7 @@ impl Corpus {
 
     pub fn digest_rows(&self, unit: &str, mode: &str) -> Result<Vec<DigestRow>> {
         Ok(self
-            .load_all()?
+            .load_non_graph_records()?
             .into_iter()
             .filter_map(|record| match record {
                 Record::Digest {
@@ -161,7 +182,7 @@ impl Corpus {
 
     pub fn claims(&self) -> Result<Vec<Claim>> {
         Ok(self
-            .load_all()?
+            .load_non_graph_records()?
             .into_iter()
             .filter_map(|record| match record {
                 Record::Claim { claim, .. } => Some(claim),
@@ -172,7 +193,7 @@ impl Corpus {
 
     pub fn attestations(&self) -> Result<Vec<Attestation>> {
         Ok(self
-            .load_all()?
+            .load_non_graph_records()?
             .into_iter()
             .filter_map(|record| match record {
                 Record::Attestation { attestation, .. } => Some(attestation),
