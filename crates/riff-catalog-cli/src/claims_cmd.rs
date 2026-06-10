@@ -109,7 +109,8 @@ pub fn attest_add(corpus: &Corpus, args: &AssertArgs, subject: &str, property: &
 }
 
 pub fn list(corpus: &Corpus, json: bool) -> Result<()> {
-    let records = corpus.load_all()?;
+    // Only claim/attestation records are listed; skip the large graph payloads.
+    let records = corpus.load_non_graph_records()?;
     let mut any = false;
     for record in &records {
         match record {
