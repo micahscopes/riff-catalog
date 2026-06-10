@@ -1,19 +1,37 @@
 #!/usr/bin/env bash
 # Stage the lightning-demo corpus. Idempotent; safe on a borrowed laptop.
 # Usage: demo/stage.sh [path-to-rosetta-examples]
+#   The rosetta examples dir may also be given via $ROSETTA_EXAMPLES; otherwise
+#   a sibling ../rosetta-fe/examples checkout is auto-detected.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-ROSETTA="${1:-$HOME/hacker-stuff-2023/fe-stuff/rosetta-fe/examples}"
-CORPUS="demo/corpus"
-RIFFCAT="target/debug/riffcat"
 
-echo "== building riffcat =="
-cargo build -p riff-catalog-cli
+# Resolve the rosetta examples directory without a hard-coded personal path.
+ROSETTA="${1:-${ROSETTA_EXAMPLES:-}}"
+if [ -z "$ROSETTA" ]; then
+    for candidate in ../rosetta-fe/examples ../../rosetta-fe/examples; do
+        if [ -d "$candidate" ]; then ROSETTA="$candidate"; break; fi
+    done
+fi
+if [ -z "$ROSETTA" ] || [ ! -d "$ROSETTA" ]; then
+    echo "error: rosetta examples dir not found." >&2
+    echo "  pass it as an argument or set ROSETTA_EXAMPLES:" >&2
+    echo "    demo/stage.sh /path/to/rosetta-fe/examples" >&2
+    exit 1
+fi
+
+CORPUS="demo/corpus"
+# Release build: the cold-open queries load the full corpus, so a debug binary
+# turns the demo's "instant" beats into tens of seconds.
+RIFFCAT="target/release/riffcat"
+
+echo "== building riffcat (release) =="
+cargo build --release -p riff-catalog-cli
 
 echo "== building the drifted binary (Act II) =="
 git apply demo/drift.patch
-cargo build -p riff-catalog-cli --target-dir target-drift
+cargo build --release -p riff-catalog-cli --target-dir target-drift
 git apply -R demo/drift.patch
 
 echo "== staging corpus at $CORPUS =="
