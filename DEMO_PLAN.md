@@ -1,5 +1,20 @@
 # riff-catalog lightning demo — plan (draft for ultraplan refinement)
 
+> ⚠️ **Metrics below are stale — regenerate before the demo.** Every dedup
+> count / percentage in this plan (7,939→1,713 / 78.4%, 84 classes / 84.3%,
+> 84→83, 534 rows, 39 shared, …) predates two changes and must be recomputed
+> against a fresh stage:
+> 1. The corpus grew past the 3-contract sample those figures came from (the
+>    9-contract rosetta stage already differs).
+> 2. **SCHEMA_VERSION 2** binds edge topology into every dimension, so artifacts
+>    that used to rhyme by argument *order* (e.g. `f(1,2)` vs `f(2,1)`) no longer
+>    collide — dedup rates will move, generally *down* at the anonymous facets.
+>
+> To regenerate after `demo/stage.sh`, run each beat once and copy the printed
+> totals back here: `bucket --facet all` / `--facet structure` (Act I), the
+> claims merge and `--require verified-total` rows (Act III). Do not quote these
+> numbers live until they have been refreshed against the staged corpus.
+
 ## 1. Context and goals
 
 Seven-minute live demo + Q&A for the Argot team. The backdrop is the "too
