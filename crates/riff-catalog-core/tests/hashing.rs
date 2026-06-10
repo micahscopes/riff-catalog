@@ -551,3 +551,85 @@ fn flat_edge_rewiring_visible_outside_structure() {
         "rewiring between constants-distinct nodes must move Constants"
     );
 }
+
+/// Regression (review P1): swapping which constant sits in which ordinal slot
+/// must move the Constants digest. `f(1, 2)` and `f(2, 1)` have the same two
+/// same-kind literal children (so Structure agrees) but in swapped positions;
+/// because the condensed fold emits children as a byte-sorted multiset, the
+/// ordinal must be bound into the Constants record or the two collide at the
+/// full anonymous facet — exactly the shape `riff-catalog-yul` lowers call
+/// arguments to.
+#[test]
+fn sibling_constant_order_visible_under_condense_scc() {
+    let owner = "demo";
+    let build = |swap: bool| {
+        let mut graph = Graph::new(graph_key(owner));
+        let body = entity("test.body", owner, "body:0");
+        let a = entity("test.expr", owner, "expr:a");
+        let b = entity("test.expr", owner, "expr:b");
+        graph.add_node(body.clone(), "body").unwrap();
+        // Same kind for both children: they agree at Structure, differ only in
+        // the Constants value they carry.
+        graph.add_node(a.clone(), "literal").unwrap();
+        graph.add_node(b.clone(), "literal").unwrap();
+        let (first_val, second_val) = if swap { (2u64, 1u64) } else { (1u64, 2u64) };
+        graph
+            .add_field(&a, Dimension::Constants, "value", first_val)
+            .unwrap();
+        graph
+            .add_field(&b, Dimension::Constants, "value", second_val)
+            .unwrap();
+        graph.add_child(&body, "arg", 0, &a).unwrap();
+        graph.add_child(&body, "arg", 1, &b).unwrap();
+        graph
+    };
+    let left = digests(&build(false), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    let right = digests(&build(true), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    assert_eq!(
+        left.graph.get(Dimension::Structure),
+        right.graph.get(Dimension::Structure),
+        "both shapes are two same-kind literal children, so Structure agrees"
+    );
+    assert_ne!(
+        left.graph.get(Dimension::Constants),
+        right.graph.get(Dimension::Constants),
+        "f(1, 2) and f(2, 1) must differ at Constants"
+    );
+}
+
+/// Regression (review P1): swapping which edge plays which role between
+/// endpoints that agree at Structure but differ at another dimension must move
+/// that dimension's digest. Edge records are a byte-sorted multiset, so role and
+/// label are bound in every dimension, not just Structure — otherwise
+/// `a→b Call, c→d Data` and `a→b Data, c→d Call` (a,b,c,d Names-distinct) would
+/// collide everywhere except IdentityBound.
+#[test]
+fn flat_edge_role_swap_visible_outside_structure() {
+    let owner = "demo";
+    let build = |swap: bool| {
+        let mut graph = Graph::new(graph_key(owner));
+        // Four same-kind nodes (Structure-equal) with distinct Names.
+        let nodes = ["a", "b", "c", "d"].map(|n| {
+            let key = entity("test.expr", owner, n);
+            graph.add_node(key.clone(), "node").unwrap();
+            graph.add_field(&key, Dimension::Names, "name", n).unwrap();
+            key
+        });
+        let [a, b, c, d] = nodes;
+        let (ab_role, cd_role) = if swap {
+            (EdgeRole::Data, EdgeRole::Reference)
+        } else {
+            (EdgeRole::Reference, EdgeRole::Data)
+        };
+        graph.add_edge(&a, "edge", &b, ab_role).unwrap();
+        graph.add_edge(&c, "edge", &d, cd_role).unwrap();
+        graph
+    };
+    let left = digests(&build(false), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    let right = digests(&build(true), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    assert_ne!(
+        left.graph.get(Dimension::Names),
+        right.graph.get(Dimension::Names),
+        "swapping which edge carries which role between Names-distinct endpoints must move Names"
+    );
+}

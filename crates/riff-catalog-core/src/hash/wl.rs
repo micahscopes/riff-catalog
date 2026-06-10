@@ -76,13 +76,15 @@ pub(crate) fn refine(
     Ok(color)
 }
 
-fn edge_record(dimension: Dimension, edge: &InternalEdge<'_>, neighbor_color: &Digest) -> Vec<u8> {
+// Edge topology (role/label/ordinal) is bound in every dimension, not just
+// Structure: the out/in records feed a byte-sorted WL signature, so omitting it
+// would let a member's color ignore how its incident edges are wired and
+// labeled — collapsing distinct cyclic positions at the non-Structure facets.
+fn edge_record(_dimension: Dimension, edge: &InternalEdge<'_>, neighbor_color: &Digest) -> Vec<u8> {
     let mut record = Vec::new();
-    if dimension == Dimension::Structure {
-        encode::push_str(&mut record, edge.role);
-        encode::push_str(&mut record, edge.label);
-        encode::push_u32(&mut record, edge.ordinal);
-    }
+    encode::push_str(&mut record, edge.role);
+    encode::push_str(&mut record, edge.label);
+    encode::push_u32(&mut record, edge.ordinal);
     encode::push_digest(&mut record, neighbor_color);
     record
 }
@@ -92,8 +94,14 @@ fn distinct(colors: &BTreeMap<u32, Digest>) -> usize {
 }
 
 /// Digest of one component: member-count, the sorted multiset of final colors
-/// (duplicates kept — orbit sizes count), and (Structure only) the quotient
-/// edge multiset over colors.
+/// (duplicates kept — orbit sizes count), and the quotient edge multiset over
+/// colors.
+///
+/// The quotient edge multiset is bound in every dimension, not just Structure:
+/// it carries the component's internal wiring (role/label/ordinal) that the
+/// member-color multiset alone can leave ambiguous, so two components with the
+/// same colors but different cyclic wiring must not collide at the Names,
+/// Constants, or Types facets either.
 pub(crate) fn component_digest(
     policy: &HashPolicy,
     dimension: Dimension,
@@ -109,22 +117,18 @@ pub(crate) fn component_digest(
         for digest in &colors {
             encode::push_digest(bytes, digest);
         }
-        if dimension == Dimension::Structure {
-            let records = internal
-                .iter()
-                .map(|edge| {
-                    let mut record = Vec::new();
-                    encode::push_str(&mut record, edge.role);
-                    encode::push_str(&mut record, edge.label);
-                    encode::push_u32(&mut record, edge.ordinal);
-                    encode::push_digest(&mut record, &color[&edge.src]);
-                    encode::push_digest(&mut record, &color[&edge.dst]);
-                    record
-                })
-                .collect();
-            encode::push_sorted_records(bytes, records);
-        } else {
-            encode::push_u32(bytes, 0);
-        }
+        let records = internal
+            .iter()
+            .map(|edge| {
+                let mut record = Vec::new();
+                encode::push_str(&mut record, edge.role);
+                encode::push_str(&mut record, edge.label);
+                encode::push_u32(&mut record, edge.ordinal);
+                encode::push_digest(&mut record, &color[&edge.src]);
+                encode::push_digest(&mut record, &color[&edge.dst]);
+                record
+            })
+            .collect();
+        encode::push_sorted_records(bytes, records);
     })
 }

@@ -45,7 +45,11 @@ pub(crate) fn graph_digest_for_dimension(
 
     // Edge records: byte-sorted multiset in both view modes. Identity mode
     // prepends the endpoint keys (deterministic and key-laden, like every
-    // identity payload); Structure additionally carries role + label.
+    // identity payload). Role + label are edge topology and are carried in
+    // every dimension, not just Structure: the records are a sorted multiset, so
+    // without them swapping which edge plays which role between endpoints that
+    // are equal in Structure but distinct in another dimension would leave the
+    // multiset (and thus that dimension's digest) unchanged.
     let edge_records: Vec<Vec<u8>> = graph
         .edges
         .iter()
@@ -58,10 +62,8 @@ pub(crate) fn graph_digest_for_dimension(
                 encode::push_node_key(&mut record, &edge.source);
                 encode::push_node_key(&mut record, &edge.target);
             }
-            if dimension == Dimension::Structure {
-                encode::push_str(&mut record, edge.role.as_str());
-                encode::push_str(&mut record, edge.label.as_str());
-            }
+            encode::push_str(&mut record, edge.role.as_str());
+            encode::push_str(&mut record, edge.label.as_str());
             encode::push_digest(&mut record, &digest_of(src));
             encode::push_digest(&mut record, &digest_of(dst));
             record
