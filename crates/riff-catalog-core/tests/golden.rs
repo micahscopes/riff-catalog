@@ -10,6 +10,12 @@
 //! digests; since no schema has ever been published, the constants were
 //! regenerated without a version bump. After the first release this path
 //! is closed — bump SCHEMA_VERSION instead.
+//!
+//! SCHEMA_VERSION 1 -> 2 (review P1): edge topology (role/label/ordinal) is now
+//! bound into every dimension's edge records, fixing the `f(1, 2)` vs `f(2, 1)`
+//! and flat-edge role-swap collisions. The schema version is committed in every
+//! record header, so all constants below were regenerated via
+//! `examples/golden_probe.rs`.
 
 use riff_catalog_core::*;
 
@@ -52,13 +58,13 @@ fn golden_policy_ids() {
     let identity = HashPolicy::new("test/1", ViewMode::IdentityBound, CyclePolicy::Reject).unwrap();
     assert_eq!(
         identity.policy_id().to_hex(),
-        "2e841f98f8ff971578698d9f9847b05ef61ad2a339827c89af9816976d50c2bc"
+        "7d08fcebdad5a41b3e764b977504de08ef61716f37a7284ff1985fba91a6fda1"
     );
     let anonymous =
         HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap();
     assert_eq!(
         anonymous.policy_id().to_hex(),
-        "cb67607b7e9fee126445e15ecfc995c804f96d3fbd41a169aedf06b0706f77b8"
+        "bb6ebe47be5f1291b8f5a27a31f61a1b0d979ca9b2208e82ac539283f2d1e429"
     );
 }
 
@@ -69,23 +75,23 @@ fn golden_identity_reject_fixture() {
     let expect = [
         (
             Dimension::Structure,
-            "249eb4f249a4758dfaf820d3efcbc4606926dfc50a3ef4761b1a1fa84aff1d35",
+            "d3ae63812d6601b7ea2158ef04aa44f351b6a2066fe68ff276ec7daf0a0a273e",
         ),
         (
             Dimension::Names,
-            "8e89a8898f19c751fbaee2923569b20638bc57ad2b8c82f3b3e647e9f5520637",
+            "ff6d0d724f8f4f9a7c9e6999b18c7a65c7c9d02d5c73ebb4bc389ec5ad4c6fb4",
         ),
         (
             Dimension::Constants,
-            "76b365a5842819c19788500f191d983f298deb905a158c1c4c70c3d703dc6dc5",
+            "9105cde16c6ddb9147da2ed96cbca8c8ecc5ca1e142c2c0261cfe7fcb54c06b4",
         ),
         (
             Dimension::Types,
-            "f0843ae7b5022968121719a1e4f1a687d11e723836756c43434d9452852b7117",
+            "fe392c9872c47ed58e9a8b0c50223c0c3c89a71e0904fb4430744040d9856961",
         ),
         (
             Dimension::TraceEvents,
-            "357d41cb491523f5e11f57eec2f3549c4916915c85c616224983e1dc58180f4a",
+            "e7f7a6e4ca259fa2759178c1bdccac26a4a28bafa70c54cca71f01d951dd40fc",
         ),
     ];
     for (dimension, hex) in expect {
@@ -105,23 +111,23 @@ fn golden_anonymous_condense_fixture() {
     let expect = [
         (
             Dimension::Structure,
-            "d6d7dbdf03ec6f28f226e6085069a0cf061a304915316c0e5d9f179e014a3c53",
+            "a16d23242592298bebe7b6a9a48895ec4a28bb395fdaf5d883797b28169cd887",
         ),
         (
             Dimension::Names,
-            "263794a276babe9a8a9b7bc6d908d3aeb93a34b315286926d3a67642265bc9eb",
+            "bc33a965b8eab28a97082f878716d1ce36a9b566653471a81d68c164bf1e2177",
         ),
         (
             Dimension::Constants,
-            "11605a82066058f15f7c8212d983de9e90e35fa6b77f28a58789497fdfb67381",
+            "04f613b01a20112d783bb347c73bb20a25deabdf5d3bbfcc924a51dce081d9fb",
         ),
         (
             Dimension::Types,
-            "e39af97974a08ceb187a093dfba712838e82e7a594071b187836c3b8a5e91069",
+            "42bae8a527269863e4b12b5d1e0d603c8511ef9279559b4b15d5122b88e9589e",
         ),
         (
             Dimension::TraceEvents,
-            "76f591bef6ed4e9154bba4d6fcb404728fc5a58e1f6e09a0b12cfa76b1b170a6",
+            "29aef97058617b2b40395b6d28d34e6e4ab79abd81169fc02edd758c7d7e0e54",
         ),
     ];
     for (dimension, hex) in expect {
@@ -139,6 +145,6 @@ fn golden_facet_id() {
         HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap();
     assert_eq!(
         Facet::names_blind(policy.policy_id()).facet_id().to_hex(),
-        "4e598df430c9c03f6ec94d8c2da73b9fa902418f6133a9b57bffa0c9eca7c73b"
+        "a54714f657ab35ba25195db8c2b71dca1e03f993c1f261a4db0e7b6575aaa990"
     );
 }

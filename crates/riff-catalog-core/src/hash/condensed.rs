@@ -201,20 +201,26 @@ pub(crate) fn condensed_digests(
     Ok((node_final, component_hashes))
 }
 
-/// Record for one outgoing cross-component edge: (Structure only) role, label,
-/// ordinal; then the target component's fold and the target member's color.
+/// Record for one outgoing cross-component edge: role, label, ordinal, then the
+/// target component's fold and the target member's color.
+///
+/// Edge topology (role/label/ordinal) is bound in *every* dimension, not just
+/// Structure. These records are folded as a byte-sorted multiset, so without the
+/// ordinal a parent's per-dimension digest would commit only to the unordered
+/// set of its children's content — making `f(1, 2)` and `f(2, 1)` collide at the
+/// Constants facet (and the analogous swap at Names/Types). Topology is a
+/// property of the graph, not of any single content dimension, so a rewiring
+/// must move every dimension's digest.
 fn cross_edge_record(
-    dimension: Dimension,
+    _dimension: Dimension,
     edge: &InternalEdge<'_>,
     target_tree: &Digest,
     target_color: &Digest,
 ) -> Vec<u8> {
     let mut record = Vec::new();
-    if dimension == Dimension::Structure {
-        encode::push_str(&mut record, edge.role);
-        encode::push_str(&mut record, edge.label);
-        encode::push_u32(&mut record, edge.ordinal);
-    }
+    encode::push_str(&mut record, edge.role);
+    encode::push_str(&mut record, edge.label);
+    encode::push_u32(&mut record, edge.ordinal);
     encode::push_digest(&mut record, target_tree);
     encode::push_digest(&mut record, target_color);
     record

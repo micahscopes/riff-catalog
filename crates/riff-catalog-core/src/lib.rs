@@ -47,4 +47,9 @@ pub use value::Value;
 
 /// Version of the canonical encoding contract. Any change to record layouts,
 /// tags, or canonicalization rules requires bumping this (invariant I8).
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// v2: edge topology (role/label/ordinal) is bound into every dimension's edge
+/// records, not only Structure, so a rewiring or argument-reorder moves every
+/// dimension's digest. Fixes the `f(1, 2)` vs `f(2, 1)` collision at the
+/// Constants/Names/Types facets and the flat-edge role-swap collision.
+pub const SCHEMA_VERSION: u32 = 2;
