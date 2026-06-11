@@ -48,8 +48,14 @@ impl Witness {
     }
 }
 
-/// `left ≅ right at facet, witnessed`. `note` is display-only and excluded
-/// from [`Claim::claim_id`].
+/// `left ≅ right at facet, witnessed` — conditional on `assumptions` when
+/// present. `note` is display-only and excluded from [`Claim::claim_id`].
+///
+/// `assumptions` (schema v2, adopted from Ixon) is a merkle root over an
+/// assumption set (see `riff_catalog_core::set_root`): the claim holds
+/// *modulo* that set (e.g. cross-optimization equivalence modulo
+/// no-overflow). A conditional claim never merges unless the querier
+/// explicitly accepts its root — see [`ClaimSet::closure_for_facet_assuming`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Claim {
     pub schema_version: u32,
@@ -59,6 +65,10 @@ pub struct Claim {
     pub right: FacetAddress,
     pub witness: Witness,
     pub note: Option<String>,
+    /// Merkle root of the assumption set this claim is conditional on.
+    /// Optional and skipped when absent, so v1 records round-trip untouched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assumptions: Option<Digest>,
 }
 
 impl Claim {
@@ -68,6 +78,7 @@ impl Claim {
         right: FacetAddress,
         witness: Witness,
         note: Option<String>,
+        assumptions: Option<Digest>,
     ) -> Result<Self, ClaimsError> {
         if left.facet != facet || right.facet != facet {
             return Err(ClaimsError::FacetMismatch);
@@ -80,6 +91,7 @@ impl Claim {
             right,
             witness,
             note,
+            assumptions,
         })
     }
 
@@ -95,6 +107,12 @@ impl Claim {
             .push_u32(self.witness.payload.len() as u32);
         for (key, value) in &self.witness.payload {
             record.push_str(key).push_str(value);
+        }
+        // Hashed only when present: the payload length above already pins
+        // the witness fields, so the marker cannot be confused with payload
+        // bytes, and unconditional claims keep a stable encoding.
+        if let Some(assumptions) = &self.assumptions {
+            record.push_str("assumptions").push_digest(assumptions);
         }
         record.finish()
     }

@@ -19,12 +19,35 @@ pub struct FacetClosure {
 }
 
 impl ClaimSet {
+    /// Closure over unconditional claims only: conditional claims (those
+    /// carrying an `assumptions` root) never merge unless explicitly
+    /// accepted via [`Self::closure_for_facet_assuming`].
     pub fn closure_for_facet(&self, facet: &Facet) -> FacetClosure {
+        self.closure_for_facet_assuming(facet, &BTreeSet::new())
+    }
+
+    /// Closure that additionally accepts conditional claims whose
+    /// `assumptions` root is in `assumed_roots`. Acceptance is exact-match
+    /// on the root digest — no reasoning about what the set contains; the
+    /// querier is taking responsibility for the named assumption set, and
+    /// that acceptance stays attributable through `supporting_claims`.
+    pub fn closure_for_facet_assuming(
+        &self,
+        facet: &Facet,
+        assumed_roots: &BTreeSet<Digest>,
+    ) -> FacetClosure {
         let facet_id = facet.facet_id();
         let mut union = UnionFind::default();
         let mut claims: Vec<(u32, u32, Digest)> = Vec::new();
         for (claim_id, claim) in self.iter() {
             if claim.facet.facet_id() != facet_id {
+                continue;
+            }
+            if claim
+                .assumptions
+                .as_ref()
+                .is_some_and(|assumptions| !assumed_roots.contains(assumptions))
+            {
                 continue;
             }
             let left = union.intern(claim.left.address_digest());

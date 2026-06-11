@@ -7,6 +7,7 @@
 
 use anyhow::{Result, bail};
 use riff_catalog_claims::{Attestation, Claim, Witness};
+use riff_catalog_core::Digest;
 
 use crate::corpus::{Corpus, DigestRow, Record, matches_selector};
 use crate::facet::{facet_address_of, parse_facet_dimensions};
@@ -42,7 +43,13 @@ fn resolve_one<'r>(rows: &'r [DigestRow], selector: &str, what: &str) -> Result<
     }
 }
 
-pub fn claim_add(corpus: &Corpus, args: &AssertArgs, left: &str, right: &str) -> Result<()> {
+pub fn claim_add(
+    corpus: &Corpus,
+    args: &AssertArgs,
+    left: &str,
+    right: &str,
+    assumptions: Option<Digest>,
+) -> Result<()> {
     let rows = corpus.digest_rows(&args.unit, &args.mode)?;
     let dimensions = parse_facet_dimensions(&args.facet)?;
     let left_row = resolve_one(&rows, left, "--left")?;
@@ -59,8 +66,14 @@ pub fn claim_add(corpus: &Corpus, args: &AssertArgs, left: &str, right: &str) ->
         right_address,
         witness,
         args.note.clone(),
+        assumptions,
     )?;
     let claim_id = claim.claim_id();
+    let modulo = claim
+        .assumptions
+        .as_ref()
+        .map(|root| format!(" modulo {}", root.display_short()))
+        .unwrap_or_default();
 
     corpus.append(
         "claims",
@@ -71,7 +84,7 @@ pub fn claim_add(corpus: &Corpus, args: &AssertArgs, left: &str, right: &str) ->
         }],
     )?;
     println!(
-        "claimed: {} ≅ {} at facet {} ({}) — claim {}",
+        "claimed: {} ≅ {} at facet {} ({}){modulo} — claim {}",
         left_row.name,
         right_row.name,
         args.facet,
@@ -124,10 +137,15 @@ pub fn list(corpus: &Corpus, json: bool) -> Result<()> {
                     println!("{}", serde_json::to_string(record)?);
                 } else {
                     println!(
-                        "claim {}: {} ≅ {} [witness: {}{}]{}",
+                        "claim {}: {} ≅ {}{} [witness: {}{}]{}",
                         claim.claim_id().display_short(),
                         left_display,
                         right_display,
+                        claim
+                            .assumptions
+                            .as_ref()
+                            .map(|root| format!(" (modulo {})", root.display_short()))
+                            .unwrap_or_default(),
                         claim.witness.kind,
                         if claim.witness.payload.is_empty() {
                             String::new()

@@ -22,4 +22,9 @@ pub use claim::{Claim, ClaimSet, Relation, Witness};
 pub use closure::{ClaimGatedIndex, ClaimGatedLookup, FacetClosure};
 pub use error::ClaimsError;
 
-pub const CLAIMS_SCHEMA_VERSION: u32 = 1;
+/// v2: claims may carry `assumptions: Option<Digest>` — a merkle root over
+/// an assumption set the claim is conditional on. Readers MUST refuse
+/// records whose version exceeds this (a v1 reader would otherwise silently
+/// treat a conditional claim as unconditional, which is exactly the kind of
+/// quiet overclaim this system exists to prevent).
+pub const CLAIMS_SCHEMA_VERSION: u32 = 2;

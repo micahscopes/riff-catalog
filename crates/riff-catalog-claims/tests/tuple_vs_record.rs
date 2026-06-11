@@ -83,6 +83,7 @@ fn tuple_and_record_unify_only_via_claim() {
         )
         .unwrap(),
         Some("tuple [a,b] ≅ record {re,im} by declared field order".into()),
+        None,
     )
     .unwrap();
     let claim_id = claim.claim_id();
