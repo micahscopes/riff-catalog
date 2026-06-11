@@ -1,5 +1,7 @@
 //! M5b/M6 gates: claim identity, closure semantics, facet scoping, the
-//! wrong-witness contract, and attestation gating.
+//! wrong-witness contract, conditional claims, and attestation gating.
+
+use std::collections::BTreeSet;
 
 use riff_catalog_claims::*;
 use riff_catalog_core::*;
@@ -42,7 +44,7 @@ fn claim_requires_consistent_facets() {
     )
     .unwrap();
     assert!(matches!(
-        Claim::new(facet_a, left, right, witness(), None),
+        Claim::new(facet_a, left, right, witness(), None, None),
         Err(ClaimsError::FacetMismatch)
     ));
 }
@@ -57,6 +59,7 @@ fn claim_id_stable_and_note_excluded() {
             address(&facet, 2),
             witness(),
             note.map(String::from),
+            None,
         )
         .unwrap()
     };
@@ -77,6 +80,7 @@ fn claim_id_stable_and_note_excluded() {
         )
         .unwrap(),
         None,
+        None,
     )
     .unwrap();
     assert_ne!(make(None).claim_id(), scrambled.claim_id());
@@ -90,6 +94,7 @@ fn claim_set_dedups_by_id() {
         address(&facet, 1),
         address(&facet, 2),
         witness(),
+        None,
         None,
     )
     .unwrap();
@@ -110,6 +115,7 @@ fn closure_is_transitive_with_deterministic_representative() {
                 address(&facet, l),
                 address(&facet, r),
                 witness(),
+                None,
                 None,
             )
             .unwrap(),
@@ -146,6 +152,7 @@ fn closure_scopes_to_exact_facet() {
             .unwrap(),
             witness(),
             None,
+            None,
         )
         .unwrap(),
     );
@@ -175,6 +182,7 @@ fn wrong_witness_still_merges_attributably() {
         address(&facet, 1),
         address(&facet, 2),
         wrong,
+        None,
         None,
     )
     .unwrap();
@@ -207,12 +215,87 @@ fn claim_set_serde_round_trip() {
             address(&facet, 2),
             witness(),
             Some("demo".into()),
+            None,
         )
         .unwrap(),
     );
     let json = serde_json::to_string(&set).unwrap();
     let back: ClaimSet = serde_json::from_str(&json).unwrap();
     assert_eq!(back, set);
+}
+
+/// I18: a conditional claim is a different claim — and it never merges
+/// unless its assumption root is explicitly accepted.
+#[test]
+fn conditional_claim_is_distinct_and_gated() {
+    let facet = facet();
+    let root = set_root([digest(0x40), digest(0x41)]);
+    let make = |assumptions: Option<Digest>| {
+        Claim::new(
+            facet.clone(),
+            address(&facet, 1),
+            address(&facet, 2),
+            witness(),
+            None,
+            assumptions,
+        )
+        .unwrap()
+    };
+
+    // Identity: conditional ≠ unconditional, and the root is identity.
+    assert_ne!(make(None).claim_id(), make(Some(root)).claim_id());
+    assert_ne!(
+        make(Some(root)).claim_id(),
+        make(Some(set_root([digest(0x42)]))).claim_id()
+    );
+
+    let mut set = ClaimSet::new();
+    set.insert(make(Some(root)));
+    let a = address(&facet, 1).address_digest();
+    let b = address(&facet, 2).address_digest();
+
+    // Default closure: the conditional claim is invisible.
+    let mut unassumed = set.closure_for_facet(&facet);
+    assert!(!unassumed.same_class(&a, &b));
+
+    // Wrong root accepted: still invisible.
+    let wrong: BTreeSet<Digest> = [set_root([digest(0x42)])].into();
+    let mut wrong_assumed = set.closure_for_facet_assuming(&facet, &wrong);
+    assert!(!wrong_assumed.same_class(&a, &b));
+
+    // The claim's own root accepted: merges, attributably.
+    let right: BTreeSet<Digest> = [root].into();
+    let mut assumed = set.closure_for_facet_assuming(&facet, &right);
+    assert!(assumed.same_class(&a, &b));
+    assert_eq!(assumed.supporting_claims(&a).len(), 1);
+}
+
+/// Schema v1 records (no `assumptions` field) still load, as unconditional.
+#[test]
+fn v1_claim_json_loads_as_unconditional() {
+    let facet = facet();
+    let modern = Claim::new(
+        facet.clone(),
+        address(&facet, 1),
+        address(&facet, 2),
+        witness(),
+        None,
+        None,
+    )
+    .unwrap();
+    // A v1 line never serialized an `assumptions` key; strip it if present
+    // and pin the version to 1 to reconstruct one.
+    let mut value: serde_json::Value = serde_json::to_value(&modern).unwrap();
+    value.as_object_mut().unwrap().remove("assumptions");
+    value["schema_version"] = 1.into();
+    let v1: Claim = serde_json::from_value(value).unwrap();
+    assert_eq!(v1.assumptions, None);
+    assert_eq!(v1.schema_version, 1);
+
+    // And an unconditional claim's serialization carries no `assumptions`
+    // key at all — v1 readers round-trip v2-unconditional lines untouched.
+    let json = serde_json::to_string(&modern).unwrap();
+    assert!(!json.contains("assumptions"));
 }
 
 /// I13 gating direction: unattested artifacts are correctly excluded.

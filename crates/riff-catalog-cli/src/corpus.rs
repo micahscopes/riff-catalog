@@ -151,6 +151,16 @@ impl Corpus {
     }
 
     pub fn digest_rows(&self, unit: &str, mode: &str) -> Result<Vec<DigestRow>> {
+        self.digest_rows_filtered(Some(unit), Some(mode))
+    }
+
+    /// Digest rows with optional unit/mode filters (`None` = all). The
+    /// unfiltered form feeds `root`, which commits to the whole corpus.
+    pub fn digest_rows_filtered(
+        &self,
+        unit: Option<&str>,
+        mode: Option<&str>,
+    ) -> Result<Vec<DigestRow>> {
         Ok(self
             .load_non_graph_records()?
             .into_iter()
@@ -165,41 +175,71 @@ impl Corpus {
                     policy_id,
                     digests,
                     ..
-                } if row_unit == unit && row_mode == mode => Some(DigestRow {
-                    artifact_id,
-                    owner,
-                    unit: row_unit,
-                    level,
-                    name,
-                    mode: row_mode,
-                    policy_id,
-                    digests,
-                }),
+                } if unit.is_none_or(|unit| row_unit == unit)
+                    && mode.is_none_or(|mode| row_mode == mode) =>
+                {
+                    Some(DigestRow {
+                        artifact_id,
+                        owner,
+                        unit: row_unit,
+                        level,
+                        name,
+                        mode: row_mode,
+                        policy_id,
+                        digests,
+                    })
+                }
                 _ => None,
             })
             .collect())
     }
 
     pub fn claims(&self) -> Result<Vec<Claim>> {
-        Ok(self
-            .load_non_graph_records()?
+        self.load_non_graph_records()?
             .into_iter()
             .filter_map(|record| match record {
                 Record::Claim { claim, .. } => Some(claim),
                 _ => None,
             })
-            .collect())
+            .map(|claim| {
+                // A reader that doesn't know a claim's schema must refuse it,
+                // not strip the fields it doesn't understand: a conditional
+                // claim read by an assumptions-blind binary would silently
+                // merge unconditionally.
+                if claim.schema_version > riff_catalog_claims::CLAIMS_SCHEMA_VERSION {
+                    anyhow::bail!(
+                        "claim {} has schema version {} — newer than this binary \
+                         understands ({}); refusing to interpret it",
+                        claim.claim_id().display_short(),
+                        claim.schema_version,
+                        riff_catalog_claims::CLAIMS_SCHEMA_VERSION
+                    );
+                }
+                Ok(claim)
+            })
+            .collect()
     }
 
     pub fn attestations(&self) -> Result<Vec<Attestation>> {
-        Ok(self
-            .load_non_graph_records()?
+        self.load_non_graph_records()?
             .into_iter()
             .filter_map(|record| match record {
                 Record::Attestation { attestation, .. } => Some(attestation),
                 _ => None,
             })
-            .collect())
+            .map(|attestation| {
+                if attestation.schema_version > riff_catalog_claims::CLAIMS_SCHEMA_VERSION {
+                    anyhow::bail!(
+                        "attestation {} has schema version {} — newer than this binary \
+                         understands ({}); refusing to interpret it",
+                        attestation.attestation_id().display_short(),
+                        attestation.schema_version,
+                        riff_catalog_claims::CLAIMS_SCHEMA_VERSION
+                    );
+                }
+                Ok(attestation)
+            })
+            .collect()
     }
 }
 

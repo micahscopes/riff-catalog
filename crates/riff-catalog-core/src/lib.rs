@@ -23,6 +23,7 @@ pub mod key;
 pub mod meta;
 pub mod policy;
 pub mod reference;
+pub mod root;
 pub mod text;
 pub mod value;
 
@@ -42,6 +43,7 @@ pub use index::{
 pub use key::{EntityKey, GraphKey, NodeKey};
 pub use policy::{Algorithm, CyclePolicy, HashPolicy, PolicyId, ViewMode};
 pub use reference::{ArtifactRef, Facet, FacetAddress};
+pub use root::set_root;
 pub use text::{Digest, Name};
 pub use value::Value;
 

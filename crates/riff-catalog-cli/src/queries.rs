@@ -1,10 +1,10 @@
-//! `bucket`, `overlap`, `diff` — the corpus query commands.
+//! `bucket`, `overlap`, `diff`, `root` — the corpus query commands.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Result, bail};
-use riff_catalog_claims::ClaimSet;
-use riff_catalog_core::{Digest, Dimension};
+use riff_catalog_claims::{ClaimSet, FacetClosure};
+use riff_catalog_core::{Digest, Dimension, Facet};
 
 use crate::corpus::{Corpus, DigestRow, matches_selector};
 use crate::facet::{address_of, facet_for_row, parse_facet_dimensions};
@@ -15,7 +15,29 @@ pub struct QueryArgs {
     pub mode: String,
     pub facet: String,
     pub use_claims: bool,
+    /// Assumption roots (hex) the querier accepts: conditional claims merge
+    /// only when their root is listed here. Non-empty implies `use_claims`.
+    pub assume: Vec<String>,
     pub require: Option<String>,
+}
+
+impl QueryArgs {
+    fn wants_claims(&self) -> bool {
+        self.use_claims || !self.assume.is_empty()
+    }
+}
+
+/// Build the claims closure for one facet, honoring `--assume` roots.
+fn claims_closure(corpus: &Corpus, facet: &Facet, assume: &[String]) -> Result<FacetClosure> {
+    let assumed_roots = assume
+        .iter()
+        .map(|hex| Ok(Digest::from_hex(hex)?))
+        .collect::<Result<BTreeSet<Digest>>>()?;
+    let mut set = ClaimSet::new();
+    for claim in corpus.claims()? {
+        set.insert(claim);
+    }
+    Ok(set.closure_for_facet_assuming(facet, &assumed_roots))
 }
 
 fn class_key(
@@ -47,13 +69,9 @@ pub fn bucket(
     }
     let dimensions = parse_facet_dimensions(&args.facet)?;
 
-    let mut closure = if args.use_claims {
+    let mut closure = if args.wants_claims() {
         let facet = facet_for_row(&rows[0], &dimensions)?;
-        let mut set = ClaimSet::new();
-        for claim in corpus.claims()? {
-            set.insert(claim);
-        }
-        Some(set.closure_for_facet(&facet))
+        Some(claims_closure(corpus, &facet, &args.assume)?)
     } else {
         None
     };
@@ -156,16 +174,12 @@ pub fn overlap(
     let rows = corpus.digest_rows(&args.unit, &args.mode)?;
     let dimensions = parse_facet_dimensions(&args.facet)?;
 
-    let mut closure = if args.use_claims {
+    let mut closure = if args.wants_claims() {
         let Some(first) = rows.first() else {
             bail!("empty corpus");
         };
         let facet = facet_for_row(first, &dimensions)?;
-        let mut set = ClaimSet::new();
-        for claim in corpus.claims()? {
-            set.insert(claim);
-        }
-        Some(set.closure_for_facet(&facet))
+        Some(claims_closure(corpus, &facet, &args.assume)?)
     } else {
         None
     };
@@ -356,6 +370,67 @@ pub fn diff(
         println!("{}", table.to_json());
     } else {
         table.print();
+    }
+    Ok(())
+}
+
+/// The corpus root (invariant I17): a canonical, order-independent merkle
+/// root over the corpus's distinct facet addresses. The leaf for each digest
+/// row is its address at the row's full available dimension set — owners,
+/// names, units, and ingestion order never enter (identity over logical
+/// structure); twin rows collapse to one leaf. `--check` recomputes and
+/// fails loudly on mismatch, in the conformance spirit: a corpus that
+/// doesn't match its published root is a finding, not a footnote.
+pub fn root(
+    corpus: &Corpus,
+    unit: Option<&str>,
+    mode: Option<&str>,
+    check: Option<&str>,
+    json: bool,
+) -> Result<()> {
+    let rows = corpus.digest_rows_filtered(unit, mode)?;
+    let mut addresses: BTreeSet<Digest> = BTreeSet::new();
+    for row in &rows {
+        let dimensions: BTreeSet<Dimension> = row.digests.keys().copied().collect();
+        addresses.insert(address_of(row, &dimensions)?);
+    }
+    let leaf_count = addresses.len();
+    let root = riff_catalog_core::set_root(addresses);
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "root": root.to_hex(),
+                "addresses": leaf_count,
+                "rows": rows.len(),
+                "unit": unit,
+                "mode": mode,
+            })
+        );
+    } else {
+        println!(
+            "corpus root {} ({} distinct addresses over {} rows; unit: {}, mode: {})",
+            root.to_hex(),
+            leaf_count,
+            rows.len(),
+            unit.unwrap_or("all"),
+            mode.unwrap_or("all"),
+        );
+    }
+
+    if let Some(expected) = check {
+        let expected = Digest::from_hex(expected)?;
+        if expected != root {
+            bail!(
+                "ROOT MISMATCH: corpus is {}, expected {}",
+                root.to_hex(),
+                expected.to_hex()
+            );
+        }
+        if !json {
+            println!("root check OK");
+        }
     }
     Ok(())
 }

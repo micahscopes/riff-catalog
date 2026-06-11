@@ -100,6 +100,21 @@ enum Command {
         #[arg(long)]
         name: Option<String>,
     },
+    /// The corpus root: a canonical, order-independent merkle root over the
+    /// corpus's distinct facet addresses — the commitment conditional claims
+    /// reference.
+    Root {
+        /// Restrict to one unit (default: every unit).
+        #[arg(long)]
+        unit: Option<String>,
+        /// Restrict to one mode (default: every mode).
+        #[arg(long)]
+        mode: Option<String>,
+        /// Recompute and compare against a published root (hex); mismatch
+        /// fails loudly with exit 1.
+        #[arg(long)]
+        check: Option<String>,
+    },
     /// Run the dual-path + SSA-round-trip drift detectors over .sol files.
     Conformance {
         paths: Vec<PathBuf>,
@@ -133,6 +148,10 @@ struct QueryFlags {
     /// Apply recorded claims (union-find merge of classes).
     #[arg(long)]
     claims: bool,
+    /// Accept conditional claims whose assumptions root matches (hex,
+    /// repeatable; implies --claims). Unlisted roots never merge.
+    #[arg(long)]
+    assume: Vec<String>,
     /// Only include rows attested with this property (gating).
     #[arg(long)]
     require: Option<String>,
@@ -145,6 +164,11 @@ enum ClaimAction {
         left: String,
         #[arg(long)]
         right: String,
+        /// Merkle root (hex) of the assumption set this claim is conditional
+        /// on (see `riffcat root`). Conditional claims merge only under
+        /// `--assume <root>`.
+        #[arg(long)]
+        assumptions: Option<String>,
         #[command(flatten)]
         assert: AssertFlags,
     },
@@ -245,6 +269,13 @@ fn main() -> Result<()> {
             unit,
             name,
         } => queries::diff(&corpus, &unit, &left, &right, name.as_deref(), cli.json),
+        Command::Root { unit, mode, check } => queries::root(
+            &corpus,
+            unit.as_deref(),
+            mode.as_deref(),
+            check.as_deref(),
+            cli.json,
+        ),
         Command::Conformance {
             paths,
             optimize,
@@ -267,8 +298,15 @@ fn main() -> Result<()> {
             ClaimAction::Add {
                 left,
                 right,
+                assumptions,
                 assert,
-            } => claims_cmd::claim_add(&corpus, &assert.into_args()?, &left, &right),
+            } => {
+                let assumptions = assumptions
+                    .as_deref()
+                    .map(riff_catalog_core::Digest::from_hex)
+                    .transpose()?;
+                claims_cmd::claim_add(&corpus, &assert.into_args()?, &left, &right, assumptions)
+            }
             ClaimAction::List => claims_cmd::list(&corpus, cli.json),
         },
         Command::Attest { action } => match action {
@@ -289,6 +327,7 @@ impl QueryFlags {
             mode: self.mode,
             facet: self.facet,
             use_claims: self.claims,
+            assume: self.assume,
             require: self.require,
         }
     }
