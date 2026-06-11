@@ -1,19 +1,27 @@
 # riff-catalog lightning demo — plan (draft for ultraplan refinement)
 
-> ⚠️ **Metrics below are stale — regenerate before the demo.** Every dedup
-> count / percentage in this plan (7,939→1,713 / 78.4%, 84 classes / 84.3%,
-> 84→83, 534 rows, 39 shared, …) predates two changes and must be recomputed
-> against a fresh stage:
-> 1. The corpus grew past the 3-contract sample those figures came from (the
->    9-contract rosetta stage already differs).
-> 2. **SCHEMA_VERSION 2** binds edge topology into every dimension, so artifacts
->    that used to rhyme by argument *order* (e.g. `f(1,2)` vs `f(2,1)`) no longer
->    collide — dedup rates will move, generally *down* at the anonymous facets.
+> ✅ **Metrics regenerated 2026-06-11** against a fresh **SCHEMA_VERSION 2**
+> stage (`demo/stage.sh`: all 9 rosetta contracts, both optimizer settings).
+> Copy-safe numbers, as printed by each beat:
+> - Act I cold open (`bucket --facet all`): **7,939 yul-fn graphs → 1,713
+>   classes, 78.4% dedup** — unchanged by schema 2.
+> - Act I facet flip (`--facet structure`): **481 classes, 93.9% dedup**
+>   (the old 84 / 84.3% was the 3-contract sample).
+> - Act I twins (ERC20↔AMM, names-blind): **A 68 / B 54 classes, 36 shared,
+>   Jaccard 0.419** — `external_fun_balanceOf` ↔ `external_fun_swapAForB`
+>   still lands.
+> - Act III fe door (`bucket --unit yulssa-fn --facet structure`): **2,817
+>   graphs → 376 classes, 86.7% dedup**.
+> - Act III claims merge: **481 → 480 classes** (dedup 94.0%).
+> - Act III attest gate: **7,937 rows excluded** (lack `verified-total`);
+>   the surviving class is `fun_transfer_72`, size 2.
 >
-> To regenerate after `demo/stage.sh`, run each beat once and copy the printed
-> totals back here: `bucket --facet all` / `--facet structure` (Act I), the
-> claims merge and `--require verified-total` rows (Act III). Do not quote these
-> numbers live until they have been refreshed against the staged corpus.
+> ⚠️ **Still stale: the sourcify beat** ("39 shared classes" vs ENS
+> PublicResolver). The 2026-06-11 re-stage ran offline, so the contract is
+> **not in the corpus**. Run `demo/stage.sh` once *with network* before the
+> demo (cached forever after); until then that beat falls back to the
+> recording. That re-stage also clears the dry-run claim + attestation now
+> sitting in `demo/corpus`.
 
 ## 1. Context and goals
 
@@ -44,7 +52,7 @@ introduced through the demo result, not as a slogan. The words we do use:
 |---|---|---|---|
 | Argot generalists | application-focused, funding-anxious | "your compilers already emit the same code constantly — watch 7,939 functions collapse to 1,713 (78.4% dedup, full rosetta corpus)" | abstraction talk before the table renders |
 | Solidity member, **distributed-systems** background | consensus, replication, determinism | the conformance loop: two independent ingestion paths, byte-equal canonical form, drift detector that *visibly fails* when perturbed; WL-refined hashing of cyclic graphs (Merkle alone can't); self-describing references with schema versioning | overclaiming: 1-WL ≠ isomorphism — say it before they do |
-| Sourcify **frontend** dev | verified-contract corpus, product UX | live fetch of ENS PublicResolver → 39 structural twins against a local build; pitch: "similar contracts" tab, helper-provenance badges, and Constants-blind bytecode matching for *unverified* contract triage | API/scale promises we can't keep yet (be explicit the store is JSONL today) |
+| Sourcify **frontend** dev | verified-contract corpus, product UX | live fetch of ENS PublicResolver → 39 structural twins against a local build (⚠️ pre-schema-2 figure; re-verify after the networked re-stage); pitch: "similar contracts" tab, helper-provenance badges, and Constants-blind bytecode matching for *unverified* contract triage | API/scale promises we can't keep yet (be explicit the store is JSONL today) |
 
 Bonus thread for whoever is close to the new codegen pipeline: the SSA
 level consumes `yulCFGJson` as a first-class citizen — their newest work is
@@ -55,8 +63,8 @@ load-bearing here, not bypassed.
 **Act I — "Your compilers rhyme" (2 min).** No slides. Terminal with a
 pre-ingested corpus (all 9 rosetta contracts, both optimizer settings, all
 four levels — 7,939 yul-fn graphs staged). Run `bucket`, let the dedup
-table land (1,713 classes, 78.4% dedup), name what they're
-seeing: every digest is computed *per dimension* — structure, names,
+table land (1,713 classes, 78.4% dedup; the facet flip lands at 481
+classes, 93.9%), name what they're seeing: every digest is computed *per dimension* — structure, names,
 constants, types — so "names-blind" or "constants-blind" is a query-time
 choice, not a re-hash. Then `overlap` ERC20↔AMM at names-blind:
 `external_fun_balanceOf` twins `external_fun_swapAForB`. One sentence on
@@ -78,16 +86,17 @@ claims layer is for.
 **Act III — "Real world + things hashing can't see" (2.5 min).** Fetch is
 pre-cached: `ingest --sourcify 1:0x231b…` (ENS PublicResolver, exact_match,
 recompiled locally) then `overlap ":sf" "yulir:ERC20"` → 39 shared classes
-between a mainnet-verified contract and a local build. Pivot to the
+between a mainnet-verified contract and a local build (⚠️ pre-schema-2
+figure — refresh at the networked re-stage). Pivot to the
 Sourcify pitch (one breath): same machinery, Constants dimension absorbs
 PUSH immediates — so structure-facet matching of *unverified* bytecode
 against the verified corpus is a triage feature: "94% standard helpers,
 review these 3 novel functions." Close with claims: add a deliberately
-bogus equivalence with a witness, `bucket --claims` merges 84→83, `claim
+bogus equivalence with a witness, `bucket --claims` merges 481→480, `claim
 list` shows exactly who asserted what on which witness — *claims are
 inputs, not discoveries; validity is the auditor's job, attributability is
 ours.* Then one attestation (`verified-total`, witness `lean-proof`) and
-`bucket --require verified-total` excludes 534 rows: guarantees gate;
+`bucket --require verified-total` excludes 7,937 rows: guarantees gate;
 structure stays silent. Name-drop the in-house witness sources: hevm, act,
 yul-isabelle.
 
@@ -103,7 +112,7 @@ sentence, exactly once: "fe-emitted Yul ingests through the same two doors
 | t | beat | command (pre-staged corpus) |
 |---|---|---|
 | 0:00 | cold open, no intro | `riffcat bucket --unit yul-fn --mode shape --facet all` |
-| 0:45 | facet flip | `… --facet structure` (84 classes / 84.3%) |
+| 0:45 | facet flip | `… --facet structure` (481 classes / 93.9%) |
 | 1:15 | twins | `riffcat overlap "ERC20.sol" "SoliditySimpleAmm" --facet names-blind` |
 | 2:00 | survival matrix, fast | `riffcat diff …ir:noopt …iropt:noopt --name fun_transfer` |
 | 2:30 | conformance GREEN | `riffcat conformance rosetta-fe/examples --optimize off` |
