@@ -26,6 +26,7 @@ impl SolcBinResolver {
             cache_dir: cache_dir.into(),
             agent: ureq::AgentBuilder::new()
                 .user_agent("riff-catalog (https://github.com/micahscopes/riff-catalog)")
+                .try_proxy_from_env(true)
                 .build(),
         }
     }
