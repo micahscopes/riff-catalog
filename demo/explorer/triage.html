@@ -199,7 +199,7 @@ class TriageApp extends HTMLElement {
           is the part only this contract can explain. Same machinery, pointed at a verifier's
           full corpus, answers: <em class="n">“verified — but what's actually in it?”</em></span>
         <span>data: <code>generate-triage-data.py</code> over a riffcat corpus (9 local contracts + 6 mainnet sourcify ingests) ·
-          pair view: <a href="./index.html">twin explorer</a></span>
+          siblings: <a href="./index.html">twin explorer</a> · <a href="./bundle.html">bundles</a></span>
       </footer>`;
     this.querySelector(".subjects").innerHTML = T.subjects.map((s, i) =>
       `<button type="button" data-i="${i}">${esc(s.label)}</button>`).join("");
