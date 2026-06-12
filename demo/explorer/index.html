@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>riffcat · twin explorer</title>
+<style>
+  /* ── instrument palette ──────────────────────────────────────────── */
+  :root {
+    --bg: #0a0d0b;
+    --bg-raise: #10140f;
+    --bg-chip: #161b14;
+    --line: #232b22;
+    --line-bright: #36402f;
+    --ink: #c8d3c0;
+    --ink-dim: #6b7a64;
+    --ink-faint: #424d3d;
+    --a: #5df2a6;          /* side A: phosphor green */
+    --a-dim: #1d4733;
+    --b: #ffb454;          /* side B: amber */
+    --b-dim: #4d3a1c;
+    --twin: #eef6e8;       /* shared: bright */
+    --jaccard: #7adfff;    /* the readout that matters */
+    --mono: "Berkeley Mono", "JetBrains Mono", "Fira Code", "IBM Plex Mono",
+            "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.45;
+    min-height: 100vh;
+    /* faint scanlines + vignette: CRT, but at whisper volume */
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px),
+      radial-gradient(120% 90% at 50% 0%, rgba(93,242,166,0.05), transparent 60%);
+  }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 28px 80px; }
+
+  /* ── status line ─────────────────────────────────────────────────── */
+  header.status {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px;
+    border: 1px solid var(--line);
+    background: var(--bg-raise);
+    padding: 10px 16px;
+    margin-bottom: 26px;
+  }
+  header.status .prog { color: var(--a); font-weight: 700; letter-spacing: 0.04em; }
+  header.status .prog::before { content: "▌"; animation: blink 1.2s steps(1) infinite; margin-right: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+  header.status .crumb { color: var(--ink-dim); }
+  header.status .crumb b { color: var(--ink); font-weight: 400; }
+  header.status .spacer { flex: 1; }
+  header.status .stamp { color: var(--ink-faint); font-size: 12px; }
+
+  h1.silent { position: absolute; left: -9999px; }
+
+  /* ── controls ────────────────────────────────────────────────────── */
+  .controls {
+    display: grid; grid-template-columns: minmax(280px, 1fr) minmax(380px, 1.2fr);
+    gap: 22px; margin-bottom: 26px; align-items: stretch;
+  }
+  @media (max-width: 880px) { .controls { grid-template-columns: 1fr; } }
+  .panel {
+    border: 1px solid var(--line);
+    background: var(--bg-raise);
+    padding: 14px 16px 16px;
+  }
+  .panel .label {
+    color: var(--ink-faint); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+
+  /* pair picker */
+  riff-pairs { display: block; }
+  riff-pairs button {
+    display: block; width: 100%; text-align: left;
+    font: inherit; color: var(--ink-dim);
+    background: transparent; border: 1px solid transparent;
+    padding: 5px 9px; cursor: pointer;
+  }
+  riff-pairs button:hover { color: var(--ink); border-color: var(--line); }
+  riff-pairs button[aria-pressed="true"] { color: var(--twin); background: var(--bg-chip); border-color: var(--line-bright); }
+  riff-pairs button .va { color: var(--a); }
+  riff-pairs button .vs { color: var(--ink-faint); padding: 0 6px; }
+  riff-pairs button .vb { color: var(--b); }
+
+  /* facet dial */
+  riff-dial { display: block; }
+  riff-dial .scale { display: flex; justify-content: space-between; color: var(--ink-faint); font-size: 11px; margin-bottom: 6px; }
+  riff-dial input[type="range"] {
+    width: 100%; appearance: none; -webkit-appearance: none;
+    height: 26px; background: transparent; cursor: ew-resize; margin: 0;
+  }
+  riff-dial input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; background:
+      linear-gradient(90deg, var(--a) 0%, var(--ink-dim) 55%, var(--b) 100%);
+    opacity: 0.9;
+  }
+  riff-dial input[type="range"]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: 14px; height: 22px; margin-top: -9px;
+    background: var(--twin); border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--line-bright), 0 0 14px rgba(238,246,232,0.45);
+  }
+  riff-dial input[type="range"]::-moz-range-track {
+    height: 4px; background: linear-gradient(90deg, var(--a), var(--ink-dim) 55%, var(--b));
+  }
+  riff-dial input[type="range"]::-moz-range-thumb {
+    width: 12px; height: 20px; border-radius: 0;
+    background: var(--twin); border: 2px solid var(--bg);
+    box-shadow: 0 0 0 1px var(--line-bright), 0 0 14px rgba(238,246,232,0.45);
+  }
+  riff-dial .stops { display: flex; margin-top: 8px; }
+  riff-dial .stop {
+    flex: 1; text-align: center; font-size: 12px; color: var(--ink-faint);
+    cursor: pointer; padding: 3px 0; transition: color 120ms;
+  }
+  riff-dial .stop:first-child { text-align: left; }
+  riff-dial .stop:last-child { text-align: right; }
+  riff-dial .stop.on { color: var(--twin); text-shadow: 0 0 12px rgba(238,246,232,0.35); }
+
+  /* ── readout ─────────────────────────────────────────────────────── */
+  riff-readout {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px;
+    margin-bottom: 18px;
+  }
+  @media (max-width: 880px) { riff-readout { grid-template-columns: repeat(2, 1fr); } }
+  riff-readout .cell { border: 1px solid var(--line); background: var(--bg-raise); padding: 12px 16px 14px; }
+  riff-readout .k { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint); }
+  riff-readout .v { font-size: 38px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  riff-readout .cell.a .v { color: var(--a); }
+  riff-readout .cell.b .v { color: var(--b); }
+  riff-readout .cell.twin .v { color: var(--twin); }
+  riff-readout .cell.j .v { color: var(--jaccard); text-shadow: 0 0 22px rgba(122,223,255,0.3); }
+
+  /* ── overlap bar ─────────────────────────────────────────────────── */
+  riff-bar { display: block; margin-bottom: 30px; }
+  riff-bar .track { display: flex; height: 34px; border: 1px solid var(--line); background: var(--bg-raise); }
+  riff-bar .seg { transition: width 420ms cubic-bezier(.2,.9,.25,1); min-width: 0; position: relative; overflow: hidden; }
+  riff-bar .seg.aonly { background: repeating-linear-gradient(135deg, var(--a-dim) 0 6px, transparent 6px 12px); }
+  riff-bar .seg.shared { background: var(--twin); box-shadow: 0 0 18px rgba(238,246,232,0.25); }
+  riff-bar .seg.bonly { background: repeating-linear-gradient(45deg, var(--b-dim) 0 6px, transparent 6px 12px); }
+  riff-bar .legend { display: flex; justify-content: space-between; color: var(--ink-dim); font-size: 12px; margin-top: 6px; }
+  riff-bar .legend .la { color: var(--a); }
+  riff-bar .legend .lt { color: var(--twin); }
+  riff-bar .legend .lb { color: var(--b); }
+
+  /* ── twin table ──────────────────────────────────────────────────── */
+  riff-twins { display: block; }
+  riff-twins .head, riff-twins .row {
+    display: grid; grid-template-columns: 1fr 150px 1fr; gap: 14px; align-items: baseline;
+  }
+  riff-twins .head {
+    color: var(--ink-faint); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    padding: 0 10px 8px; border-bottom: 1px solid var(--line-bright);
+  }
+  riff-twins .head .c { text-align: center; }
+  riff-twins .head .r { text-align: right; }
+  riff-twins .row {
+    padding: 7px 10px; border-bottom: 1px solid var(--line);
+    animation: land 260ms cubic-bezier(.2,.9,.3,1) both;
+  }
+  @keyframes land { from { opacity: 0; transform: translateY(5px); } }
+  riff-twins .row:hover { background: var(--bg-chip); }
+  riff-twins .names { display: flex; flex-wrap: wrap; gap: 5px; }
+  riff-twins .names.b { justify-content: flex-end; }
+  riff-twins .chip {
+    background: var(--bg-chip); border: 1px solid var(--line);
+    padding: 1px 7px; font-size: 12.5px; white-space: nowrap;
+    max-width: 34ch; overflow: hidden; text-overflow: ellipsis;
+  }
+  riff-twins .names.a .chip { color: var(--a); border-color: var(--a-dim); }
+  riff-twins .names.b .chip { color: var(--b); border-color: var(--b-dim); }
+  riff-twins .chip.more { color: var(--ink-faint); border-style: dashed; }
+  riff-twins .row:hover .names.a .chip { border-color: var(--a); }
+  riff-twins .row:hover .names.b .chip { border-color: var(--b); }
+  riff-twins .digest {
+    text-align: center; color: var(--ink-dim); font-size: 12px; letter-spacing: 0.04em;
+  }
+  riff-twins .digest::before, riff-twins .digest::after { color: var(--ink-faint); }
+  riff-twins .digest::before { content: "⟨"; margin-right: 4px; }
+  riff-twins .digest::after { content: "⟩"; margin-left: 4px; }
+  riff-twins .row:hover .digest { color: var(--twin); }
+  riff-twins .empty {
+    padding: 34px 10px; text-align: center; color: var(--ink-dim);
+    border: 1px dashed var(--line-bright); margin-top: 12px;
+  }
+
+  /* ── footer ──────────────────────────────────────────────────────── */
+  footer {
+    margin-top: 44px; padding-top: 14px; border-top: 1px solid var(--line);
+    color: var(--ink-dim); font-size: 12.5px; display: grid; gap: 6px;
+  }
+  footer .teach { color: var(--ink); }
+  footer .teach em { color: var(--a); font-style: normal; }
+  footer .teach em.b { color: var(--b); }
+  footer code { color: var(--ink); background: var(--bg-chip); padding: 0 5px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <h1 class="silent">riffcat twin explorer</h1>
+  <riff-explorer></riff-explorer>
+</main>
+
+<script src="./data.js"></script>
+<script>
+"use strict";
+/* riffcat twin explorer — vanilla web components, light DOM, no build step.
+ * Consumes `riffcat overlap --json` output verbatim (see generate-data.sh):
+ * the JSON shape itself is the co-design surface, so nothing is reshaped
+ * on the way in. State flows down via render(); intent flows up via
+ * CustomEvents (riff:pair, riff:facet). */
+
+const DATA = window.RIFFCAT_DATA;
+// Dial detents, strict → loose. Keys must exist in each pair's `facets`.
+const DIAL = ["all", "names-blind", "structure+constants", "structure"];
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* riffcat caps member lists at ~56 chars and appends " (+N)". Split a cell
+ * into chips, keeping the remainder marker as its own muted chip. */
+function chips(cell, side) {
+  const more = cell.match(/ \(\+(\d+)\)$/);
+  const names = (more ? cell.slice(0, more.index) : cell).split(", ").filter(Boolean);
+  const items = names.map((n) => `<span class="chip" title="${esc(n)}">${esc(n)}</span>`);
+  if (more) items.push(`<span class="chip more">+${more[1]} more</span>`);
+  return `<div class="names ${side}">${items.join("")}</div>`;
+}
+
+function tween(el, to, decimals) {
+  const from = parseFloat(el.dataset.v ?? "0") || 0;
+  el.dataset.v = to;
+  const t0 = performance.now(), ms = 300;
+  (function step(t) {
+    const k = Math.min(1, (t - t0) / ms), e = 1 - (1 - k) ** 3;
+    el.textContent = (from + (to - from) * e).toFixed(decimals);
+    if (k < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+class RiffPairs extends HTMLElement {
+  set state({ pairs, pair }) {
+    this.innerHTML = pairs.map((p, i) =>
+      `<button type="button" data-i="${i}" aria-pressed="${i === pair}">
+         <span class="va">${esc(p.left)}</span><span class="vs">⇄</span><span class="vb">${esc(p.right)}</span>
+       </button>`).join("");
+    this.onclick = (ev) => {
+      const b = ev.target.closest("button");
+      if (b) this.dispatchEvent(new CustomEvent("riff:pair",
+        { bubbles: true, detail: Number(b.dataset.i) }));
+    };
+  }
+}
+
+class RiffDial extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = `
+      <div class="scale"><span>strict · every detail</span><span>loose · structure only</span></div>
+      <input type="range" min="0" max="${DIAL.length - 1}" step="1" value="0"
+             aria-label="facet dial">
+      <div class="stops">${DIAL.map((f, i) =>
+        `<span class="stop" data-i="${i}">${esc(f)}</span>`).join("")}</div>`;
+    this.querySelector("input").oninput = (ev) =>
+      this.dispatchEvent(new CustomEvent("riff:facet",
+        { bubbles: true, detail: Number(ev.target.value) }));
+    this.onclick = (ev) => {
+      const s = ev.target.closest(".stop");
+      if (s) this.dispatchEvent(new CustomEvent("riff:facet",
+        { bubbles: true, detail: Number(s.dataset.i) }));
+    };
+  }
+  set state({ facet }) {
+    this.querySelector("input").value = facet;
+    this.querySelectorAll(".stop").forEach((s, i) => s.classList.toggle("on", i === facet));
+  }
+}
+
+class RiffReadout extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = ["a", "twin", "b", "j"].map((kind) =>
+      `<div class="cell ${kind}"><div class="k"></div><div class="v">0</div></div>`).join("");
+  }
+  set state({ summary, left, right }) {
+    const cells = this.querySelectorAll(".cell");
+    const spec = [
+      [`A classes · ${left}`, summary.a, 0],
+      ["twin classes", summary.shared, 0],
+      [`B classes · ${right}`, summary.b, 0],
+      ["jaccard", summary.jaccard, 3],
+    ];
+    cells.forEach((cell, i) => {
+      cell.querySelector(".k").textContent = spec[i][0];
+      tween(cell.querySelector(".v"), spec[i][1], spec[i][2]);
+    });
+  }
+}
+
+class RiffBar extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = `
+      <div class="track">
+        <div class="seg aonly"></div><div class="seg shared"></div><div class="seg bonly"></div>
+      </div>
+      <div class="legend"><span class="la"></span><span class="lt"></span><span class="lb"></span></div>`;
+  }
+  set state({ summary }) {
+    const aOnly = summary.a - summary.shared, bOnly = summary.b - summary.shared;
+    const union = Math.max(1, aOnly + bOnly + summary.shared);
+    const [sa, st, sb] = this.querySelectorAll(".seg");
+    sa.style.width = `${(100 * aOnly) / union}%`;
+    st.style.width = `${(100 * summary.shared) / union}%`;
+    sb.style.width = `${(100 * bOnly) / union}%`;
+    this.querySelector(".la").textContent = `${aOnly} only in A`;
+    this.querySelector(".lt").textContent = `${summary.shared} twin classes — same fingerprint at this facet`;
+    this.querySelector(".lb").textContent = `${bOnly} only in B`;
+  }
+}
+
+class RiffTwins extends HTMLElement {
+  set state({ rows, left, right }) {
+    const aKey = `A: ${left}`, bKey = `B: ${right}`;
+    if (!rows.length) {
+      this.innerHTML = `<div class="empty">no twins at this facet — drag the dial looser</div>`;
+      return;
+    }
+    this.innerHTML = `
+      <div class="head"><span>${esc(left)} members</span><span class="c">class</span><span class="r">${esc(right)} members</span></div>
+      ${rows.map((row, i) => `
+        <div class="row" style="animation-delay:${Math.min(i * 14, 280)}ms">
+          ${chips(row[aKey], "a")}
+          <div class="digest">${esc(row.class)}</div>
+          ${chips(row[bKey], "b")}
+        </div>`).join("")}`;
+  }
+}
+
+class RiffExplorer extends HTMLElement {
+  connectedCallback() {
+    this.pair = 0;
+    this.facet = 1; // open on names-blind: the demo beat
+    this.innerHTML = `
+      <header class="status">
+        <span class="prog">riffcat·twin·explorer</span>
+        <span class="crumb">corpus <b>${esc(DATA.corpus)}</b></span>
+        <span class="crumb">unit <b>${esc(DATA.unit)}</b></span>
+        <span class="crumb">mode <b>${esc(DATA.mode)}</b></span>
+        <span class="spacer"></span>
+        <span class="stamp">staged ${esc(DATA.generated ?? "")} · rough on purpose</span>
+      </header>
+      <div class="controls">
+        <div class="panel"><div class="label">pair</div><riff-pairs></riff-pairs></div>
+        <div class="panel"><div class="label">facet dial — "the same" has a strictness dial</div><riff-dial></riff-dial></div>
+      </div>
+      <riff-readout></riff-readout>
+      <riff-bar></riff-bar>
+      <riff-twins></riff-twins>
+      <footer>
+        <span class="teach">Every function is <em>fingerprinted</em> per dimension up front; two functions are
+          <em>twins</em> at a <em class="b">facet</em> when their fingerprints agree on that facet's dimensions.
+          The dial is a query, not a re-hash.</span>
+        <span>data: <code>riffcat overlap --json</code>, verbatim — regenerate with <code>demo/explorer/generate-data.sh</code></span>
+      </footer>`;
+    this.addEventListener("riff:pair", (ev) => { this.pair = ev.detail; this.render(); });
+    this.addEventListener("riff:facet", (ev) => { this.facet = ev.detail; this.render(); });
+    this.render();
+  }
+  render() {
+    const pair = DATA.pairs[this.pair];
+    const { summary, rows } = pair.facets[DIAL[this.facet]];
+    const view = { pairs: DATA.pairs, pair: this.pair, facet: this.facet,
+                   left: pair.left, right: pair.right, summary, rows };
+    for (const tag of ["riff-pairs", "riff-dial", "riff-readout", "riff-bar", "riff-twins"])
+      this.querySelector(tag).state = view;
+  }
+}
+
+customElements.define("riff-pairs", RiffPairs);
+customElements.define("riff-dial", RiffDial);
+customElements.define("riff-readout", RiffReadout);
+customElements.define("riff-bar", RiffBar);
+customElements.define("riff-twins", RiffTwins);
+customElements.define("riff-explorer", RiffExplorer);
+</script>
+</body>
+</html>
