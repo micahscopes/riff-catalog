@@ -579,12 +579,10 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
         )?;
     }
 
-    let stem = format!(
-        "sf_{}_{}",
-        id.chain_id,
-        // address validated as 0x + 40 hex by ContractId::parse
-        &id.address[2..10]
-    );
+    // Full address, not a prefix: vanity deployments (Permit2, EntryPoint,
+    // Uniswap v4, ...) share long runs of leading zeros, and a truncated stem
+    // makes them silently clobber each other's corpus files.
+    let stem = format!("sf_{}_{}", id.chain_id, &id.address[2..]);
     corpus.replace(&stem, &records)?;
     println!("ingested {spec}: {} records", records.len());
     Ok(())
