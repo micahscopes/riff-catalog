@@ -364,7 +364,8 @@ class RiffExplorer extends HTMLElement {
         <span class="teach">Every function is <em>fingerprinted</em> per dimension up front; two functions are
           <em>twins</em> at a <em class="b">facet</em> when their fingerprints agree on that facet's dimensions.
           The dial is a query, not a re-hash.</span>
-        <span>data: <code>riffcat overlap --json</code>, verbatim — regenerate with <code>demo/explorer/generate-data.sh</code></span>
+        <span>data: <code>riffcat overlap --json</code>, verbatim — regenerate with <code>demo/explorer/generate-data.sh</code> ·
+          triage view: <a href="./triage.html" style="color:inherit">audit triage</a></span>
       </footer>`;
     this.addEventListener("riff:pair", (ev) => { this.pair = ev.detail; this.render(); });
     this.addEventListener("riff:facet", (ev) => { this.facet = ev.detail; this.render(); });
