@@ -47,8 +47,10 @@ snapshot as triage).
 ## libxref.html — standard-library cross-reference
 
 Fourth prototype: the chunks developers actually import. Pick a primitive
-(full-precision mul·div, Merkle verify) and see the same-named function across
-OpenZeppelin / Solady / Solmate. Two facts, names-blind: within one library the
+(mul·div, integer sqrt, fixed-point mulWad, ECDSA recover, Merkle verify) and
+see the same-named function across OpenZeppelin / Solady / Solmate. Some are
+2-library (mulWad: OZ folds it into mulDiv; ECDSA: Solmate ships none — OZ's is
+flattened with its Strings/Math deps), most are 3-library. Two facts, names-blind: within one library the
 chunk is a single fingerprint across every contract that vendors it (the
 cross-reference), and the same primitive in a different library is a *different*
 fingerprint (the supply-chain tell — switching OZ→Solady changes the shape,

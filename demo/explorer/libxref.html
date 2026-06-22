@@ -130,9 +130,37 @@ window.RIFFCAT_LIBXREF = {
       ]
     },
     {
+      id: "sqrt",
+      title: "integer sqrt",
+      gloss: "Babylonian square root — a six-line classic every library reimplements. Even this comes out as three different shapes.",
+      libs: [
+        { lib: "OpenZeppelin", fn: "Math.sqrt(x)",              fp: "82a488722248e05a", consumers: 3 },
+        { lib: "Solady",       fn: "FixedPointMathLib.sqrt(x)", fp: "d02c86bce3912eb6", consumers: 3 },
+        { lib: "Solmate",      fn: "FixedPointMathLib.sqrt(x)", fp: "631c0f174f227824", consumers: 3 }
+      ]
+    },
+    {
+      id: "mulwad",
+      title: "fixed-point mulWad",
+      gloss: "Multiply two 1e18 fixed-point numbers — the WAD math under DeFi accounting. OpenZeppelin folds this into mulDiv; Solady and Solmate ship it dedicated.",
+      libs: [
+        { lib: "Solady",  fn: "FixedPointMathLib.mulWad(x, y)",     fp: "b6c7799b6f09f28d", consumers: 3 },
+        { lib: "Solmate", fn: "FixedPointMathLib.mulWadDown(x, y)", fp: "d715e2f70c6cdf8a", consumers: 3 }
+      ]
+    },
+    {
+      id: "ecdsa",
+      title: "ECDSA recover",
+      gloss: "Recover the signer of a hash from a signature — the gate on every permit, meta-transaction, and off-chain order.",
+      libs: [
+        { lib: "OpenZeppelin", fn: "ECDSA.recover(hash, sig)", fp: "6f7fb7344aefd2ef", consumers: 3 },
+        { lib: "Solady",       fn: "ECDSA.recover(hash, sig)", fp: "89442458b38c051c", consumers: 3 }
+      ]
+    },
+    {
       id: "merkle",
       title: "Merkle proof verify",
-      gloss: "Walk a Merkle proof to a root — the gate on every allowlist mint and airdrop claim.",
+      gloss: "Walk a Merkle proof to a root — the gate on every allowlist mint and airdrop claim. Solady and Solmate both hand-write it in assembly, and still don't converge.",
       libs: [
         { lib: "OpenZeppelin", fn: "MerkleProof.verify(proof, root, leaf)",    fp: "829a9df2504b35a5", consumers: 3 },
         { lib: "Solady",       fn: "MerkleProofLib.verify(proof, root, leaf)",  fp: "4dca93416a473396", consumers: 3 },
@@ -194,6 +222,8 @@ customElements.define("libxref-app", class extends HTMLElement {
         </div>
       </div>`;
     const cards = this.querySelector(".cards");
+    if (window.matchMedia("(min-width: 821px)").matches)
+      cards.style.gridTemplateColumns = `repeat(${prim.libs.length}, 1fr)`;
     for (const lib of prim.libs) {
       const card = document.createElement("libxref-card");
       card.data = lib;
