@@ -32,6 +32,13 @@ pub enum Record {
         origin: String,
         pipeline: String,
         optimize: bool,
+        /// The compiler version this artifact was produced with (e.g.
+        /// "0.8.24+commit.e11b9ed9"). Provenance only — NEVER folded into a
+        /// shape fingerprint, which stays compiler-version-independent so the
+        /// same source rhymes across versions. Lets a query ask "same shape"
+        /// and "same shape AND same compiler" as two separate questions.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        compiler: Option<String>,
         label: Option<String>,
     },
     Graph {
