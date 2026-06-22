@@ -11,11 +11,32 @@ use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 
 use riff_catalog_core::{
-    CyclePolicy, DigestRequest, Graph, GraphKey, HashPolicy, ViewMode, digest_graph,
+    CyclePolicy, DigestRequest, Facet, Graph, GraphHashes, GraphKey, HashPolicy, ViewMode,
+    digest_graph,
 };
 
 fn js_err(msg: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&msg.to_string())
+}
+
+/// The named facets the storybook dials between, each as `name -> hex`. These
+/// are facet *addresses* (`FacetAddress::address_digest`), the exact value the
+/// CLI compares for "equal at this facet", so a digest shown here is the same
+/// one the corpus indexes on. `full` keeps every dimension, `names-blind`
+/// forgets only names, `structure` forgets everything but shape.
+fn facet_addresses(hashes: &GraphHashes) -> Result<Value, JsValue> {
+    let pid = hashes.policy_id;
+    let named = [
+        ("full", Facet::full(pid)),
+        ("names-blind", Facet::names_blind(pid)),
+        ("structure", Facet::structure_only(pid)),
+    ];
+    let mut out = serde_json::Map::new();
+    for (name, facet) in named {
+        let address = hashes.facet_address(&facet).map_err(js_err)?;
+        out.insert(name.to_string(), json!(address.address_digest().to_hex()));
+    }
+    Ok(Value::Object(out))
 }
 
 /// "identity" pins the artifact (path-bound); anything else is the anonymous
@@ -44,7 +65,8 @@ fn digest_unit(
     .map_err(js_err)?
     .hashes;
     let digests = serde_json::to_value(&hashes.graph.values).map_err(js_err)?;
-    Ok(json!({ "unit": unit, "name": name, "digests": digests }))
+    let facets = facet_addresses(&hashes)?;
+    Ok(json!({ "unit": unit, "name": name, "digests": digests, "facets": facets }))
 }
 
 /// Fingerprint a contract's Yul. Input is solc's `irAst` JSON for one object
