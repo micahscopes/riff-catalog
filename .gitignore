@@ -5,3 +5,4 @@ corpus/
 demo/corpus/
 target-drift/
 demo/double.yul
+/target-wasm
