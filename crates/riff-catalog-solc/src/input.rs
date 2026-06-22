@@ -124,6 +124,29 @@ pub fn with_output_selection(mut std_json: Value, pipeline: Pipeline) -> Value {
     std_json
 }
 
+/// Drop the JSON-serialized IR outputs (`irAst`, `irOptimizedAst`,
+/// `yulCFGJson`) from a standard-JSON input, keeping the text `ir`/`irOptimized`
+/// and everything else.
+///
+/// These three share solc's IR-to-JSON serializer, which throws an
+/// `InternalCompilerError` ("Expected keyword object") on some contracts
+/// compiled with the ~0.8.25–0.8.29 versions where that machinery was still in
+/// development — and because they share the compilation with every other
+/// output, that one failure sinks the whole ingest. The *text* IR is unaffected,
+/// so a caller that retries with this strip can still recover the Yul level by
+/// parsing `ir`/`irOptimized` (riffcat's other front door — conformance
+/// guarantees the two parse to the same AST). Only the SSA level is lost.
+pub fn strip_json_ir_outputs(mut input: Value) -> Value {
+    const JSON_IR: [&str; 3] = ["irAst", "irOptimizedAst", "yulCFGJson"];
+    if let Some(outputs) = input
+        .pointer_mut("/settings/outputSelection/*/*")
+        .and_then(Value::as_array_mut)
+    {
+        outputs.retain(|output| !output.as_str().is_some_and(|s| JSON_IR.contains(&s)));
+    }
+    input
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,6 +176,27 @@ mod tests {
         for expected in ["ir", "irAst", "irOptimizedAst", "yulCFGJson"] {
             assert!(outputs.iter().any(|o| o == expected), "{expected}");
         }
+    }
+
+    #[test]
+    fn strip_json_ir_outputs_keeps_text_ir() {
+        let viair = solidity_input(
+            &[("a.sol".to_string(), "contract A {}".to_string())].into(),
+            &CompileOptions::default(),
+        );
+        let stripped = strip_json_ir_outputs(viair);
+        let outputs = stripped["settings"]["outputSelection"]["*"]["*"]
+            .as_array()
+            .unwrap();
+        // the JSON-IR outputs (the ones that can ICE) are gone …
+        for dropped in ["irAst", "irOptimizedAst", "yulCFGJson"] {
+            assert!(!outputs.iter().any(|o| o == dropped), "{dropped} dropped");
+        }
+        // … but the text IR (the recovery front door) and bytecode survive.
+        for kept in ["ir", "irOptimized", "evm.bytecode.object"] {
+            assert!(outputs.iter().any(|o| o == kept), "{kept} kept");
+        }
+        assert_eq!(stripped["settings"]["viaIR"], json!(true));
     }
 
     #[test]

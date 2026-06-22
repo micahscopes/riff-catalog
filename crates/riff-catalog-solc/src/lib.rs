@@ -13,7 +13,10 @@ mod resolve;
 mod runner;
 
 pub use error::{SolcDiagnostic, SolcError};
-pub use input::{CompileOptions, Pipeline, solidity_input, with_output_selection, yul_input};
+pub use input::{
+    CompileOptions, Pipeline, solidity_input, strip_json_ir_outputs, with_output_selection,
+    yul_input,
+};
 pub use output::SolcOutput;
 pub use resolve::{InstalledSolc, SolcResolver};
 pub use runner::{CachedSolc, SolcRunner};

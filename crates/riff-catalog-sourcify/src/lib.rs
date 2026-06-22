@@ -13,7 +13,9 @@ pub use api::{ContractId, SourcifyClient, VerifiedContract};
 pub use error::SourcifyError;
 pub use resolver::{PinnedOrDownload, SolcBinResolver};
 
-use riff_catalog_solc::{Pipeline, SolcOutput, SolcResolver, with_output_selection};
+use riff_catalog_solc::{
+    Pipeline, SolcOutput, SolcResolver, strip_json_ir_outputs, with_output_selection,
+};
 
 /// Build the standard-json input: prefer the verbatim `stdJsonInput` when
 /// Sourcify has it; otherwise reconstruct from metadata (language, sources,
@@ -80,5 +82,15 @@ pub fn compile(
         .resolve(&contract.compiler_version)
         .map_err(SourcifyError::Solc)?;
     let input = with_output_selection(to_standard_json(contract)?, pipeline);
-    runner.compile(&input).map_err(SourcifyError::Solc)
+    let output = runner.compile(&input).map_err(SourcifyError::Solc)?;
+    if output.check_errors().is_ok() {
+        return Ok(output);
+    }
+    // solc can ICE serializing the JSON-IR outputs (irAst/irOptimizedAst/
+    // yulCFGJson) on some ~0.8.25–0.8.29 contracts, which would otherwise lose
+    // the whole contract. Retry without them: the source-, text-Yul-, and
+    // bytecode-level fingerprints still land (the ingest parses the text IR;
+    // only the SSA level is dropped).
+    let reduced = strip_json_ir_outputs(input);
+    runner.compile(&reduced).map_err(SourcifyError::Solc)
 }
