@@ -178,6 +178,8 @@ fn ingest_solidity(
     content: &str,
 ) -> Result<()> {
     let inputs: BTreeMap<String, String> = [(name.to_string(), content.to_string())].into();
+    let solc_version = solc.inner.version().ok().map(|v| v.to_string());
+    let compiler = solc_version.as_deref();
 
     for optimize in args.optimize.variants() {
         let opt_tag = if optimize { "opt" } else { "noopt" };
@@ -204,7 +206,7 @@ fn ingest_solidity(
             let owner = format!("sol:{name}");
             let artifact = artifact_id(&owner, origin, false);
             records.push(artifact_record(
-                &artifact, &owner, origin, "via-ir", false, args,
+                &artifact, &owner, origin, "via-ir", false, compiler, args,
             ));
             let ast = output.source_ast(name)?;
             let lowered = lower_source_unit(
@@ -249,6 +251,7 @@ fn ingest_solidity(
                 &contract,
                 opt_tag,
                 optimize,
+                compiler,
             )?;
         }
 
@@ -273,6 +276,7 @@ fn ingest_contract_ir(
     contract: &str,
     opt_tag: &str,
     optimize: bool,
+    compiler: Option<&str>,
 ) -> Result<()> {
     // yul-ast level: unoptimized + optimized IR ASTs.
     // Interfaces/abstract contracts surface these keys as JSON null (Ok(null)),
@@ -322,7 +326,7 @@ fn ingest_contract_ir(
         let owner = format!("yulir:{source}:{contract}:{variant}:{opt_tag}");
         let artifact = artifact_id(&owner, origin, optimize);
         records.push(artifact_record(
-            &artifact, &owner, origin, "via-ir", optimize, args,
+            &artifact, &owner, origin, "via-ir", optimize, compiler, args,
         ));
         let lowered = lower_object(&object, &owner, &LowerOptions::default())?;
         if want_unit(args, "object") {
@@ -362,7 +366,7 @@ fn ingest_contract_ir(
                 let owner = format!("yulssa:{source}:{contract}:{opt_tag}");
                 let artifact = artifact_id(&owner, origin, optimize);
                 records.push(artifact_record(
-                    &artifact, &owner, origin, "via-ir", optimize, args,
+                    &artifact, &owner, origin, "via-ir", optimize, compiler, args,
                 ));
                 let lowered = lower_yul_cfg(cfg, &owner)?;
                 for unit in lowered.objects.iter().chain(&lowered.functions) {
@@ -393,7 +397,7 @@ fn ingest_contract_ir(
         let owner = format!("evm:{source}:{contract}:via-ir:{opt_tag}");
         let artifact = artifact_id(&owner, origin, optimize);
         records.push(artifact_record(
-            &artifact, &owner, origin, "via-ir", optimize, args,
+            &artifact, &owner, origin, "via-ir", optimize, compiler, args,
         ));
         for (kind, bytes) in [
             (BytecodeKind::Creation, output.bytecode(source, contract)),
@@ -437,11 +441,12 @@ fn ingest_yul(
 ) -> Result<()> {
     let mut records = Vec::new();
 
-    // yul-ast level via our parser
+    // yul-ast level via our parser. Raw (e.g. fe-emitted) Yul: parsed, not
+    // produced by solc, so there is no compiler version to record.
     let owner = format!("yul:{name}");
     let artifact = artifact_id(&owner, origin, false);
     records.push(artifact_record(
-        &artifact, &owner, origin, "yul", false, args,
+        &artifact, &owner, origin, "yul", false, None, args,
     ));
     let object =
         parse_object(content).map_err(|error| anyhow::anyhow!("parsing {name}: {error}"))?;
@@ -481,12 +486,14 @@ fn ingest_yul(
                 if let Ok(cfg) = output.yul_cfg_json(&source, &contract) {
                     let ssa_owner = format!("yulssa:{name}:{contract}");
                     let ssa_artifact = artifact_id(&ssa_owner, origin, false);
+                    let ssa_compiler = solc.inner.version().ok().map(|v| v.to_string());
                     records.push(artifact_record(
                         &ssa_artifact,
                         &ssa_owner,
                         origin,
                         "yul",
                         false,
+                        ssa_compiler.as_deref(),
                         args,
                     ));
                     let lowered = lower_yul_cfg(cfg, &ssa_owner)?;
@@ -560,6 +567,8 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
 
     let mut records = Vec::new();
     let origin = format!("sourcify:{}:{}", id.chain_id, id.address);
+    // The verified pin — provenance only, never folded into the shape.
+    let compiler = Some(contract.compiler_version.as_str());
 
     // Source ASTs for every source file in the verified bundle.
     for (source_path, _) in &contract.sources {
@@ -569,7 +578,7 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
         let owner = format!("sf:{}:{}:{source_path}", id.chain_id, id.address);
         let artifact = artifact_id(&owner, &origin, false);
         records.push(artifact_record(
-            &artifact, &owner, &origin, "via-ir", false, args,
+            &artifact, &owner, &origin, "via-ir", false, compiler, args,
         ));
         // Real-world contracts: never strict.
         let lowered = lower_source_unit(&ast.clone(), &owner, &WalkOptions { strict: false })?;
@@ -607,6 +616,7 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
             &name,
             "sf",
             false,
+            compiler,
         )?;
     }
 
@@ -625,6 +635,7 @@ fn artifact_record(
     origin: &str,
     pipeline: &str,
     optimize: bool,
+    compiler: Option<&str>,
     args: &IngestArgs,
 ) -> Record {
     Record::Artifact {
@@ -633,6 +644,7 @@ fn artifact_record(
         origin: origin.to_string(),
         pipeline: pipeline.to_string(),
         optimize,
+        compiler: compiler.map(str::to_string),
         label: args.label.clone(),
     }
 }
