@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>riffcat · a walk through the facets</title>
+<style>
+  :root {
+    --bg: #0a0d0b; --bg-raise: #10140f; --bg-chip: #161b14;
+    --line: #232b22; --line-bright: #36402f;
+    --ink: #c8d3c0; --ink-dim: #6b7a64; --ink-faint: #424d3d;
+    --a: #5df2a6; --a-dim: #1d4733;
+    --warm: #ffb454; --cool: #7adfff; --rose: #ff8aa0;
+    --mono: "Berkeley Mono", "JetBrains Mono", "Fira Code", "IBM Plex Mono",
+            "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--mono);
+    font-size: 14px; line-height: 1.5; min-height: 100vh;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px),
+      radial-gradient(120% 90% at 50% 0%, rgba(122,223,255,0.04), transparent 60%);
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 26px 26px 90px; }
+
+  header.status {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px;
+    border: 1px solid var(--line); background: var(--bg-raise);
+    padding: 10px 16px; margin-bottom: 14px;
+  }
+  header.status .prog { color: var(--cool); font-weight: 700; letter-spacing: 0.04em; }
+  header.status .prog::before { content: "▌"; animation: blink 1.2s steps(1) infinite; margin-right: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+  header.status .crumb { color: var(--ink-dim); }
+  header.status .spacer { flex: 1; }
+  header.status .stamp { color: var(--ink-faint); font-size: 12px; }
+
+  nav.chapters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 18px; }
+  nav.chapters button {
+    font: inherit; font-size: 12px; color: var(--ink-faint); background: transparent;
+    border: 1px solid var(--line); padding: 3px 8px; cursor: pointer;
+  }
+  nav.chapters button:hover { color: var(--ink); border-color: var(--line-bright); }
+  nav.chapters button[aria-current="true"] { color: var(--bg); background: var(--a); border-color: var(--a); font-weight: 700; }
+
+  .stage { border: 1px solid var(--line); background: var(--bg-raise); padding: 22px 24px 24px; min-height: 320px; }
+  .stage .kicker { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; }
+  .stage h1 { font-size: 22px; color: var(--ink); margin: 4px 0 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .stage .lede { font-size: 15px; color: var(--ink); margin: 0 0 14px; }
+  .stage p { color: var(--ink-dim); margin: 0 0 12px; }
+  .stage em { color: var(--ink); font-style: normal; }
+  .stage b { color: var(--a); font-weight: 700; }
+  .stage code { color: var(--cool); background: var(--bg-chip); padding: 1px 5px; border: 1px solid var(--line); }
+
+  .figure { border: 1px solid var(--line-bright); background: var(--bg); margin: 14px 0; }
+  .figure .cap { color: var(--ink-faint); font-size: 11px; padding: 6px 12px; border-bottom: 1px solid var(--line); letter-spacing: 0.08em; text-transform: uppercase; }
+  .figure table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .figure td, .figure th { padding: 5px 12px; text-align: left; border-bottom: 1px solid var(--line); color: var(--ink-dim); }
+  .figure tr:last-child td { border-bottom: none; }
+  .figure th { color: var(--ink-faint); font-weight: 400; }
+  .figure td.n { color: var(--a); font-weight: 700; }
+  .figure td.fp { color: var(--warm); }
+  .figure .ne { color: var(--rose); font-weight: 700; }
+  pre.cmd { background: var(--bg-chip); border: 1px solid var(--line); padding: 10px 12px; margin: 12px 0; overflow-x: auto; color: var(--ink); font-size: 12.5px; }
+  pre.cmd .c { color: var(--ink-faint); }
+  .say { border-left: 2px solid var(--a-dim); padding: 2px 0 2px 14px; margin: 12px 0; color: var(--ink); font-size: 14.5px; }
+
+  .open { display: inline-block; margin-top: 6px; color: var(--cool); border: 1px solid var(--line-bright); padding: 6px 13px; text-decoration: none; }
+  .open:hover { background: var(--cool); color: var(--bg); }
+  .open::after { content: " →"; }
+
+  .pager { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
+  .pager button { font: inherit; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); padding: 7px 16px; cursor: pointer; }
+  .pager button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-bright); }
+  .pager button:disabled { opacity: 0.3; cursor: default; }
+  .pager .count { flex: 1; text-align: center; color: var(--ink-faint); font-size: 12px; }
+  .note { color: var(--ink-faint); font-size: 11.5px; margin-top: 22px; border-top: 1px solid var(--line); padding-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="status">
+    <span class="prog">tour</span>
+    <span class="crumb">riffcat · a walk through the facets</span>
+    <span class="spacer"></span>
+    <span class="stamp">arrow keys or the buttons</span>
+  </header>
+  <nav class="chapters" id="nav"></nav>
+  <tour-app></tour-app>
+  <p class="note">
+    A guided read, not a slide deck. Each chapter links into a live explorer page you can drive
+    yourself (vanilla, offline, no server). Numbers are real and measured; corpus-level figures
+    are the 2026-06-11 schema-2 stage, the rest are this build's runs.
+  </p>
+</main>
+
+<script>
+const CH = [
+  {
+    nav: "start",
+    kicker: "the one idea",
+    title: "“The same” has a dial.",
+    lede: "Compile a contract and most of what comes out is not unique. The question is how strict you want “the same” to be.",
+    body: `
+      <p>Same in every detail? Same if you ignore the names? Ignore the embedded constants and the types too?
+      Each setting is a <em>facet</em>, and two pieces of code can <b>rhyme</b> at a facet even when they read
+      differently. Everything else exists to keep the dial honest.</p>
+      <p>Two artifacts that land on the same fingerprint at a facet are <em>twins</em> there. Drag the dial looser
+      and twins multiply; tighten it and they split. That is the whole tour: one dial, eight views.</p>`,
+  },
+  {
+    nav: "dedup",
+    kicker: "the headline",
+    title: "Your compiler repeats itself, and now you can see it.",
+    lede: "Nine ordinary contracts, every function the compiler emitted, bucketed by fingerprint.",
+    body: `
+      <div class="figure"><div class="cap">yul-fn classes, by facet (9-contract corpus)</div>
+        <table>
+          <tr><th>facet</th><th>distinct classes</th><th>dedup</th></tr>
+          <tr><td>all (every detail)</td><td class="n">7,939 → 1,713</td><td>78.4%</td></tr>
+          <tr><td>structure only (shape)</td><td class="n">→ 481</td><td>93.9%</td></tr>
+        </table></div>
+      <p>At the shape facet, <b>94%</b> of the functions are structural duplicates of each other. The compiler has
+      been repeating itself this whole time with no way to see it. The generated helpers dedup perfectly: that
+      consistency is an exploitable asset, not a flaw.</p>`,
+    open: ["index.html", "open the twin explorer"],
+  },
+  {
+    nav: "twins",
+    kicker: "twins by shape",
+    title: "Seaport rhymes with a 200-line ERC20.",
+    lede: "Names-blind, the most-audited hand-written-assembly contract on Ethereum shares fingerprint classes with a toy token.",
+    body: `
+      <div class="say">“That is Seaport, fetched verified from Sourcify and recompiled with its own pinned 0.8.24.
+      Names-blind it shares <b>37</b> function-level fingerprint classes with the little ERC20 we built locally:
+      the same panic helpers, the same checked arithmetic, the same memory allocator, the same
+      address→uint256 mapping accessor. Twins by shape, not by name.”</div>
+      <p>Lead with the 37 shared classes, not the ratio: a 591-class contract against a 68-class one. The rhyme is
+      the recognizable scaffolding every contract carries.</p>`,
+    open: ["index.html", "open the twin explorer"],
+  },
+  {
+    nav: "triage",
+    kicker: "what hashing buys an auditor",
+    title: "Verified does not tell you what is in it.",
+    lede: "Every function checked for twins elsewhere. Twins = machinery. No twins = the novel surface where reading time goes.",
+    body: `
+      <div class="figure"><div class="cap">novel functions vs total (mainnet, this build)</div>
+        <table>
+          <tr><th>contract</th><th>novel / total</th><th>read</th></tr>
+          <tr><td>a token verified the same morning</td><td class="n">23 / 169</td><td>86% machinery</td></tr>
+          <tr><td>ERC-4337 EntryPoint</td><td class="n">206 / 601</td><td>genuinely novel</td></tr>
+        </table></div>
+      <p>“This unverified contract is 94% standard machinery. Here are the three functions that are actually new.
+      Audit those.” The query agrees with auditor intuition in both directions, and it speaks straight to the
+      public worry that <em>verified is not safe</em>.</p>`,
+    open: ["triage.html", "open the audit-triage view"],
+  },
+  {
+    nav: "bundles",
+    kicker: "the dial, per function",
+    title: "The same up to ___.",
+    lede: "Pick any function and watch its equivalence bundle grow as you loosen the dial.",
+    body: `
+      <p>Identical in every detail, then up to renaming, then up to renaming and types, then same shape. Each step
+      admits more members, and you can see where they live: local contracts and mainnet ingests side by side. The
+      same ladder runs on the compiler's Yul and on the derived SSA form.</p>
+      <div class="say">“This function is unique in our corpus at full detail. Forget the names and it joins a class
+      of nine. Forget the constants and types too and it is one of forty. Same code, calibrated forgetting.”</div>`,
+    open: ["bundle.html", "open the bundle ladders"],
+  },
+  {
+    nav: "library",
+    kicker: "provenance",
+    title: "Which library did you actually vendor?",
+    lede: "The same primitive in OpenZeppelin, Solady, and Solmate is a different fingerprint. Shape alone tells them apart.",
+    body: `
+      <div class="figure"><div class="cap">full-precision mul·div, names-blind</div>
+        <table>
+          <tr><td>OpenZeppelin <code>Math.mulDiv</code></td><td class="fp">e9a4e2e6</td></tr>
+          <tr><td>Solady <code>fullMulDiv</code></td><td class="fp">3832ecf7</td></tr>
+          <tr><td>Solmate <code>mulDivDown</code></td><td class="fp">0567e4ff</td></tr>
+        </table></div>
+      <p>Five primitives across three libraries, <b>zero collisions</b>. Within a library the chunk is one
+      fingerprint across every contract that vendors it; across libraries the same math has a different shape (even
+      Solady's and Solmate's hand-assembly Merkle verify do not converge). The supply chain is in the fingerprint.</p>`,
+    open: ["libxref.html", "open the library cross-reference"],
+  },
+  {
+    nav: "in the wild",
+    kicker: "the same, on real code, version-proof",
+    title: "Four unrelated contracts, one OpenZeppelin surface.",
+    lede: "An ERC20, an NFT, a soulbound voucher, and Vouch — fetched from Sourcify, compared at the source level.",
+    body: `
+      <div class="figure"><div class="cap">shared OZ chunks (sol-fn, names-blind), of 4 unrelated contracts</div>
+        <table>
+          <tr><td><code>Context._msgSender</code>, <code>Initializable</code></td><td class="n">4 / 4</td></tr>
+          <tr><td><code>ReentrancyGuard</code>, <code>Strings</code>, <code>Ownable</code>, <code>Math</code></td><td class="n">3 / 4</td></tr>
+          <tr><td><code>ERC721</code> core, <code>ERC20</code> surface</td><td class="n">2 / 4</td></tr>
+        </table></div>
+      <p>This is at the <em>source</em> level (<code>sol-fn</code>), which does not drift with the compiler version
+      the way Yul does. So it is the right substrate for “same library code,” and the shared chunks are recognizable
+      by name. Compiler version is recorded as provenance, never folded into the shape.</p>`,
+    open: ["libxref.html", "open the library cross-reference"],
+  },
+  {
+    nav: "sourcify",
+    kicker: "you already run this dial",
+    title: "Sourcify's partial-vs-exact match is a facet.",
+    lede: "At the bytecode level the CBOR metadata trailer is split into its own node.",
+    body: `
+      <p>The <b>Structure</b> facet forgets the metadata value: that is a Sourcify <em>partial match</em>, two
+      contracts that are Structure-twins here. A Constants-bearing facet keeps it: that is an <em>exact match</em>.
+      Full-vs-partial match, and the Verifier Alliance transformations schema (cborAuxdata, library masks), are
+      facet normalization you already ship. Here is the general dial.</p>
+      <div class="say">“You invented this twice. The question riffcat answers is what the payload of a
+      ‘similar contracts’ surface should carry.”</div>`,
+  },
+  {
+    nav: "trust",
+    kicker: "sameness that is not structural",
+    title: "Claims are inputs, and the corpus has a receipt.",
+    lede: "Witnessed equivalence assertions, attestations that gate queries, and a commitment over the whole corpus.",
+    body: `
+      <p>A <b>claim</b> is an attributable, removable assertion that two things are equivalent: validity is the
+      auditor's job, and a wrong claim merges things <em>visibly</em>, never silently. An <b>attestation</b> is a
+      one-sided property (“verified-total”) that can gate a query. And the <b>corpus root</b> is a canonical,
+      order-independent fingerprint of the whole corpus: recompute it anywhere, <code>--check</code> fails loudly.</p>
+      <pre class="cmd"><span class="c"># the integrity receipt; conditional claims pin to it</span>
+riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
+  },
+  {
+    nav: "coda",
+    kicker: "what this is not",
+    title: "One shared contract, not a takeover.",
+    lede: "",
+    body: `
+      <p>NOT an omnilingual compiler. NOT a shared internal IR. NOT a database (JSONL today, rent a store later).
+      NOT a standards proposal. One shared thing: the canonical form plus the facet vocabulary, versioned.</p>
+      <p>EVM is the first corpus, not the spouse: the architecture is level-tagged and language-agnostic by
+      construction. fe-emitted Yul ingests through the same two doors. Compilers meet at the artifact level.</p>
+      <div class="say">It rides the recompilation Sourcify already does at verification time. No crawler, no new
+      compiler. The fingerprint is a post-pass over output you already produce and discard.</div>`,
+  },
+];
+
+customElements.define("tour-app", class extends HTMLElement {
+  connectedCallback() {
+    this.i = 0;
+    const nav = document.getElementById("nav");
+    nav.innerHTML = CH.map((c, k) => `<button data-k="${k}">${k === 0 ? "·" : k}. ${c.nav}</button>`).join("");
+    nav.querySelectorAll("button").forEach(b =>
+      b.addEventListener("click", () => this.go(+b.dataset.k)));
+    document.addEventListener("keydown", e => {
+      if (e.key === "ArrowRight") this.go(this.i + 1);
+      if (e.key === "ArrowLeft") this.go(this.i - 1);
+    });
+    this.render();
+  }
+  go(k) { if (k >= 0 && k < CH.length) { this.i = k; this.render(); } }
+  render() {
+    const c = CH[this.i];
+    document.querySelectorAll("#nav button").forEach((b, k) =>
+      b.setAttribute("aria-current", k === this.i ? "true" : "false"));
+    this.innerHTML = `
+      <div class="stage">
+        <div class="kicker">${c.kicker}</div>
+        <h1>${c.title}</h1>
+        ${c.lede ? `<p class="lede">${c.lede}</p>` : ""}
+        ${c.body}
+        ${c.open ? `<a class="open" href="${c.open[0]}">${c.open[1]}</a>` : ""}
+      </div>
+      <div class="pager">
+        <button data-d="-1" ${this.i === 0 ? "disabled" : ""}>← prev</button>
+        <span class="count">${this.i + 1} / ${CH.length} · ${c.nav}</span>
+        <button data-d="1" ${this.i === CH.length - 1 ? "disabled" : ""}>next →</button>
+      </div>`;
+    this.querySelectorAll(".pager button").forEach(b =>
+      b.addEventListener("click", () => this.go(this.i + (+b.dataset.d))));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+});
+</script>
+</body>
+</html>

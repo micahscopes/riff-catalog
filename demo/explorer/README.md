@@ -1,4 +1,16 @@
-# riffcat twin explorer
+# riffcat explorer
+
+**Start at `tour.html`** — a narrated, paginated walkthrough (arrow keys or the
+buttons) that tells the whole story chapter by chapter with real numbers inline,
+and links into each live page below for hands-on. It is the thing to share: open
+the folder, open `tour.html`. Self-contained, no build step, no server, offline.
+
+Chapters: the dial · the 94% dedup · Seaport rhymes with our ERC20 · novel vs
+machinery (triage) · the same up to ___ (bundles) · which library you vendored ·
+the same in the wild at the source level · Sourcify's partial-vs-exact match as a
+facet · claims + the corpus-root commitment · what this is NOT.
+
+## index.html — twin explorer
 
 A rough-on-purpose, no-build-step page over `riffcat overlap --json`: pick a
 contract pair, drag the facet dial, watch twin classes and the Jaccard readout
