@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>riffcat · library cross-reference</title>
+<style>
+  :root {
+    --bg: #0a0d0b; --bg-raise: #10140f; --bg-chip: #161b14;
+    --line: #232b22; --line-bright: #36402f;
+    --ink: #c8d3c0; --ink-dim: #6b7a64; --ink-faint: #424d3d;
+    --a: #5df2a6; --a-dim: #1d4733;
+    --warm: #ffb454; --cool: #7adfff; --rose: #ff8aa0;
+    --mono: "Berkeley Mono", "JetBrains Mono", "Fira Code", "IBM Plex Mono",
+            "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--mono);
+    font-size: 14px; line-height: 1.45; min-height: 100vh;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px),
+      radial-gradient(120% 90% at 50% 0%, rgba(122,223,255,0.04), transparent 60%);
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 28px 80px; }
+
+  header.status {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px;
+    border: 1px solid var(--line); background: var(--bg-raise);
+    padding: 10px 16px; margin-bottom: 8px;
+  }
+  header.status .prog { color: var(--cool); font-weight: 700; letter-spacing: 0.04em; }
+  header.status .prog::before { content: "▌"; animation: blink 1.2s steps(1) infinite; margin-right: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+  header.status .crumb { color: var(--ink-dim); }
+  header.status .crumb b { color: var(--ink); font-weight: 400; }
+  header.status .spacer { flex: 1; }
+  header.status .stamp { color: var(--ink-faint); font-size: 12px; }
+
+  .punch { color: var(--ink-dim); margin: 0 2px 22px; font-size: 13px; max-width: 80ch; }
+  .punch em { color: var(--ink); font-style: normal; }
+
+  .panel { border: 1px solid var(--line); background: var(--bg-raise); padding: 12px 16px 14px; margin-bottom: 22px; }
+  .panel .label { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 9px; }
+  .panel button {
+    font: inherit; color: var(--ink-dim); background: transparent;
+    border: 1px solid var(--line); padding: 5px 13px; cursor: pointer; margin: 0 6px 0 0;
+  }
+  .panel button:hover { color: var(--ink); border-color: var(--line-bright); }
+  .panel button[aria-pressed="true"] { color: var(--bg); background: var(--cool); border-color: var(--cool); font-weight: 700; }
+  .panel .gloss { color: var(--ink-dim); font-size: 12.5px; margin-top: 11px; }
+  .panel .gloss b { color: var(--ink); font-weight: 400; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 8px; }
+  @media (max-width: 820px) { .cards { grid-template-columns: 1fr; } }
+
+  libxref-card { display: block; border: 1px solid var(--line); background: var(--bg-raise); padding: 14px 16px 16px; position: relative; }
+  libxref-card .lib { color: var(--cool); font-weight: 700; letter-spacing: 0.04em; }
+  libxref-card .fn { color: var(--ink); font-size: 12.5px; margin: 3px 0 14px; word-break: break-all; }
+  libxref-card .fp-label { color: var(--ink-faint); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; }
+  libxref-card .fp {
+    display: inline-block; margin-top: 5px; padding: 3px 9px;
+    background: var(--bg-chip); border: 1px solid var(--line-bright);
+    color: var(--warm); letter-spacing: 0.06em;
+  }
+  libxref-card .xref { margin-top: 15px; color: var(--ink-dim); font-size: 12.5px; }
+  libxref-card .xref b { color: var(--a); font-weight: 700; }
+  libxref-card .consumers { margin-top: 7px; color: var(--ink-faint); font-size: 11.5px; }
+  libxref-card .bar { display: flex; gap: 3px; margin-top: 9px; }
+  libxref-card .bar span { height: 6px; flex: 1; background: var(--a-dim); }
+  libxref-card .bar span.on { background: var(--a); }
+
+  .verdict {
+    border: 1px solid var(--line-bright); background: linear-gradient(180deg, rgba(93,242,166,0.05), transparent);
+    padding: 14px 18px; margin-top: 18px;
+  }
+  .verdict .line { font-size: 15px; color: var(--ink); }
+  .verdict .line b { color: var(--a); }
+  .verdict .ne { color: var(--rose); font-weight: 700; padding: 0 4px; }
+  .verdict .sub { color: var(--ink-dim); font-size: 12.5px; margin-top: 8px; max-width: 84ch; }
+  .verdict .sub em { color: var(--ink); font-style: normal; }
+
+  footer { margin-top: 30px; color: var(--ink-faint); font-size: 11.5px; border-top: 1px solid var(--line); padding-top: 12px; max-width: 84ch; }
+  footer code { color: var(--ink-dim); }
+</style>
+</head>
+<body>
+<main>
+  <header class="status">
+    <span class="prog">libxref</span>
+    <span class="crumb">facet <b>names-blind</b> · unit <b>yul-fn</b> · the chunks devs actually import</span>
+    <span class="spacer"></span>
+    <span class="stamp" id="stamp"></span>
+  </header>
+
+  <p class="punch">
+    Developers know these primitives by name. The compiler turns each into a Yul function;
+    riffcat fingerprints it <em>names-blind</em>. Two facts fall out: within one library the
+    chunk is <em>one fingerprint</em> across every contract that vendors it — and the
+    <em>same primitive in a different library is a different fingerprint</em>. So shape alone
+    tells you which library a contract pulled from. The supply chain is in the fingerprint.
+  </p>
+
+  <libxref-app></libxref-app>
+
+  <footer>
+    Locally compiled, verbatim OpenZeppelin v4.9 / Solady / Solmate source, solc 0.8.33 via-IR,
+    unoptimized. Each primitive is vendored by three genuinely different consumer contracts
+    (<code>Vault</code> / <code>Airdrop</code> / <code>Lottery</code>); the fingerprint shown is the
+    <code>structure</code> facet of the generated <code>yul-fn</code> unit. The chunk's fingerprint
+    is source-determined, so it matches what a mainnet contract using the same library version
+    produces — the method scales to any Sourcify-verified contract (cf. the Seaport beat).
+  </footer>
+</main>
+
+<script>
+window.RIFFCAT_LIBXREF = {
+  generated: "2026-06-22",
+  consumers: ["Vault", "Airdrop", "Lottery"],
+  primitives: [
+    {
+      id: "muldiv",
+      title: "full-precision mul · div",
+      gloss: "Multiply two 256-bit numbers at full 512-bit precision, then divide — the arithmetic under every AMM, vault, and lending market.",
+      libs: [
+        { lib: "OpenZeppelin", fn: "Math.mulDiv(x, y, d)",                 fp: "e9a4e2e6bc3784f3", consumers: 3 },
+        { lib: "Solady",       fn: "FixedPointMathLib.fullMulDiv(x, y, d)", fp: "3832ecf7b66ea04d", consumers: 3 },
+        { lib: "Solmate",      fn: "FixedPointMathLib.mulDivDown(x, y, d)", fp: "0567e4ff62056f06", consumers: 3 }
+      ]
+    },
+    {
+      id: "merkle",
+      title: "Merkle proof verify",
+      gloss: "Walk a Merkle proof to a root — the gate on every allowlist mint and airdrop claim.",
+      libs: [
+        { lib: "OpenZeppelin", fn: "MerkleProof.verify(proof, root, leaf)",    fp: "829a9df2504b35a5", consumers: 3 },
+        { lib: "Solady",       fn: "MerkleProofLib.verify(proof, root, leaf)",  fp: "4dca93416a473396", consumers: 3 },
+        { lib: "Solmate",      fn: "MerkleProofLib.verify(proof, root, leaf)",  fp: "7c5fd8684e29e536", consumers: 3 }
+      ]
+    }
+  ]
+};
+
+customElements.define("libxref-card", class extends HTMLElement {
+  set data(d) { this._d = d; this.render(); }
+  render() {
+    const d = this._d, total = window.RIFFCAT_LIBXREF.consumers.length;
+    const bars = Array.from({ length: total }, (_, i) =>
+      `<span class="${i < d.consumers ? "on" : ""}"></span>`).join("");
+    this.innerHTML = `
+      <div class="lib">${d.lib}</div>
+      <div class="fn">${d.fn}</div>
+      <div class="fp-label">names-blind fingerprint</div>
+      <div><span class="fp">${d.fp}</span></div>
+      <div class="xref">appears in <b>${d.consumers} / ${total}</b> consumer contracts</div>
+      <div class="bar">${bars}</div>
+      <div class="consumers">${window.RIFFCAT_LIBXREF.consumers.join(" · ")} — one fingerprint, every consumer</div>`;
+  }
+});
+
+customElements.define("libxref-app", class extends HTMLElement {
+  connectedCallback() {
+    this.data = window.RIFFCAT_LIBXREF;
+    this.pick = this.data.primitives[0].id;
+    document.getElementById("stamp").textContent = "staged " + this.data.generated;
+    this.render();
+  }
+  render() {
+    const prim = this.data.primitives.find(p => p.id === this.pick);
+    const distinct = new Set(prim.libs.map(l => l.fp)).size;
+    const buttons = this.data.primitives.map(p =>
+      `<button data-id="${p.id}" aria-pressed="${p.id === this.pick}">${p.title}</button>`).join("");
+    this.innerHTML = `
+      <div class="panel">
+        <div class="label">primitive</div>
+        ${buttons}
+        <div class="gloss"><b>${prim.title}.</b> ${prim.gloss}</div>
+      </div>
+      <div class="cards"></div>
+      <div class="verdict">
+        <div class="line">
+          one primitive · ${prim.libs.length} libraries ·
+          <b>${distinct} distinct fingerprints</b> ·
+          ${distinct === prim.libs.length ? "<b>0 collisions</b>" : "(collision!)"}
+        </div>
+        <div class="line" style="margin-top:8px;color:var(--ink-dim);font-size:13px">
+          ${prim.libs.map(l => `${l.lib} <span style="color:var(--warm)">${l.fp.slice(0,8)}…</span>`)
+              .join('<span class="ne">≠</span>')}
+        </div>
+        <div class="sub">
+          Same math, ${prim.libs.length} implementations, ${prim.libs.length} shapes — riffcat never conflates them.
+          <em>Switching from OpenZeppelin to Solady changes the fingerprint; riffcat sees the swap, names-blind.</em>
+        </div>
+      </div>`;
+    const cards = this.querySelector(".cards");
+    for (const lib of prim.libs) {
+      const card = document.createElement("libxref-card");
+      card.data = lib;
+      cards.appendChild(card);
+    }
+    this.querySelectorAll(".panel button").forEach(b =>
+      b.addEventListener("click", () => { this.pick = b.dataset.id; this.render(); }));
+  }
+});
+</script>
+</body>
+</html>
