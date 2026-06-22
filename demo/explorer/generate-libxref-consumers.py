@@ -18,6 +18,13 @@ ENTRIES = [
     ("oz_muldiv",      "oz_Math.sol",                     "muldiv",          "Math.mulDiv(a, b, c)"),
     ("solady_muldiv",  "solady_FixedPointMathLib.sol",    "muldiv",          "FixedPointMathLib.fullMulDiv(a, b, c)"),
     ("solmate_muldiv", "solmate_FixedPointMathLib.sol",   "muldiv",          "FixedPointMathLib.mulDivDown(a, b, c)"),
+    ("oz_sqrt",        "oz_Math.sol",                     "unary",           "Math.sqrt(a)"),
+    ("solady_sqrt",    "solady_FixedPointMathLib.sol",    "unary",           "FixedPointMathLib.sqrt(a)"),
+    ("solmate_sqrt",   "solmate_FixedPointMathLib.sol",   "unary",           "FixedPointMathLib.sqrt(a)"),
+    ("solady_mulwad",  "solady_FixedPointMathLib.sol",    "binary",          "FixedPointMathLib.mulWad(a, b)"),
+    ("solmate_mulwad", "solmate_FixedPointMathLib.sol",   "binary",          "FixedPointMathLib.mulWadDown(a, b)"),
+    ("oz_ecdsa",       "oz_ECDSA_flat.sol",               "ecdsa",           "ECDSA.recover(h, sig)"),
+    ("solady_ecdsa",   "solady_ECDSA.sol",                "ecdsa",           "ECDSA.recover(h, sig)"),
     ("oz_merkle",      "oz_MerkleProof.sol",              "merkle_memory",   "MerkleProof.verify(proof, root, leaf)"),
     ("solady_merkle",  "solady_MerkleProofLib.sol",       "merkle_memory",   "MerkleProofLib.verify(proof, root, leaf)"),
     ("solmate_merkle", "solmate_MerkleProofLib.sol",      "merkle_calldata", "MerkleProofLib.verify(proof, root, leaf)"),
@@ -29,6 +36,9 @@ APPS = ["Vault", "Airdrop", "Lottery"]
 
 SHAPES = {
     "muldiv":          ("uint256 a, uint256 b, uint256 c",                 "uint256", "external pure"),
+    "unary":           ("uint256 a",                                       "uint256", "external pure"),
+    "binary":          ("uint256 a, uint256 b",                            "uint256", "external pure"),
+    "ecdsa":           ("bytes32 h, bytes memory sig",                     "address", "external view"),
     "merkle_memory":   ("bytes32[] memory proof, bytes32 root, bytes32 leaf", "bool",  "external pure"),
     "merkle_calldata": ("bytes32[] calldata proof, bytes32 root, bytes32 leaf", "bool", "external pure"),
 }
