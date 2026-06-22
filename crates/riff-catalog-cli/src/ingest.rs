@@ -186,7 +186,15 @@ fn ingest_solidity(
             optimize,
             ..Default::default()
         };
-        let output = solc.compile(&riff_catalog_solc::solidity_input(&inputs, &options))?;
+        let input = riff_catalog_solc::solidity_input(&inputs, &options);
+        let first = solc.compile(&input)?;
+        // Retry without the JSON-IR outputs if solc ICEs serializing them
+        // (some ~0.8.25–0.8.29 contracts); the ingest then parses the text IR.
+        let output = if first.check_errors().is_ok() {
+            first
+        } else {
+            solc.compile(&riff_catalog_solc::strip_json_ir_outputs(input))?
+        };
         output.check_errors()?;
 
         let mut records = Vec::new();
@@ -272,19 +280,43 @@ fn ingest_contract_ir(
     // at all — typically a compiler older than irAst support (< ~0.8.21), e.g. a
     // version-pinned sourcify contract — so warn loudly rather than silently
     // staging a corpus with no IR units (which makes IR-level queries empty).
-    for (variant, ast_result) in [
-        ("ir", output.ir_ast(source, contract)),
-        ("iropt", output.ir_optimized_ast(source, contract)),
+    for (variant, ast_result, text_result) in [
+        (
+            "ir",
+            output.ir_ast(source, contract),
+            output.ir(source, contract),
+        ),
+        (
+            "iropt",
+            output.ir_optimized_ast(source, contract),
+            output.ir_optimized(source, contract),
+        ),
     ] {
-        let ast_value = match ast_result {
-            Ok(value) if value.is_object() => value,
-            Ok(_) => continue,
+        let object = match ast_result {
+            Ok(value) if value.is_object() => from_solc_value(value)?,
+            Ok(_) => continue, // interface/abstract contract: solc emits JSON null
             Err(_) => {
-                eprintln!(
-                    "WARN: {source}:{contract}: solc emitted no {variant} AST \
-                     (irAst needs solc >= ~0.8.21); no {variant} yul units staged"
-                );
-                continue;
+                // No IR-AST JSON. solc ICEs serializing it (and yulCFGJson) on
+                // some ~0.8.25–0.8.29 contracts, and it didn't exist before
+                // ~0.8.21 — but the *text* IR is clean across that whole range,
+                // so parse it through riffcat's other front door. Conformance
+                // guarantees the text and JSON paths produce the same AST.
+                match text_result {
+                    Ok(text) if !text.trim().is_empty() => {
+                        parse_object(text).map_err(|error| {
+                            anyhow::anyhow!(
+                                "parsing {variant} IR text for {source}:{contract}: {error}"
+                            )
+                        })?
+                    }
+                    _ => {
+                        eprintln!(
+                            "WARN: {source}:{contract}: no {variant} IR (neither AST \
+                             nor text); no {variant} yul units staged"
+                        );
+                        continue;
+                    }
+                }
             }
         };
         let owner = format!("yulir:{source}:{contract}:{variant}:{opt_tag}");
@@ -292,7 +324,6 @@ fn ingest_contract_ir(
         records.push(artifact_record(
             &artifact, &owner, origin, "via-ir", optimize, args,
         ));
-        let object = from_solc_value(ast_value)?;
         let lowered = lower_object(&object, &owner, &LowerOptions::default())?;
         if want_unit(args, "object") {
             emit_unit(
