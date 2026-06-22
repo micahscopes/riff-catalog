@@ -1,0 +1,17 @@
+[package]
+name = "riffcat-demo-app"
+description = "Trunk frontend: riffcat fingerprinting in the browser (wasm). solc runs as soljson in a Web Worker; this drives it and renders the facets."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "riffcat-demo-app"
+path = "src/main.rs"
+
+[dependencies]
+riff-catalog-wasm = { path = "../../crates/riff-catalog-wasm" }
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Document", "Window", "HtmlElement", "Element"] }
