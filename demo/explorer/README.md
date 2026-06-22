@@ -50,7 +50,17 @@ Fourth prototype: the chunks developers actually import. Pick a primitive
 (mul·div, integer sqrt, fixed-point mulWad, ECDSA recover, Merkle verify) and
 see the same-named function across OpenZeppelin / Solady / Solmate. Some are
 2-library (mulWad: OZ folds it into mulDiv; ECDSA: Solmate ships none — OZ's is
-flattened with its Strings/Math deps), most are 3-library. Two facts, names-blind: within one library the
+flattened with its Strings/Math deps), most are 3-library.
+
+A second panel ("in the wild") makes the same point on real code at the
+version-stable **source** level (`sol-fn`): four unrelated mainnet contracts
+(an ERC20, an NFT, a soulbound voucher, Vouch), fetched from Sourcify and
+compared names-blind, share the identical OpenZeppelin surface — `Context`,
+`Ownable`, `ReentrancyGuard`, `Strings`, `Math`, the `ERC721`/`ERC20` cores.
+Source-level fingerprints don't drift with the compiler version the way `yul-fn`
+does, so this is the right substrate for "same library code / provenance"
+questions; the yul level is for "what the compiler emitted." Counts are an
+N-of-4 snapshot and grow with the corpus. Two facts, names-blind: within one library the
 chunk is a single fingerprint across every contract that vendors it (the
 cross-reference), and the same primitive in a different library is a *different*
 fingerprint (the supply-chain tell — switching OZ→Solady changes the shape,

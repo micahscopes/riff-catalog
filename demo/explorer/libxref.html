@@ -83,6 +83,22 @@
 
   footer { margin-top: 30px; color: var(--ink-faint); font-size: 11.5px; border-top: 1px solid var(--line); padding-top: 12px; max-width: 84ch; }
   footer code { color: var(--ink-dim); }
+
+  .wild { margin-top: 42px; border-top: 1px solid var(--line-bright); padding-top: 24px; }
+  .wild h2 { font-size: 16px; color: var(--ink); font-weight: 700; margin: 0 0 8px; }
+  .wild code { color: var(--cool); }
+  .wchips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .wc { border: 1px solid var(--line); background: var(--bg-raise); padding: 6px 11px; font-size: 12.5px; }
+  .wc b { color: var(--cool); font-weight: 700; }
+  .wc .wk { color: var(--ink-dim); } .wc .wa { color: var(--ink-faint); }
+  .wlist { border: 1px solid var(--line); background: var(--bg-raise); }
+  .wr { display: flex; align-items: center; gap: 14px; padding: 7px 14px; border-bottom: 1px solid var(--line); }
+  .wr:last-child { border-bottom: none; }
+  .wr .wn { flex: 1; color: var(--ink); }
+  .wr .wcnt { color: var(--a); font-weight: 700; width: 34px; text-align: right; }
+  .wr .wbar { display: flex; gap: 3px; width: 76px; }
+  .wr .wbar span { height: 8px; flex: 1; background: var(--a-dim); }
+  .wr .wbar span.on { background: var(--a); }
 </style>
 </head>
 <body>
@@ -104,6 +120,19 @@
 
   <libxref-app></libxref-app>
 
+  <section class="wild">
+    <h2>In the wild — the shared OpenZeppelin surface, at the source level</h2>
+    <p class="punch">
+      Same idea, real contracts, version-proof. These four were pulled from Sourcify and
+      fingerprinted at the <em>source</em> level (<code>sol-fn</code>), which — unlike the Yul
+      level above — doesn't drift with the compiler version. They are unrelated projects (a
+      token, an NFT, a soulbound voucher, and Vouch), yet names-blind they carry the
+      <em>identical</em> OpenZeppelin chunks. The shared library surface, content-addressed,
+      no names read.
+    </p>
+    <libxref-wild></libxref-wild>
+  </section>
+
   <footer>
     Locally compiled, verbatim OpenZeppelin v4.9 / Solady / Solmate source, solc 0.8.33 via-IR,
     unoptimized. Each primitive is vendored by three genuinely different consumer contracts
@@ -111,10 +140,35 @@
     <code>structure</code> facet of the generated <code>yul-fn</code> unit. The chunk's fingerprint
     is source-determined, so it matches what a mainnet contract using the same library version
     produces — the method scales to any Sourcify-verified contract (cf. the Seaport beat).
+    The lower panel is exactly that: four unrelated contracts fetched live from Sourcify and
+    compared at the version-stable <code>sol-fn</code> (source) level — counts are an
+    N-of-4 snapshot, and grow with the corpus.
   </footer>
 </main>
 
 <script>
+// Source-level (sol-fn) cross-reference over four unrelated mainnet contracts,
+// pulled from Sourcify (chain 1, solc 0.8.24), names-blind. Measured 2026-06-22.
+window.RIFFCAT_LIBXREF_WILD = {
+  contracts: [
+    { name: "MyTokenV1Eth",  kind: "ERC20 token",       addr: "0x0F28…D69F" },
+    { name: "Pixelseed",     kind: "ERC721 NFT",        addr: "0x5502…1BD2" },
+    { name: "SNRGSoulbound", kind: "soulbound voucher", addr: "0xF913…C7A9" },
+    { name: "Vouch",         kind: "Vouch",             addr: "0x692D…DA2D" }
+  ],
+  shared: [
+    { chunk: "Context._msgSender",                                  n: 4 },
+    { chunk: "Initializable.onlyInitializing",                      n: 4 },
+    { chunk: "ReentrancyGuard.nonReentrant",                        n: 3 },
+    { chunk: "Strings.toString / toHexString",                      n: 3 },
+    { chunk: "Ownable (renounce / transfer / _checkOwner)",         n: 3 },
+    { chunk: "Math (log10 / average / sqrt / tryAdd…)",             n: 3 },
+    { chunk: "ERC721 core (_update / _mint / transferFrom / ownerOf)", n: 2 },
+    { chunk: "ERC20 (name / allowance / totalSupply)",              n: 2 },
+    { chunk: "ECDSA / ERC165 / StorageSlot",                        n: 2 }
+  ]
+};
+
 window.RIFFCAT_LIBXREF = {
   generated: "2026-06-22",
   consumers: ["Vault", "Airdrop", "Lottery"],
@@ -231,6 +285,20 @@ customElements.define("libxref-app", class extends HTMLElement {
     }
     this.querySelectorAll(".panel button").forEach(b =>
       b.addEventListener("click", () => { this.pick = b.dataset.id; this.render(); }));
+  }
+});
+
+customElements.define("libxref-wild", class extends HTMLElement {
+  connectedCallback() {
+    const d = window.RIFFCAT_LIBXREF_WILD, total = d.contracts.length;
+    const chips = d.contracts.map(c =>
+      `<span class="wc"><b>${c.name}</b> <span class="wk">${c.kind}</span> <span class="wa">${c.addr}</span></span>`).join("");
+    const rows = d.shared.map(s => {
+      const bar = Array.from({ length: total }, (_, i) =>
+        `<span class="${i < s.n ? "on" : ""}"></span>`).join("");
+      return `<div class="wr"><span class="wn">${s.chunk}</span><span class="wcnt">${s.n}/${total}</span><span class="wbar">${bar}</span></div>`;
+    }).join("");
+    this.innerHTML = `<div class="wchips">${chips}</div><div class="wlist">${rows}</div>`;
   }
 });
 </script>
