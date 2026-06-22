@@ -53,9 +53,14 @@ object "Double" {
 YUL
 "$RIFFCAT" --corpus "$CORPUS" ingest demo/double.yul --units fn,object,ssa
 
-echo "== sourcify: ENS PublicResolver (cache-first; needs network on first run) =="
+echo "== sourcify: Seaport 1.6 (cache-first; needs network + pinned solc 0.8.24 on first run) =="
+# Seaport's hand-written assembly defines the same helper name (usr$gcd) in
+# three different scopes; ingest now keys functions by lexical scope chain, so
+# they stay distinct instead of colliding. Pin 0.8.24 must be resolvable
+# (binaries.soliditylang.org, or pre-cached under <cache>/solc-bin); 0.8.24
+# predates the SSA pipeline (~0.8.29+), so no yulssa units land — expected.
 "$RIFFCAT" --corpus "$CORPUS" ingest \
-    --sourcify "1:0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63" || \
+    --sourcify "1:0x0000000000000068F116a894984e2DB1123eB395" || \
     echo "WARN: sourcify fetch failed (offline?) — Act III falls back to the recording"
 
 echo "== warming the conformance cache (Act II timing) =="
