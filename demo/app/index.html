@@ -1,22 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>riffcat · wasm proof</title>
-  <link data-trunk rel="rust" />
-  <style>
-    :root { --bg:#0a0d0b; --ink:#c8d3c0; --a:#5df2a6; --warm:#ffb454; --line:#232b22;
-            --mono:"Berkeley Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace; }
-    body { background:var(--bg); color:var(--ink); font-family:var(--mono); margin:0; padding:32px; line-height:1.5; }
-    h1 { color:var(--a); font-size:22px; }
-    code { color:var(--warm); }
-    b { color:var(--a); }
-    table { border-collapse:collapse; margin-top:14px; font-size:13px; width:100%; max-width:720px; }
-    td, th { border-bottom:1px solid var(--line); padding:5px 12px; text-align:left; color:var(--ink); }
-    th { color:#6b7a64; font-weight:400; }
-    td.fp { color:var(--warm); }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>riffcat · a walk through the facets (live, in the browser)</title>
+<link data-trunk rel="rust" />
+<link data-trunk rel="copy-file" href="app.js" />
+<style>
+  :root {
+    --bg: #0a0d0b; --bg-raise: #10140f; --bg-chip: #161b14;
+    --line: #232b22; --line-bright: #36402f;
+    --ink: #c8d3c0; --ink-dim: #6b7a64; --ink-faint: #424d3d;
+    --a: #5df2a6; --a-dim: #1d4733;
+    --warm: #ffb454; --cool: #7adfff; --rose: #ff8aa0;
+    --mono: "Berkeley Mono", "JetBrains Mono", "Fira Code", "IBM Plex Mono",
+            "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--mono);
+    font-size: 14px; line-height: 1.5; min-height: 100vh;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 3px),
+      radial-gradient(120% 90% at 50% 0%, rgba(122,223,255,0.04), transparent 60%);
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 26px 26px 90px; }
+
+  header.status {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px;
+    border: 1px solid var(--line); background: var(--bg-raise);
+    padding: 10px 16px; margin-bottom: 14px;
+  }
+  header.status .prog { color: var(--cool); font-weight: 700; letter-spacing: 0.04em; }
+  header.status .prog::before { content: "▌"; animation: blink 1.2s steps(1) infinite; margin-right: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+  header.status .crumb { color: var(--ink-dim); }
+  header.status .spacer { flex: 1; }
+  header.status .stamp { color: var(--ink-faint); font-size: 12px; }
+  header.status .live { color: var(--a); font-size: 12px; }
+  header.status .live.bad { color: var(--rose); }
+
+  nav.chapters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 18px; }
+  nav.chapters button {
+    font: inherit; font-size: 12px; color: var(--ink-faint); background: transparent;
+    border: 1px solid var(--line); padding: 3px 8px; cursor: pointer;
+  }
+  nav.chapters button:hover { color: var(--ink); border-color: var(--line-bright); }
+  nav.chapters button[aria-current="true"] { color: var(--bg); background: var(--a); border-color: var(--a); font-weight: 700; }
+
+  .stage { border: 1px solid var(--line); background: var(--bg-raise); padding: 22px 24px 24px; min-height: 320px; }
+  .stage .kicker { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; }
+  .stage h1 { font-size: 22px; color: var(--ink); margin: 4px 0 14px; font-weight: 700; letter-spacing: -0.01em; }
+  .stage .lede { font-size: 15px; color: var(--ink); margin: 0 0 14px; }
+  .stage p { color: var(--ink-dim); margin: 0 0 12px; }
+  .stage em { color: var(--ink); font-style: normal; }
+  .stage b { color: var(--a); font-weight: 700; }
+  .stage code { color: var(--cool); background: var(--bg-chip); padding: 1px 5px; border: 1px solid var(--line); }
+
+  .figure { border: 1px solid var(--line-bright); background: var(--bg); margin: 14px 0; }
+  .figure .cap { color: var(--ink-faint); font-size: 11px; padding: 6px 12px; border-bottom: 1px solid var(--line); letter-spacing: 0.08em; text-transform: uppercase; }
+  .figure table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .figure td, .figure th { padding: 5px 12px; text-align: left; border-bottom: 1px solid var(--line); color: var(--ink-dim); }
+  .figure tr:last-child td { border-bottom: none; }
+  .figure th { color: var(--ink-faint); font-weight: 400; }
+  .figure td.n { color: var(--a); font-weight: 700; }
+  .figure td.fp { color: var(--warm); }
+  .figure .ne { color: var(--rose); font-weight: 700; }
+  pre.cmd { background: var(--bg-chip); border: 1px solid var(--line); padding: 10px 12px; margin: 12px 0; overflow-x: auto; color: var(--ink); font-size: 12.5px; }
+  pre.cmd .c { color: var(--ink-faint); }
+  .say { border-left: 2px solid var(--a-dim); padding: 2px 0 2px 14px; margin: 12px 0; color: var(--ink); font-size: 14.5px; }
+
+  /* live dial */
+  .dial { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin: 14px 0 4px; }
+  .dial .grp { display: flex; gap: 4px; align-items: center; }
+  .dial .grp > span { color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin-right: 4px; }
+  .dial button {
+    font: inherit; font-size: 12px; color: var(--ink-dim); background: var(--bg-chip);
+    border: 1px solid var(--line); padding: 4px 10px; cursor: pointer;
+  }
+  .dial button:hover { color: var(--ink); border-color: var(--line-bright); }
+  .dial button[aria-pressed="true"] { color: var(--bg); background: var(--cool); border-color: var(--cool); font-weight: 700; }
+  .live-note { color: var(--ink-faint); font-size: 11.5px; margin: 8px 0 0; }
+  .live-note b { color: var(--a); }
+  .bar { display: inline-block; height: 9px; background: var(--a-dim); border: 1px solid var(--a); vertical-align: middle; }
+
+  .pager { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
+  .pager button { font: inherit; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); padding: 7px 16px; cursor: pointer; }
+  .pager button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-bright); }
+  .pager button:disabled { opacity: 0.3; cursor: default; }
+  .pager .count { flex: 1; text-align: center; color: var(--ink-faint); font-size: 12px; }
+  .note { color: var(--ink-faint); font-size: 11.5px; margin-top: 22px; border-top: 1px solid var(--line); padding-top: 12px; }
+</style>
 </head>
-<body></body>
+<body>
+<main>
+  <header class="status">
+    <span class="prog">tour</span>
+    <span class="crumb">riffcat · a walk through the facets</span>
+    <span class="spacer"></span>
+    <span class="live" id="engine">booting wasm…</span>
+    <span class="stamp">arrow keys or the buttons</span>
+  </header>
+  <nav class="chapters" id="nav"></nav>
+  <tour-app></tour-app>
+  <p class="note">
+    A guided read, not a slide deck. The fingerprints in the “drive the dial” chapter are computed
+    <b>live, in your browser</b>: riffcat compiled to wasm, no backend. Numbers there are this run;
+    corpus-level figures elsewhere are the 2026-06-11 schema-2 stage, the rest are measured builds.
+  </p>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
 </html>
