@@ -64,13 +64,15 @@ pub fn lower_object(
     owner: &str,
     options: &LowerOptions,
 ) -> Result<LoweredYul, YulLowerError> {
-    // Collect function definitions with stable paths first: the object walk
-    // needs per-object name -> node-key maps for call edges (function scope
-    // is PER OBJECT in Yul — the creation and deployed objects routinely
-    // define same-named helpers), and the fn units come from the same
-    // collection.
+    // Collect function definitions with their lexical scope chains first: the
+    // object walk needs per-object scope tables for call edges (function
+    // scope is PER OBJECT in Yul — the creation and deployed objects
+    // routinely define same-named helpers), and the fn units come from the
+    // same collection. `assign_fn_paths` then turns each into a stable node
+    // path, qualifying only the names that actually recur (see its docs).
     let mut functions = Vec::new();
     collect_functions(object, "o", &mut functions);
+    assign_fn_paths(&mut functions);
 
     let object_graph_key = GraphKey::new(
         EntityKey::new("yul.object", owner, "o").map_err(YulLowerError::Core)?,
@@ -79,10 +81,12 @@ pub fn lower_object(
     .map_err(YulLowerError::Core)?;
     let mut graph = Graph::new(object_graph_key.clone());
 
-    // object path -> (fn name -> node key). Function NODES are pre-created
-    // so call edges can target them regardless of textual order (Yul allows
-    // calls before the definition appears).
-    let mut scoped_fn_keys: BTreeMap<String, BTreeMap<String, NodeKey>> = BTreeMap::new();
+    // object path -> the functions visible in that object, each with its
+    // enclosing-function scope chain. Function NODES are pre-created so call
+    // edges can target them regardless of textual order (Yul allows calls
+    // before the definition appears); resolution is by scope chain so a call
+    // binds to the definition actually visible at the call site.
+    let mut object_scopes: BTreeMap<String, Vec<ScopedFn>> = BTreeMap::new();
     for collected in &functions {
         let key = NodeKey::entity(
             EntityKey::new("yul.function", owner, collected.fn_path.as_str())
@@ -94,22 +98,17 @@ pub fn lower_object(
         graph
             .add_field(&key, Dimension::Names, "name", collected.def.name.as_str())
             .map_err(YulLowerError::Core)?;
-        scoped_fn_keys
+        object_scopes
             .entry(collected.object_path.clone())
             .or_default()
-            .insert(collected.def.name.clone(), key);
+            .push(ScopedFn {
+                chain: collected.chain.clone(),
+                name: collected.def.name.clone(),
+                key,
+            });
     }
 
-    let empty = BTreeMap::new();
-    lower_object_scoped(
-        owner,
-        &mut graph,
-        options,
-        object,
-        "o",
-        &scoped_fn_keys,
-        &empty,
-    )?;
+    lower_object_scoped(owner, &mut graph, options, object, "o", &object_scopes)?;
 
     let object_unit = LoweredUnit {
         graph_key: object_graph_key,
@@ -119,9 +118,11 @@ pub fn lower_object(
     };
 
     // One standalone graph per function: same owner, fn-rooted paths. The
-    // unit's name map covers itself (self-recursion stays an SCC) plus any
-    // NESTED definitions inside its body, pre-registered like the object
-    // walk does so forward/sibling calls can edge to them.
+    // unit's scope table covers itself at the root (self-recursion stays an
+    // SCC) plus any NESTED definitions inside its body, pre-registered like
+    // the object walk so forward/sibling calls can edge to them. The function
+    // itself is rooted here, so it sits at the empty chain — matching the
+    // chain `lower_function` lowers its body under.
     let mut function_units = Vec::new();
     for collected in &functions {
         let path = &collected.fn_path;
@@ -134,12 +135,18 @@ pub fn lower_object(
         let mut graph = Graph::new(graph_key.clone());
 
         let mut nested = Vec::new();
-        collect_functions_in_block(&def.body, path, &mut nested);
-        let mut self_map: BTreeMap<String, NodeKey> = BTreeMap::new();
+        let mut nested_chain = Vec::new();
+        collect_functions_in_block(&def.body, path, &mut nested_chain, &mut nested);
+        assign_fn_paths(&mut nested);
+
         let self_key = NodeKey::entity(
             EntityKey::new("yul.function", owner, path.as_str()).map_err(YulLowerError::Core)?,
         );
-        self_map.insert(def.name.clone(), self_key);
+        let mut scopes = vec![ScopedFn {
+            chain: Vec::new(),
+            name: def.name.clone(),
+            key: self_key,
+        }];
         for inner in &nested {
             let key = NodeKey::entity(
                 EntityKey::new("yul.function", owner, inner.fn_path.as_str())
@@ -151,13 +158,18 @@ pub fn lower_object(
             graph
                 .add_field(&key, Dimension::Names, "name", inner.def.name.as_str())
                 .map_err(YulLowerError::Core)?;
-            self_map.insert(inner.def.name.clone(), key);
+            scopes.push(ScopedFn {
+                chain: inner.chain.clone(),
+                name: inner.def.name.clone(),
+                key,
+            });
         }
 
         let mut ctx = Ctx {
             owner,
             graph: &mut graph,
-            fn_keys: &self_map,
+            scopes: &scopes,
+            chain: Vec::new(),
         };
         lower_function(&mut ctx, def, path)?;
         function_units.push(LoweredUnit {
@@ -176,26 +188,30 @@ pub fn lower_object(
 
 struct CollectedFn<'a> {
     object_path: String,
+    /// Enclosing function names, outermost first — the lexical scope chain
+    /// (blocks/ifs/loops do not nest function scope, only functions do).
+    chain: Vec<String>,
+    /// Node path, filled by `assign_fn_paths` once collisions are known.
     fn_path: String,
     def: &'a FunctionDefinition,
 }
 
-/// Function names are unique within one object's scope chain (Yul forbids
-/// shadowing), so `<object_path>/fn:<name>` is collision-free; same-named
-/// helpers in different objects (creation vs deployed — routine in solc
-/// output) get distinct object paths.
-///
-/// Known v1 limitation (external review P2, deliberate): SIBLING blocks may
-/// each legally declare a same-named block-local function. This flat
-/// per-object collection then produces duplicate keys and lowering fails
-/// LOUDLY with `DuplicateNode` — it never mis-resolves a call on valid
-/// input (out-of-scope calls are invalid Yul and rejected by solc upstream).
-/// Full lexical scope chains are the fix if such code ever matters; solc
-/// IR never emits it.
+/// A function's lexical coordinates within one object scope: its
+/// enclosing-function chain plus the pre-created node key. Call resolution
+/// walks these by scope (see [`resolve_call`]).
+struct ScopedFn {
+    chain: Vec<String>,
+    name: String,
+    key: NodeKey,
+}
+
 fn collect_functions<'a>(object: &'a Object, object_path: &str, out: &mut Vec<CollectedFn<'a>>) {
-    collect_functions_in_block(&object.code.block, object_path, out);
+    let mut chain = Vec::new();
+    collect_functions_in_block(&object.code.block, object_path, &mut chain, out);
     for (index, child) in object.sub_objects.iter().enumerate() {
         if let ObjectChild::Object(sub) = child {
+            // Sub-objects are a fresh function scope (their own creation/
+            // deployed code), so the chain restarts empty.
             collect_functions(sub, &format!("{object_path}.{index}"), out);
         }
     }
@@ -204,6 +220,7 @@ fn collect_functions<'a>(object: &'a Object, object_path: &str, out: &mut Vec<Co
 fn collect_functions_in_block<'a>(
     block: &'a Block,
     object_path: &str,
+    chain: &mut Vec<String>,
     out: &mut Vec<CollectedFn<'a>>,
 ) {
     for statement in &block.statements {
@@ -211,32 +228,114 @@ fn collect_functions_in_block<'a>(
             Statement::FunctionDefinition(def) => {
                 out.push(CollectedFn {
                     object_path: object_path.to_string(),
-                    fn_path: format!("{object_path}/fn:{}", def.name),
+                    chain: chain.clone(),
+                    fn_path: String::new(),
                     def,
                 });
-                collect_functions_in_block(&def.body, object_path, out);
+                chain.push(def.name.clone());
+                collect_functions_in_block(&def.body, object_path, chain, out);
+                chain.pop();
             }
-            Statement::Block(inner) => collect_functions_in_block(inner, object_path, out),
-            Statement::If(stmt) => collect_functions_in_block(&stmt.body, object_path, out),
+            Statement::Block(inner) => collect_functions_in_block(inner, object_path, chain, out),
+            Statement::If(stmt) => collect_functions_in_block(&stmt.body, object_path, chain, out),
             Statement::Switch(stmt) => {
                 for case in &stmt.cases {
-                    collect_functions_in_block(&case.body, object_path, out);
+                    collect_functions_in_block(&case.body, object_path, chain, out);
                 }
             }
             Statement::ForLoop(stmt) => {
-                collect_functions_in_block(&stmt.pre, object_path, out);
-                collect_functions_in_block(&stmt.post, object_path, out);
-                collect_functions_in_block(&stmt.body, object_path, out);
+                collect_functions_in_block(&stmt.pre, object_path, chain, out);
+                collect_functions_in_block(&stmt.post, object_path, chain, out);
+                collect_functions_in_block(&stmt.body, object_path, chain, out);
             }
             _ => {}
         }
     }
 }
 
+/// Assign each collected function its node path.
+///
+/// A name that is unique within its object keeps the flat
+/// `<object_path>/fn:<name>` path. This is the overwhelmingly common case and
+/// it is identity-stable: every contract that already lowered gets the exact
+/// same node keys (and therefore the same digests) as before.
+///
+/// A name that RECURS within one object is qualified by its enclosing-function
+/// scope chain — `<object_path>/fn:<outer>/fn:<name>`. solc's via-IR pipeline
+/// emits this whenever two functions each carry an inline-assembly helper of
+/// the same name (Seaport 1.6's `usr$gcd`, nested in two different functions);
+/// the flat keying used to collide here and abort the whole ingest.
+///
+/// Residual (genuinely fails loudly, by design): two same-named functions at
+/// the SAME function-nesting depth in sibling anonymous blocks share a chain,
+/// so they still collide on `DuplicateNode`. That is invalid to mis-resolve
+/// and solc does not emit it; widening the qualifier to full block paths would
+/// churn identity digests for no real input, so we stop here.
+fn assign_fn_paths(functions: &mut [CollectedFn]) {
+    let mut counts: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+    for collected in functions.iter() {
+        *counts
+            .entry((collected.object_path.as_str(), collected.def.name.as_str()))
+            .or_default() += 1;
+    }
+    let recurring: std::collections::BTreeSet<(String, String)> = counts
+        .iter()
+        .filter(|(_, count)| **count > 1)
+        .map(|((object, name), _)| ((*object).to_string(), (*name).to_string()))
+        .collect();
+
+    for collected in functions.iter_mut() {
+        let recurs =
+            recurring.contains(&(collected.object_path.clone(), collected.def.name.clone()));
+        if recurs {
+            let mut path = collected.object_path.clone();
+            for enclosing in &collected.chain {
+                path.push_str("/fn:");
+                path.push_str(enclosing);
+            }
+            path.push_str("/fn:");
+            path.push_str(&collected.def.name);
+            collected.fn_path = path;
+        } else {
+            collected.fn_path = format!("{}/fn:{}", collected.object_path, collected.def.name);
+        }
+    }
+}
+
+/// Whether `prefix` is a (non-strict) leading sub-chain of `chain`.
+fn chain_is_prefix(prefix: &[String], chain: &[String]) -> bool {
+    prefix.len() <= chain.len() && prefix.iter().zip(chain).all(|(a, b)| a == b)
+}
+
+/// Resolve a CALL to `name` from a site at `chain`: the innermost visible
+/// definition (longest enclosing-scope prefix). On valid Yul this binds to
+/// the one definition in scope — and for a unique name it agrees with the old
+/// flat lookup, since a call only ever names a function it can actually see.
+fn resolve_call<'a>(scopes: &'a [ScopedFn], chain: &[String], name: &str) -> Option<&'a NodeKey> {
+    scopes
+        .iter()
+        .filter(|scoped| scoped.name == name && chain_is_prefix(&scoped.chain, chain))
+        .max_by_key(|scoped| scoped.chain.len())
+        .map(|scoped| &scoped.key)
+}
+
+/// Resolve a DEFINITION declared at exactly `chain` (used when lowering the
+/// definition itself, to recover the path `assign_fn_paths` gave its node).
+fn resolve_def<'a>(scopes: &'a [ScopedFn], chain: &[String], name: &str) -> Option<&'a NodeKey> {
+    scopes
+        .iter()
+        .find(|scoped| scoped.name == name && scoped.chain == chain)
+        .map(|scoped| &scoped.key)
+}
+
 struct Ctx<'a> {
     owner: &'a str,
     graph: &'a mut Graph,
-    fn_keys: &'a BTreeMap<String, NodeKey>,
+    /// The functions visible in the current object/function scope.
+    scopes: &'a [ScopedFn],
+    /// Enclosing-function names of the statement currently being lowered;
+    /// pushed/popped by [`lower_statement`] around each function body.
+    chain: Vec<String>,
 }
 
 impl Ctx<'_> {
@@ -258,15 +357,15 @@ fn lower_object_scoped(
     options: &LowerOptions,
     object: &Object,
     path: &str,
-    scoped_fn_keys: &BTreeMap<String, BTreeMap<String, NodeKey>>,
-    empty: &BTreeMap<String, NodeKey>,
+    object_scopes: &BTreeMap<String, Vec<ScopedFn>>,
 ) -> Result<NodeKey, YulLowerError> {
-    let fn_keys = scoped_fn_keys.get(path).unwrap_or(empty);
+    let scopes = object_scopes.get(path).map(Vec::as_slice).unwrap_or(&[]);
     let node = {
         let mut ctx = Ctx {
             owner,
             graph,
-            fn_keys,
+            scopes,
+            chain: Vec::new(),
         };
         let node = ctx.node("yul.object", path)?;
         if !object.name.is_empty() {
@@ -300,8 +399,7 @@ fn lower_object_scoped(
                     options,
                     sub,
                     &format!("{path}.{index}"),
-                    scoped_fn_keys,
-                    empty,
+                    object_scopes,
                 )?;
                 graph
                     .add_child(&node, "object", ordinal, &sub_node)
@@ -419,15 +517,22 @@ fn lower_statement(
         Statement::FunctionDefinition(def) => {
             // Definitions live at their own stable fn path (matching the
             // collection pass), not at the statement path: moving a function
-            // within a block changes only its child ordinal.
-            let fn_path = match ctx.fn_keys.get(&def.name) {
+            // within a block changes only its child ordinal. The path is keyed
+            // by lexical scope, so same-named helpers in sibling scopes stay
+            // distinct (see `assign_fn_paths`).
+            let fn_path = match resolve_def(ctx.scopes, &ctx.chain, &def.name) {
                 Some(NodeKey::Entity(entity)) => entity.local().to_string(),
-                // Not in the scope map (shouldn't happen with correct
+                // Not in the scope table (shouldn't happen with correct
                 // collection; kept graceful): statement-local path, no
                 // incoming call edges.
                 _ => format!("{path}/fn:{}", def.name),
             };
-            lower_function(ctx, def, &fn_path)
+            // The body lowers one scope deeper, so calls inside it resolve
+            // against this function's own nested helpers first.
+            ctx.chain.push(def.name.clone());
+            let result = lower_function(ctx, def, &fn_path);
+            ctx.chain.pop();
+            result
         }
         Statement::VariableDeclaration(decl) => {
             let node = ctx.node("yul.let", path)?;
@@ -569,9 +674,10 @@ fn lower_expression(
                 ctx.graph
                     .add_field(&node, Dimension::Names, "callee", callee)
                     .map_err(YulLowerError::Core)?;
-                if let Some(fn_key) = ctx.fn_keys.get(callee) {
+                if let Some(fn_key) = resolve_call(ctx.scopes, &ctx.chain, callee) {
                     // Dependency role: recursion becomes an SCC and gets the
-                    // WL treatment (invariant I4).
+                    // WL treatment (invariant I4). Resolution is by lexical
+                    // scope, so the edge binds to the definition visible here.
                     ctx.graph
                         .add_edge(&node, "calls", fn_key, EdgeRole::Dependency)
                         .map_err(YulLowerError::Core)?;
@@ -612,4 +718,123 @@ fn lower_literal(
             .map_err(YulLowerError::Core)?;
     }
     Ok(node)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse_object;
+    use riff_catalog_core::{
+        CyclePolicy, DigestRequest, HashPolicy, Value, ViewMode, digest_graph,
+    };
+
+    // Two same-named helpers nested in DIFFERENT parent functions. This is
+    // legal Yul (sibling scopes don't shadow), and it is exactly what solc's
+    // via-IR pipeline emits when two functions each carry an inline-assembly
+    // helper of the same name — Seaport 1.6's `usr$gcd` is the real-world
+    // case. The deliberately different bodies (recursive Euclid vs. a bare
+    // add) make conflation a visible correctness bug rather than a no-op.
+    const REUSED_NESTED_NAME: &str = r#"
+    object "C" { code {
+        function outer_a(x) -> r {
+            function gcd(a, b) -> g {
+                switch b
+                case 0 { g := a }
+                default { g := gcd(b, mod(a, b)) }
+            }
+            r := gcd(x, 6)
+        }
+        function outer_b(y) -> s {
+            function gcd(p, q) -> h { h := add(p, q) }
+            s := gcd(y, 7)
+        }
+        let z := outer_a(10)
+        let w := outer_b(20)
+    } }"#;
+
+    fn structure_digest(unit: &LoweredUnit) -> riff_catalog_core::Digest {
+        let policy = HashPolicy::new(
+            YUL_AST_LEVEL,
+            ViewMode::AnonymousShape,
+            CyclePolicy::CondenseScc,
+        )
+        .unwrap();
+        *digest_graph(
+            &DigestRequest::all_dimensions(unit.graph_key.clone(), policy),
+            &unit.graph,
+        )
+        .unwrap()
+        .hashes
+        .graph
+        .get(Dimension::Structure)
+        .unwrap()
+    }
+
+    /// Regression for the duplicate-yul-name hard-fail (the Seaport ingest
+    /// bug): same-named helpers in different scopes must lower into distinct,
+    /// correctly-resolved functions instead of colliding on one node key.
+    #[test]
+    fn reused_nested_function_name_does_not_collide() {
+        let object = parse_object(REUSED_NESTED_NAME).unwrap();
+        let lowered = lower_object(&object, "test:reused:ir", &LowerOptions::default())
+            .expect("same-named nested helpers must lower without DuplicateNode");
+
+        // Both `gcd` definitions surface as their own yul-fn unit, with
+        // distinct keys (the collision used to abort lowering entirely).
+        let gcds: Vec<&LoweredUnit> = lowered
+            .functions
+            .iter()
+            .filter(|unit| unit.name == "gcd")
+            .collect();
+        assert_eq!(gcds.len(), 2, "each gcd definition is its own unit");
+        assert_ne!(
+            gcds[0].graph_key, gcds[1].graph_key,
+            "the two gcd units must carry distinct keys"
+        );
+
+        // They are genuinely different functions; merging them would corrupt
+        // the fingerprint, so their shapes must stay distinct.
+        assert_ne!(
+            structure_digest(gcds[0]),
+            structure_digest(gcds[1]),
+            "distinct-shape helpers must not collapse to one fingerprint"
+        );
+
+        // Object graph: all four definitions are represented, and each `gcd`
+        // call resolves to the gcd in its OWN scope (not a single shared
+        // over-approximation), so BOTH gcd nodes receive a `calls` edge.
+        let object_graph = &lowered.object.graph;
+        let function_nodes = object_graph
+            .nodes
+            .values()
+            .filter(|node| node.kind.as_str() == "yul.function")
+            .count();
+        assert_eq!(function_nodes, 4, "outer_a, outer_b, and two gcd");
+
+        let gcd_keys: std::collections::BTreeSet<_> = object_graph
+            .nodes
+            .values()
+            .filter(|node| {
+                node.kind.as_str() == "yul.function"
+                    && node.fields.iter().any(|field| {
+                        field.name.as_str() == "name" && field.value == Value::from("gcd")
+                    })
+            })
+            .map(|node| node.key.clone())
+            .collect();
+        assert_eq!(gcd_keys.len(), 2, "two distinct gcd nodes in the object graph");
+
+        let called: std::collections::BTreeSet<_> = object_graph
+            .edges
+            .iter()
+            .filter(|edge| edge.label.as_str() == "calls")
+            .map(|edge| edge.target.clone())
+            .collect();
+        for gcd in &gcd_keys {
+            assert!(
+                called.contains(gcd),
+                "each gcd must be the target of a scope-correct call edge"
+            );
+        }
+    }
 }
