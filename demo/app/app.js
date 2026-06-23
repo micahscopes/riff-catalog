@@ -158,6 +158,13 @@ const CH = [
       multiply; tighten it and they split. Next chapter, you turn it yourself.</p>`,
   },
   {
+    nav: "facets",
+    kicker: "the dial, on five functions",
+    title: "What a facet actually does.",
+    lede: "Five tiny functions, fingerprinted live in your browser. Slide the facet and watch which collapse to one shape, and which never do.",
+    body: `<facet-primer></facet-primer>`,
+  },
+  {
     nav: "drive the dial",
     kicker: "live, in your browser",
     title: "Same color, same shape.",
@@ -464,6 +471,78 @@ function solHi(src) {
   }
   return out + code(src.slice(last));
 }
+
+// Facet primer: five tiny, fully-readable functions, fingerprinted live at the
+// source level (sol-fn). Slide the facet and watch which functions collapse to
+// the same shape and which never do. This is the vocabulary every later chapter
+// leans on, taught on code you can read in one glance. Data+AST in facetdemo.js.
+const FACET_GLOSS = {
+  "full": "every dimension counts",
+  "names-blind": "names dropped; constants and types still count",
+  "structure": "shape only; names, constants, and types all dropped",
+};
+const feq = (d) => "fe-" + d.slice(0, 12);
+customElements.define("facet-primer", class extends HTMLElement {
+  async connectedCallback() {
+    this.facet = "full";
+    const data = window.RIFFCAT_FACET;
+    if (!data) { this.innerHTML = `<p class="live-note bad">primer data not loaded</p>`; return; }
+    this.fns = data.fns;
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      const t0 = performance.now();
+      const units = JSON.parse(b.fingerprint_source(data.ast, "shape")).filter((u) => u.unit === "sol-fn");
+      this._ms = performance.now() - t0;
+      this.byName = {};
+      for (const u of units) this.byName[u.name.split(".").pop()] = u;
+      this.render();
+    } catch (e) { this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`; }
+  }
+  facetCount(f) { return new Set(this.fns.map((x) => this.byName[x.name].facets[f])).size; }
+  render() {
+    const FACETS = ["full", "names-blind", "structure"];
+    const seen = new Map(), order = []; // digest -> [names], in display order
+    for (const f of this.fns) {
+      const d = this.byName[f.name].facets[this.facet];
+      if (!seen.has(d)) { seen.set(d, []); order.push(d); }
+      seen.get(d).push(f.name);
+    }
+    const cards = this.fns.map((f) => {
+      const d = this.byName[f.name].facets[this.facet], hue = digestHue(d);
+      return `<div class="fcard ${feq(d)}" data-eq="${feq(d)}" style="--hue:${hue}">`
+        + `<div class="fcard-h"><span class="sw" style="background:hsl(${hue} 70% 55%)"></span>${f.name}</div>`
+        + `<pre class="fcode">${solHi(f.src)}</pre></div>`;
+    }).join("");
+    const ladder = FACETS.map((f) =>
+      `<span class="stop ${f === this.facet ? "on" : ""}" data-facet="${f}"><b>${this.facetCount(f)}</b> ${f}</span>`).join("");
+    const groupTxt = order.map((d) => { const n = seen.get(d); return n.length > 1 ? `<b>${n.join(" = ")}</b>` : n[0]; }).join(" · ");
+    const idle = `<b>${seen.size}</b> shape${seen.size === 1 ? "" : "s"} at ${this.facet} · ${FACET_GLOSS[this.facet]}`
+      + ` · ${groupTxt} · ${this._ms.toFixed(0)} ms in your browser`;
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
+      <div class="fgrid">${cards}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>`;
+    this.querySelectorAll("[data-facet]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
+    this.querySelectorAll(".fcard").forEach((card) => {
+      card.addEventListener("mouseenter", () => {
+        const twins = this.querySelectorAll("." + card.dataset.eq);
+        this.querySelectorAll(".fcard").forEach((x) => x.classList.add("dim"));
+        twins.forEach((x) => { x.classList.remove("dim"); x.classList.add("twin"); });
+        const read = this.querySelector(".eqread");
+        if (read) read.innerHTML = twins.length > 1
+          ? `<b>${twins.length}</b> share this shape at ${this.facet}: <b>${[...twins].map((x) => x.querySelector(".fcard-h").textContent.trim()).join(" = ")}</b>`
+          : `<b>${card.querySelector(".fcard-h").textContent.trim()}</b> is unique at ${this.facet}: no other function has this shape`;
+      });
+      card.addEventListener("mouseleave", () => {
+        this.querySelectorAll(".fcard").forEach((x) => x.classList.remove("dim", "twin"));
+        const read = this.querySelector(".eqread");
+        if (read) read.innerHTML = read.dataset.idle || "";
+      });
+    });
+  }
+});
 
 const RECOG_HINT = "hover a function for its source; click to pin it (the URL updates, so the view is shareable)";
 customElements.define("recog-scan", class extends HTMLElement {
