@@ -119,11 +119,12 @@
   .eqrow { display: flex; align-items: flex-start; gap: 12px; margin: 7px 0; }
   .eqrow .libname { width: 90px; flex: none; text-align: right; color: var(--ink-dim); font-size: 12px; padding-top: 6px; }
   .eqrow .libname b { color: var(--ink); display: block; font-weight: 700; }
-  /* Sized to content, not frozen. The dim-strip is the same height for every
-     chip (five cells + a one-line note), so sweeping never resizes it; only
-     idle->hover grows it, which grows the page (growth never clamps scroll) and
-     so cannot start the flicker loop. No fixed height means it never clips. */
-  .eqread { min-height: 1.6em; color: var(--ink-faint); font-size: 11.5px; margin-top: 10px; }
+  /* Reserve a constant height: both the idle line and the hover dim-strip fit
+     inside it, so hovering never resizes the readout. A resizing readout changes
+     page height, which clamps scrollTop at the bottom and bumps the chips into a
+     hover flicker (the red/blue pulsing). No clip now that the taller library
+     readout is gone. */
+  .eqread { min-height: 84px; color: var(--ink-faint); font-size: 11.5px; margin-top: 10px; }
   .eqread b { color: var(--a); }
   .eqread .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: middle; margin-right: 6px; border: 1px solid rgba(255,255,255,.25); }
   .eqread .dims { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
