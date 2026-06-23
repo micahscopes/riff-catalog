@@ -1,0 +1,31 @@
+{
+  "note": "Vendored Solidity standard-library sources, pinned, for riffcat's recognition catalog. Canonical upstream source at fixed versions, committed so the catalog is reproducible and does not depend on scratch dirs or live network. Refresh with ./refresh.sh.",
+  "fetched": "2026-06-23",
+  "source_route": "GitHub release tarballs via codeload.github.com (the npm CDNs are blocked from this environment)",
+  "libraries": [
+    {
+      "name": "openzeppelin",
+      "repo": "OpenZeppelin/openzeppelin-contracts",
+      "ref": "v5.0.2",
+      "tarball_subdir": "contracts",
+      "pruned": ["mocks"],
+      "license": "MIT"
+    },
+    {
+      "name": "solady",
+      "repo": "Vectorized/solady",
+      "ref": "v0.0.245",
+      "tarball_subdir": "src",
+      "pruned": [],
+      "license": "MIT"
+    },
+    {
+      "name": "solmate",
+      "repo": "transmissions11/solmate",
+      "ref": "v7",
+      "tarball_subdir": "src",
+      "pruned": ["test"],
+      "license": "AGPL-3.0-only"
+    }
+  ]
+}
