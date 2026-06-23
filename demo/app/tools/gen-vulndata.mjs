@@ -111,11 +111,14 @@ const SRC = {
 }`,
 };
 
+// count = verified Sourcify compilations carrying this exact source variant
+// (the dominant source_hash per shape, from the vuln-sniff report; a floor, the
+// capped endpoint cannot sweep all 35M rows). solady has no measured count here.
 const shapes = [
-  { key: "oz-vuln", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "pre v4.9 (<= v4.8.x)", status: "vulnerable", keyword: true, src: SRC.ozVuln, ...fp("ozVuln") },
-  { key: "solmate-vuln", lib: "solmate", label: "Solmate convertToShares", sub: "no virtual shares", status: "vulnerable", keyword: true, src: SRC.solmateVuln, ...fp("solmateVuln") },
-  { key: "oz-patched", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "v4.9.0+ (decimals offset)", status: "patched", keyword: false, src: SRC.ozPatched, ...fp("ozPatched") },
-  { key: "solady-mitig", lib: "solady", label: "Solady convertToShares", sub: "virtual shares on by default", status: "mitigated", keyword: true, src: SRC.soladyMitig, ...fp("soladyMitig") },
+  { key: "oz-vuln", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "pre v4.9 (<= v4.8.x)", status: "vulnerable", keyword: true, count: 152, src: SRC.ozVuln, ...fp("ozVuln") },
+  { key: "solmate-vuln", lib: "solmate", label: "Solmate convertToShares", sub: "no virtual shares", status: "vulnerable", keyword: true, count: 588, src: SRC.solmateVuln, ...fp("solmateVuln") },
+  { key: "oz-patched", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "v4.9.0+ (decimals offset)", status: "patched", keyword: false, count: 977, src: SRC.ozPatched, ...fp("ozPatched") },
+  { key: "solady-mitig", lib: "solady", label: "Solady convertToShares", sub: "virtual shares on by default", status: "mitigated", keyword: true, count: null, src: SRC.soladyMitig, ...fp("soladyMitig") },
 ];
 
 const CHAIN = { 1: "Ethereum", 137: "Polygon", 8453: "Base", 56: "BSC", 10: "Optimism", 42161: "Arbitrum" };
@@ -145,6 +148,11 @@ console.log("\noz vulnerable vs patched separate at structure:", ozV !== ozP ? "
 const sol = shapes.find((s) => s.key === "solady-mitig").structure;
 console.log("solady mitigated shape != oz-vulnerable shape:", sol !== ozV ? "YES" : "NO (PROBLEM)");
 
-const out = { generated: "2026-06-23", shapes, witnesses };
+const out = {
+  generated: "2026-06-23",
+  bug: "ERC-4626's first-deposit inflation bug: when a vault is empty, the old _convertToShares mints shares 1:1, so an attacker front-runs with a tiny deposit, donates assets to skew the price, and the next depositor's shares round to zero.",
+  corpus: 7237, // ERC4626.sol source rows on Sourcify
+  shapes, witnesses,
+};
 writeFileSync(join(HERE, "../vulndata.js"), "window.RIFFCAT_VULN = " + JSON.stringify(out) + ";\n");
 console.log("\nwrote vulndata.js:", shapes.length, "shapes,", witnesses.length, "witnesses");

@@ -206,21 +206,21 @@ const CH = [
     nav: "sourcify",
     kicker: "at the bytecode level",
     title: "Partial and exact match are one dial.",
-    lede: "The metadata trailer splits into its own node, so a facet can keep it or drop it.",
+    lede: "",
     body: `
-      <p>The <b>Structure</b> facet drops the metadata value: that is a Sourcify <em>partial match</em>. A
+      <p>The <b>Structure</b> facet drops the metadata trailer: a Sourcify <em>partial match</em>. A
       constants-bearing facet keeps it: an <em>exact match</em>. Full-vs-partial, and the Verifier Alliance
-      transformations schema (cborAuxdata, library masks), are the same facet idea in another vocabulary.</p>`,
+      transformations schema, are the same facet idea in another vocabulary.</p>`,
   },
   {
     nav: "trust",
     kicker: "sameness that is not structural",
     title: "Claims, attestations, and a receipt.",
-    lede: "Some equivalence the fingerprint cannot infer. Three inputs carry it instead.",
+    lede: "",
     body: `
-      <p>A <b>claim</b> is an attributable, removable assertion that two things are equivalent: a wrong one merges
-      them <em>visibly</em>, never silently. An <b>attestation</b> is a one-sided property (“verified-total”) that
-      can gate a query. The <b>corpus root</b> is a canonical, order-independent fingerprint of the whole corpus:
+      <p>Some equivalence is not structural. A <b>claim</b> is an attributable, removable assertion that two things
+      are equivalent: a wrong one merges them <em>visibly</em>, never silently. An <b>attestation</b> is a one-sided
+      property that can gate a query. The <b>corpus root</b> is an order-independent fingerprint of the whole corpus:
       recompute it anywhere, <code>--check</code> fails loudly.</p>
       <pre class="cmd"><span class="c"># the integrity receipt; conditional claims pin to it</span>
 riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
@@ -231,11 +231,9 @@ riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
     title: "One shared thing.",
     lede: "",
     body: `
-      <p>Not a compiler, not a shared IR, not a database, not a standards proposal. One shared thing: the canonical
-      form and the facet vocabulary, versioned.</p>
-      <p>EVM is the first corpus, not the last; the form is level-tagged and language-agnostic, so fe-emitted Yul
-      ingests through the same door. It rides the recompilation Sourcify already runs at verification: no crawler,
-      no new compiler, a post-pass over output already produced.</p>`,
+      <p>Not a compiler, not a shared IR, not a database, not a standards proposal: one shared thing, the canonical
+      form plus the facet vocabulary, versioned. EVM is the first corpus, not the last, and it rides the
+      recompilation Sourcify already runs at verification: no crawler, no new compiler.</p>`,
   },
 ];
 
@@ -720,15 +718,21 @@ customElements.define("vuln-sniff", class extends HTMLElement {
   render() {
     const tabs = this.shapes.map((s, i) => {
       const st = VULN_STATUS[s.status];
+      const meta = s.count ? `${s.count} contracts` : "no shape match";
       return `<button class="vtab ${i === this.sel ? "on" : ""}" data-i="${i}" style="--hue:${st.hue}">`
-        + `<span class="vdot"></span><span class="vt-n">${s.label.replace("OpenZeppelin", "OZ")}</span>`
-        + `<span class="vsub">${s.sub}</span></button>`;
+        + `<span class="vt-badge">${st.label}</span>`
+        + `<span class="vt-n">${s.label.replace("OpenZeppelin", "OZ")}</span>`
+        + `<span class="vsub">${s.sub}</span>`
+        + `<span class="vt-meta">${meta} · <span class="vt-grep${s.keyword ? "" : " miss"}">${s.keyword ? "grep hit" : "grep miss"}</span></span>`
+        + `</button>`;
     }).join("");
     const kw = this.shapes.filter((s) => s.keyword).length, vuln = this.shapes.filter((s) => s.status === "vulnerable").length;
     this.innerHTML = `
+      <p class="vbug">${this.data.bug}</p>
+      <p class="vlead">One known-bad shape, matched across the <b>${this.data.corpus.toLocaleString()}</b> ERC-4626 vaults on Sourcify. Pick a shape:</p>
       <div class="vtabs">${tabs}</div>
       <div class="vbody codepanel"></div>
-      <p class="twnote vgrep">A keyword search for the bug (the <code>_initialConvertToShares</code> helper, or a <code>supply == 0 ? assets</code> branch) flags <b>${kw}</b> of these ${this.shapes.length} shapes. Only <b>${vuln}</b> are actually vulnerable. The fingerprint separates vulnerable from patched, and clears the mitigated solady shape the keyword trips on.</p>`;
+      <p class="twnote vgrep">A keyword search (the <code>_initialConvertToShares</code> helper, or a <code>supply == 0</code> branch) flags <b>${kw}</b> of the ${this.shapes.length}: both vulnerable shapes and the mitigated solady decoy. The structure fingerprint flags only the <b>${vuln}</b> that are actually vulnerable: it tells the patch apart and sees through the decoy.</p>`;
     this.querySelectorAll(".vtab").forEach((t) =>
       t.addEventListener("click", () => { this.sel = +t.dataset.i; this.querySelectorAll(".vtab").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
     this.renderBody();
@@ -738,12 +742,13 @@ customElements.define("vuln-sniff", class extends HTMLElement {
     const wits = this.witnesses.filter((w) => w.shape === s.key);
     const chips = wits.map((w) =>
       `<a class="wchip" href="${w.url}" target="_blank" rel="noopener">${w.name}<span class="wch">${w.chainName}</span></a>`).join("");
+    const match = s.count
+      ? `riffcat matched this exact shape in <b>${s.count}</b> verified contracts`
+      : `mitigated, but keeps the <code>_initialConvertToShares</code> name a keyword search trips on`;
     this.querySelector(".vbody").innerHTML =
       `<div class="vhead" style="--hue:${st.hue}"><span class="vbadge">${st.label}</span> <b>${s.label}</b> <span class="vsub">${s.sub}</span>`
-      + `<span class="vfp">structure ${s.structure.slice(0, 10)}</span>`
-      + (s.keyword ? `<span class="vkw">keyword search hits this</span>` : `<span class="vkw clear">keyword search misses this</span>`)
-      + `</div>`
+      + `<span class="vfp">structure ${s.structure.slice(0, 10)}</span></div>`
       + `<pre class="code">${solHi(s.src)}</pre>`
-      + `<div class="vwits"><span class="vwlabel">${wits.length} deployed ${wits.length === 1 ? "contract" : "contracts"} carrying this shape (verified on Sourcify):</span>${chips}</div>`;
+      + `<div class="vwits"><span class="vwlabel">${match}${wits.length ? ", for example:" : ""}</span>${chips}</div>`;
   }
 });
