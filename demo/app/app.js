@@ -503,7 +503,11 @@ customElements.define("recog-scan", class extends HTMLElement {
     const legend = `<div class="legend">`
       + Object.values(LIB).map(({ n, h }) => `<span><i style="background:hsl(${h} 70% 55%)"></i>${n}</span>`).join("")
       + `<span><i class="novel"></i>novel / app code</span></div>`;
-    this.innerHTML = `${legend}${rows}<div class="codepanel"><div class="cphint">${RECOG_HINT}</div></div>`;
+    // codedock reserves a constant height; the panel inside sizes to content.
+    // Keeping the dock height fixed means hovering never changes the page
+    // height, so scrollTop never clamps and the chips never bump (the flicker),
+    // while the visible panel still hugs each function's source.
+    this.innerHTML = `${legend}${rows}<div class="codedock"><div class="codepanel"><div class="cphint">${RECOG_HINT}</div></div></div>`;
     this.panel = this.querySelector(".codepanel");
     this.addEventListener("mouseover", (e) => { const c = e.target.closest(".chip"); if (c && this.contains(c)) this.show(c); });
     this.addEventListener("mouseout", (e) => {
