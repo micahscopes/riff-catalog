@@ -698,12 +698,18 @@ customElements.define("recog-dedup", class extends HTMLElement {
 const VULN_STATUS = {
   vulnerable: { label: "vulnerable", hue: 2 },
   patched: { label: "patched", hue: 145 },
-  mitigated: { label: "mitigated", hue: 38 },
+  mitigated: { label: "look-alike", hue: 38 },
+};
+const VULN_ROLE = {
+  vulnerable: "Vulnerable: when the vault is empty this mints shares 1:1, so an attacker can steal the first real deposit.",
+  patched: "The fix: same function name, structurally different. The fingerprint separates it from the vulnerable shape, so you can see who patched.",
+  mitigated: "Safe look-alike: keeps the _initialConvertToShares name a text search would flag, but routes through virtual shares, so its shape is not the vulnerable one.",
 };
 customElements.define("vuln-sniff", class extends HTMLElement {
   connectedCallback() {
     const data = window.RIFFCAT_VULN;
     if (!data || !data.shapes) { this.innerHTML = `<p class="live-note bad">vuln data not loaded</p>`; return; }
+    this.data = data;
     this.shapes = data.shapes;
     this.witnesses = data.witnesses;
     this.sel = 0;
@@ -717,16 +723,16 @@ customElements.define("vuln-sniff", class extends HTMLElement {
         + `<span class="vt-badge">${st.label}</span>`
         + `<span class="vt-n">${s.label.replace("OpenZeppelin", "OZ")}</span>`
         + `<span class="vsub">${s.sub}</span>`
-        + `<span class="vt-meta">${meta} · <span class="vt-grep${s.keyword ? "" : " miss"}">${s.keyword ? "grep hit" : "grep miss"}</span></span>`
+        + `<span class="vt-meta">${meta}</span>`
         + `</button>`;
     }).join("");
     const kw = this.shapes.filter((s) => s.keyword).length, vuln = this.shapes.filter((s) => s.status === "vulnerable").length;
     this.innerHTML = `
       <p class="vbug">${this.data.bug}</p>
-      <p class="vlead">One known-bad shape, matched across the <b>${this.data.corpus.toLocaleString()}</b> ERC-4626 vaults on Sourcify. Pick a shape:</p>
+      <p class="vlead">Matched across the <b>${this.data.corpus.toLocaleString()}</b> ERC-4626 vaults on Sourcify by <b>shape</b>, not by exact source (forks rename and reformat) and not by name (a safe library can keep the bug's name). Pick a shape:</p>
       <div class="vtabs">${tabs}</div>
       <div class="vbody codepanel"></div>
-      <p class="twnote vgrep">A keyword search (the <code>_initialConvertToShares</code> helper, or a <code>supply == 0</code> branch) flags <b>${kw}</b> of the ${this.shapes.length}: both vulnerable shapes and the mitigated solady decoy. The structure fingerprint flags only the <b>${vuln}</b> that are actually vulnerable: it tells the patch apart and sees through the decoy.</p>`;
+      <p class="twnote vgrep"><b>Where this beats Sourcify and grep.</b> Sourcify matches byte-identical source; a text search matches names. Neither separates the vulnerable shape from the patched one, follows a fork that renamed its variables, or clears the safe look-alike that kept the name. The structure fingerprint does all three.</p>`;
     this.querySelectorAll(".vtab").forEach((t) =>
       t.addEventListener("click", () => { this.sel = +t.dataset.i; this.querySelectorAll(".vtab").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
     this.renderBody();
@@ -737,12 +743,13 @@ customElements.define("vuln-sniff", class extends HTMLElement {
     const chips = wits.map((w) =>
       `<a class="wchip" href="${w.url}" target="_blank" rel="noopener">${w.name}<span class="wch">${w.chainName}</span></a>`).join("");
     const match = s.count
-      ? `riffcat matched this exact shape in <b>${s.count}</b> verified contracts`
-      : `mitigated, but keeps the <code>_initialConvertToShares</code> name a keyword search trips on`;
+      ? `riffcat matched this exact shape in <b>${s.count}</b> verified contracts, for example:`
+      : `kept the name, but its shape is not the vulnerable one; these are safe:`;
     this.querySelector(".vbody").innerHTML =
       `<div class="vhead" style="--hue:${st.hue}"><span class="vbadge">${st.label}</span> <b>${s.label}</b> <span class="vsub">${s.sub}</span>`
       + `<span class="vfp">structure ${s.structure.slice(0, 10)}</span></div>`
+      + `<p class="vrole">${VULN_ROLE[s.status]}</p>`
       + `<pre class="code">${solHi(s.src)}</pre>`
-      + `<div class="vwits"><span class="vwlabel">${match}${wits.length ? ", for example:" : ""}</span>${chips}</div>`;
+      + `<div class="vwits"><span class="vwlabel">${match}</span>${chips}</div>`;
   }
 });
