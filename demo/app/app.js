@@ -186,6 +186,13 @@ const CH = [
     body: `<recog-dedup></recog-dedup>`,
   },
   {
+    nav: "sniff it out",
+    kicker: "fingerprint the bug",
+    title: "We know this bug. Find it everywhere.",
+    lede: "A known ERC-4626 inflation shape, fingerprinted, then matched across deployed contracts. The patch is a different shape, so you can tell who fixed it, and a keyword search trips where the fingerprint does not.",
+    body: `<vuln-sniff></vuln-sniff>`,
+  },
+  {
     nav: "the compiler too",
     kicker: "one level down, post-compilation",
     title: "Below the source, the compiler repeats itself even harder.",
@@ -692,5 +699,54 @@ customElements.define("recog-dedup", class extends HTMLElement {
       <div class="legend">${legend}</div>
       <div class="dduprows">${rows}</div>
       <p class="twnote">Each bar is one contract; the grey is its novel surface, the only part an auditor reads closely. TimelockController is entirely standard, Airdrop almost entirely its own.</p>`;
+  }
+});
+
+// Sniff out a known bug by shape. The ERC-4626 first-deposit inflation bug lives
+// in _convertToShares; we fingerprint the vulnerable shapes, the patched shape,
+// and the mitigated-but-keyword-matching solady shape, then list the deployed
+// contracts that carry each. Shapes + witnesses precomputed in vulndata.js.
+const VULN_STATUS = {
+  vulnerable: { label: "vulnerable", hue: 2 },
+  patched: { label: "patched", hue: 145 },
+  mitigated: { label: "mitigated", hue: 38 },
+};
+customElements.define("vuln-sniff", class extends HTMLElement {
+  connectedCallback() {
+    const data = window.RIFFCAT_VULN;
+    if (!data || !data.shapes) { this.innerHTML = `<p class="live-note bad">vuln data not loaded</p>`; return; }
+    this.shapes = data.shapes;
+    this.witnesses = data.witnesses;
+    this.sel = 0;
+    this.render();
+  }
+  render() {
+    const tabs = this.shapes.map((s, i) => {
+      const st = VULN_STATUS[s.status];
+      return `<button class="vtab ${i === this.sel ? "on" : ""}" data-i="${i}" style="--hue:${st.hue}">`
+        + `<span class="vdot"></span><span class="vt-n">${s.label.replace("OpenZeppelin", "OZ")}</span>`
+        + `<span class="vsub">${s.sub}</span></button>`;
+    }).join("");
+    const kw = this.shapes.filter((s) => s.keyword).length, vuln = this.shapes.filter((s) => s.status === "vulnerable").length;
+    this.innerHTML = `
+      <div class="vtabs">${tabs}</div>
+      <div class="vbody codepanel"></div>
+      <p class="twnote vgrep">A keyword search for the bug (the <code>_initialConvertToShares</code> helper, or a <code>supply == 0 ? assets</code> branch) flags <b>${kw}</b> of these ${this.shapes.length} shapes. Only <b>${vuln}</b> are actually vulnerable. The fingerprint separates vulnerable from patched, and clears the mitigated solady shape the keyword trips on.</p>`;
+    this.querySelectorAll(".vtab").forEach((t) =>
+      t.addEventListener("click", () => { this.sel = +t.dataset.i; this.querySelectorAll(".vtab").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
+    this.renderBody();
+  }
+  renderBody() {
+    const s = this.shapes[this.sel], st = VULN_STATUS[s.status];
+    const wits = this.witnesses.filter((w) => w.shape === s.key);
+    const chips = wits.map((w) =>
+      `<a class="wchip" href="${w.url}" target="_blank" rel="noopener">${w.name}<span class="wch">${w.chainName}</span></a>`).join("");
+    this.querySelector(".vbody").innerHTML =
+      `<div class="vhead" style="--hue:${st.hue}"><span class="vbadge">${st.label}</span> <b>${s.label}</b> <span class="vsub">${s.sub}</span>`
+      + `<span class="vfp">structure ${s.structure.slice(0, 10)}</span>`
+      + (s.keyword ? `<span class="vkw">keyword search hits this</span>` : `<span class="vkw clear">keyword search misses this</span>`)
+      + `</div>`
+      + `<pre class="code">${solHi(s.src)}</pre>`
+      + `<div class="vwits"><span class="vwlabel">${wits.length} deployed ${wits.length === 1 ? "contract" : "contracts"} carrying this shape (verified on Sourcify):</span>${chips}</div>`;
   }
 });
