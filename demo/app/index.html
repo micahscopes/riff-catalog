@@ -193,6 +193,34 @@
   pre.code .c-ty { color: var(--cool); }
   pre.code .c-com { color: var(--ink-faint); font-style: italic; }
   pre.code .c-str { color: var(--warm); }
+  /* twins: list of shared library functions + a detail panel (source + the
+     contracts that carry the shape). */
+  .twwrap { display: flex; gap: 14px; align-items: flex-start; margin-top: 10px; }
+  .twlist { flex: 0 0 252px; display: flex; flex-direction: column; gap: 3px; max-height: 360px; overflow-y: auto; }
+  .twrow { display: flex; align-items: baseline; gap: 8px; text-align: left; font: inherit; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); padding: 5px 8px; cursor: pointer; }
+  .twrow:hover { border-color: var(--line-bright); color: var(--ink); }
+  .twrow.on { border-color: var(--a-dim); background: var(--a-dim); color: var(--ink); }
+  .twrow .tw-c { flex: none; font-size: 11px; color: var(--ink-faint); }
+  .twrow .tw-c b { color: var(--a); }
+  .twrow .tw-n { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .twrow .tw-lib { flex: none; font-size: 10.5px; }
+  .twview { flex: 1; min-width: 0; }
+  .twcontracts { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .cchip { font-size: 11px; color: var(--ink-dim); background: var(--bg-chip); border: 1px solid var(--line); border-radius: 3px; padding: 2px 7px; }
+  .twnote { color: var(--ink-faint); font-size: 11.5px; padding: 8px 12px 10px; margin: 0; }
+  /* dedup: a stacked proportion bar overall and one bar per contract. */
+  .dduphead { font-size: 14px; color: var(--ink); margin-top: 4px; }
+  .dduphead b { color: var(--a); }
+  .dduphead .ddup-pct { color: var(--ink-faint); }
+  .ddupbar { display: flex; height: 12px; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .ddupbar.big { height: 22px; margin: 10px 0 8px; }
+  .ddupbar > span { display: block; min-width: 0; }
+  .ddupbar .seg-novel { background: var(--bg-chip); }
+  .dduprows { margin-top: 14px; }
+  .dduprow { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .dduprow .ddup-n { flex: 0 0 132px; text-align: right; color: var(--ink-dim); font-size: 12px; }
+  .dduprow .ddupbar { flex: 1; }
+  .dduprow .ddup-r { flex: 0 0 50px; color: var(--ink-faint); font-size: 11.5px; }
 
   .pager { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
   .pager button { font: inherit; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); padding: 7px 16px; cursor: pointer; }
