@@ -165,68 +165,35 @@ const CH = [
     body: `<facet-primer></facet-primer>`,
   },
   {
-    nav: "drive the dial",
-    kicker: "live, in your browser",
-    title: "Same color, same shape.",
-    lede: "Every function the token compiled to, one chip each, colored by its fingerprint. Loosen the dial and the colors merge; hover a chip to light its twins.",
-    body: `<live-dial></live-dial>`,
-  },
-  {
-    nav: "dedup",
-    kicker: "the headline",
-    title: "Your compiler repeats itself, and now you can see it.",
-    lede: "Nine ordinary contracts, every function the compiler emitted, bucketed by fingerprint.",
-    body: `
-      <div class="figure"><div class="cap">yul-fn classes, by facet (9-contract corpus)</div>
-        <table>
-          <tr><th>facet</th><th>distinct classes</th><th>dedup</th></tr>
-          <tr><td>all (every detail)</td><td class="n">7,939 → 1,713</td><td>78.4%</td></tr>
-          <tr><td>structure only (shape)</td><td class="n">→ 481</td><td>93.9%</td></tr>
-        </table></div>
-      <p>At the shape facet, <b>94%</b> of the functions are structural duplicates. The compiler has been repeating
-      itself with no way to see it, and the generated helpers dedup perfectly: that consistency is an asset, not a
-      flaw. Same as the chapter you just drove, past one contract.</p>`,
-  },
-  {
-    nav: "twins",
-    kicker: "twins by shape",
-    title: "Seaport rhymes with a 200-line ERC20.",
-    lede: "Names-blind, the most-audited hand-written-assembly contract on Ethereum shares fingerprint classes with a toy token.",
-    body: `
-      <div class="say">“That is Seaport, fetched verified from Sourcify and recompiled with its own pinned 0.8.24.
-      Names-blind it shares <b>37</b> function-level fingerprint classes with the little ERC20 we built locally:
-      the same panic helpers, checked arithmetic, memory allocator, address→uint256 mapping accessor. Twins by
-      shape, not by name.”</div>
-      <p>591 classes against 68: the rhyme is the scaffolding every contract carries.</p>`,
-  },
-  {
-    nav: "triage",
-    kicker: "what hashing buys an auditor",
-    title: "Verified does not tell you what is in it.",
-    lede: "Every function checked for twins elsewhere. Twins = machinery. No twins = the novel surface where reading time goes.",
-    body: `
-      <div class="figure"><div class="cap">novel functions vs total (mainnet, measured)</div>
-        <table>
-          <tr><th>contract</th><th>novel / total</th><th>read</th></tr>
-          <tr><td>a token verified the same morning</td><td class="n">23 / 169</td><td>86% machinery</td></tr>
-          <tr><td>ERC-4337 EntryPoint</td><td class="n">206 / 601</td><td>genuinely novel</td></tr>
-        </table></div>
-      <p>“94% standard machinery; here are the three functions that are actually new, audit those.” It matches
-      auditor intuition both ways, and answers the public worry that <em>verified is not safe</em>.</p>`,
-  },
-  {
-    nav: "library",
-    kicker: "provenance",
-    title: "Shared machinery, lit across libraries.",
-    lede: "Three contracts, each vendoring one library's mul·div, fingerprinted live. Hover a chip: shared machinery lights up across all three rows, but each library's mul·div stands alone.",
-    body: `<live-xref></live-xref>`,
-  },
-  {
     nav: "recognized",
-    kicker: "the same, on real mainnet code",
+    kicker: "the pitch, on real mainnet code",
     title: "We know this code: it is OpenZeppelin.",
     lede: "Real verified contracts off Sourcify, each function fingerprinted at the source level against a catalog of pinned OpenZeppelin, Solady, and Solmate. Colored by the library it matches; grey is novel app code. Hover for the source.",
     body: `<recog-scan></recog-scan>`,
+  },
+  {
+    nav: "twins",
+    kicker: "the same function, contract after contract",
+    title: "You do not audit this nine times.",
+    lede: "Library functions that turn up, the exact same shape, across these real contracts. Pick one to see it and everywhere it lands.",
+    body: `<recog-twins></recog-twins>`,
+  },
+  {
+    nav: "dedup",
+    kicker: "how much is actually new",
+    title: "Most of what is deployed is not new.",
+    lede: "Across ten real mainnet contracts: how much is already a library shape, and how much is the novel surface an auditor actually has to read.",
+    body: `<recog-dedup></recog-dedup>`,
+  },
+  {
+    nav: "the compiler too",
+    kicker: "one level down, post-compilation",
+    title: "Below the source, the compiler repeats itself even harder.",
+    lede: "The same dial, now on the Yul one contract compiles to: machinery you never wrote. Loosen it and the colors merge; hover a chip to light its twins.",
+    body: `<live-dial></live-dial>
+      <p>At the shape facet, <b>94%</b> of a nine-contract corpus's emitted functions are structural duplicates: the
+      same panic helpers, allocators, and checked arithmetic, again and again. It dedups perfectly, which is good to
+      know. The story that sells, though, is the one above, on the code you actually wrote.</p>`,
   },
   {
     nav: "sourcify",
@@ -639,5 +606,91 @@ customElements.define("recog-scan", class extends HTMLElement {
     return `<div class="cphead"><b>${c.name}.${f.fn}</b> · ${verdict} · <span class="fp">${f.nb.slice(0, 8)}</span>${also}`
       + `<a href="${c.url}" target="_blank" rel="noopener">on sourcify ↗</a></div>`
       + `<pre class="code">${solHi(f.src)}</pre>`;
+  }
+});
+
+// Twins across real contracts: the same recognized library function, the exact
+// same shape, in more than one of the verified contracts. Pick one from the list
+// to see its source and every contract that carries it. Precomputed (realdata).
+customElements.define("recog-twins", class extends HTMLElement {
+  connectedCallback() {
+    const data = window.RIFFCAT_REAL;
+    if (!data || !data.contracts) { this.innerHTML = `<p class="live-note bad">recognition data not loaded</p>`; return; }
+    this.contracts = data.contracts;
+    const g = new Map(); // lib+canon -> { lib, canon, inst:[{ci,fi}], cset:Set(ci) }
+    this.contracts.forEach((c, ci) => c.fns.forEach((f, fi) => {
+      if (!f.lib || !LIB[f.lib]) return;
+      const k = f.lib + "" + f.canon;
+      if (!g.has(k)) g.set(k, { lib: f.lib, canon: f.canon, inst: [], cset: new Set() });
+      const e = g.get(k); e.inst.push({ ci, fi }); e.cset.add(ci);
+    }));
+    this.shared = [...g.values()].filter((e) => e.cset.size >= 2)
+      .sort((a, b) => b.cset.size - a.cset.size || a.canon.localeCompare(b.canon));
+    this.sel = 0;
+    this.render();
+  }
+  render() {
+    const n = this.contracts.length;
+    const list = this.shared.map((e, i) =>
+      `<button class="twrow ${i === this.sel ? "on" : ""}" data-i="${i}">`
+      + `<span class="tw-c"><b>${e.cset.size}</b>/${n}</span>`
+      + `<span class="tw-n">${e.canon}</span>`
+      + `<span class="tw-lib" style="color:hsl(${LIB[e.lib].h} 70% 62%)">${LIB[e.lib].n}</span></button>`).join("");
+    this.innerHTML = `<div class="twwrap"><div class="twlist">${list}</div><div class="twview codepanel"></div></div>`;
+    this.querySelectorAll(".twrow").forEach((b) =>
+      b.addEventListener("click", () => {
+        this.sel = +b.dataset.i;
+        this.querySelectorAll(".twrow").forEach((x, i) => x.classList.toggle("on", i === this.sel));
+        this.renderView();
+      }));
+    this.renderView();
+  }
+  renderView() {
+    const e = this.shared[this.sel], rep = e.inst[0], c = this.contracts[rep.ci], f = c.fns[rep.fi];
+    const chips = [...e.cset].sort((a, b) => a - b).map((ci) => `<span class="cchip">${this.contracts[ci].name}</span>`).join("");
+    this.querySelector(".twview").innerHTML =
+      `<div class="cphead">the same shape in <b>${e.cset.size}</b> of ${this.contracts.length}: `
+      + `<b style="color:hsl(${LIB[e.lib].h} 70% 62%)">${LIB[e.lib].n} ${e.canon}</b></div>`
+      + `<div class="twcontracts">${chips}</div>`
+      + `<pre class="code">${solHi(f.src)}</pre>`
+      + `<p class="twnote">Audit it once. Every contract above carries this shape, identifiers aside.</p>`;
+  }
+});
+
+// Dedup at the source level: of every function across the real contracts, how
+// much is a shape already in the std-lib catalog (the part you do not read) vs
+// novel app code (the part you do). One bar per contract. Precomputed (realdata).
+customElements.define("recog-dedup", class extends HTMLElement {
+  connectedCallback() {
+    const data = window.RIFFCAT_REAL;
+    if (!data || !data.contracts) { this.innerHTML = `<p class="live-note bad">recognition data not loaded</p>`; return; }
+    this.contracts = data.contracts;
+    let known = 0, total = 0; const byLib = {};
+    for (const c of this.contracts) for (const f of c.fns) { total++; if (f.lib && LIB[f.lib]) { known++; byLib[f.lib] = (byLib[f.lib] || 0) + 1; } }
+    this.stats = { known, total, novel: total - known, byLib };
+    this.render();
+  }
+  render() {
+    const s = this.stats, pct = Math.round(100 * s.known / s.total), n = this.contracts.length;
+    const libOrder = Object.entries(s.byLib).sort((a, b) => b[1] - a[1]);
+    const segs = libOrder.map(([lib, k]) => `<span style="flex:${k};background:hsl(${LIB[lib].h} 58% 46%)" title="${LIB[lib].n} ${k}"></span>`).join("")
+      + `<span class="seg-novel" style="flex:${s.novel}" title="novel ${s.novel}"></span>`;
+    const legend = libOrder.map(([lib, k]) => `<span><i style="background:hsl(${LIB[lib].h} 58% 46%)"></i>${LIB[lib].n} ${k}</span>`).join("")
+      + `<span><i class="novel"></i>novel ${s.novel}</span>`;
+    const rows = this.contracts.map((c) => {
+      const seg = {}; for (const f of c.fns) { const key = (f.lib && LIB[f.lib]) ? f.lib : "novel"; seg[key] = (seg[key] || 0) + 1; }
+      const bar = Object.entries(seg).sort((a, b) => (a[0] === "novel" ? 1 : 0) - (b[0] === "novel" ? 1 : 0))
+        .map(([key, k]) => key === "novel"
+          ? `<span class="seg-novel" style="flex:${k}"></span>`
+          : `<span style="flex:${k};background:hsl(${LIB[key].h} 58% 46%)"></span>`).join("");
+      const known = c.fns.filter((f) => f.lib && LIB[f.lib]).length;
+      return `<div class="dduprow"><span class="ddup-n">${c.name}</span><div class="ddupbar">${bar}</div><span class="ddup-r">${known}/${c.fns.length}</span></div>`;
+    }).join("");
+    this.innerHTML = `
+      <div class="dduphead"><b>${s.known}</b> of <b>${s.total}</b> functions across these ${n} contracts are shapes already in OpenZeppelin, Solady, or Solmate <span class="ddup-pct">${pct}%</span></div>
+      <div class="ddupbar big">${segs}</div>
+      <div class="legend">${legend}</div>
+      <div class="dduprows">${rows}</div>
+      <p class="twnote">Each bar is one contract; the grey is its novel surface, the only part an auditor reads closely. TimelockController is entirely standard, Airdrop almost entirely its own.</p>`;
   }
 });
