@@ -121,23 +121,21 @@ function dimStrip(c, lit) {
 function wireHighlight(host, describe) {
   if (host._wired) return;
   host._wired = true;
+  // mouseover lights the hovered chip's network (clearing the previous one
+  // first, so moving chip-to-chip repaints cleanly). mouseleave clears, and
+  // unlike mouseout it does not bubble and fires exactly once when the pointer
+  // leaves the whole component, so the highlight can never get stuck.
   host.addEventListener("mouseover", (e) => {
     const c = e.target.closest(".chip");
     if (!c || !host.contains(c)) return;
-    host.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit")); // drop the previous network before lighting this one
+    host.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit"));
     const lit = host.querySelectorAll("." + c.dataset.eq);
     host.querySelectorAll(".eqgrid").forEach((g) => g.classList.add("focused"));
     lit.forEach((x) => x.classList.add("lit"));
     const read = host.querySelector(".eqread");
     if (read) read.innerHTML = describe(c, lit);
   });
-  // mouseout/mouseover both bubble, and the order across adjacent chips is not
-  // guaranteed: sweeping A->B, mouseout(A) can fire after mouseover(B) and wipe
-  // B's fresh highlight (the flicker). When the pointer is moving to another
-  // chip, skip the clear and let that chip's mouseover own the repaint.
-  host.addEventListener("mouseout", (e) => {
-    if (!e.target.closest(".chip")) return;
-    if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".chip")) return;
+  host.addEventListener("mouseleave", () => {
     host.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit"));
     host.querySelectorAll(".eqgrid").forEach((g) => g.classList.remove("focused"));
     const read = host.querySelector(".eqread");
@@ -556,11 +554,7 @@ customElements.define("recog-scan", class extends HTMLElement {
     this.innerHTML = `${legend}${rows}<div class="codedock"><div class="codepanel"><div class="cphint">${RECOG_HINT}</div></div></div>`;
     this.panel = this.querySelector(".codepanel");
     this.addEventListener("mouseover", (e) => { const c = e.target.closest(".chip"); if (c && this.contains(c)) this.show(c); });
-    this.addEventListener("mouseout", (e) => {
-      if (!e.target.closest(".chip")) return;
-      if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".chip")) return; // sweeping to another chip; its mouseover repaints
-      this.rest();
-    });
+    this.addEventListener("mouseleave", () => this.rest()); // fires once on leaving; settles to the pinned anchor or clears, never sticks
     this.addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (c && this.contains(c)) this.toggleAnchor(c); });
   }
   show(chip) { // transient view (hover): light the shape's network + fill the panel
