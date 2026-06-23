@@ -160,12 +160,11 @@
   .recogrow .libname .srcfy:hover { text-decoration: underline; }
   .recogrow .libname .rate { display: block; color: var(--ink-faint); font-size: 10.5px; margin-top: 3px; }
   .recogrow .libname .rate b { color: var(--a); }
-  /* The dock reserves a constant height so the page never grows or shrinks on
-     hover (a changing height clamps scrollTop when scrolled down and bumps the
-     chips: the flicker race). The panel inside sizes to its content, so a short
-     function gets a tight box and only a long one (capped, with internal
-     scroll) fills the dock. The head stays pinned while a long body scrolls. */
-  .codedock { margin-top: 16px; min-height: var(--dockh); }
+  /* In flow, sized to content: the panel is the last thing on the page, so it
+     grows and shrinks at the bottom while the chips stay anchored from above.
+     A long body is capped at --dockh and scrolls internally under a pinned head;
+     short ones get a tight box, no reserved slab. */
+  .codedock { margin-top: 16px; }
   /* single scroll container: the panel scrolls, the head stays pinned, and the
      pre inside does NOT scroll (it wraps), so there is one scrollbar, not the
      panel-inside-a-pre pair there was before. */
@@ -183,7 +182,7 @@
   pre.code .c-com { color: var(--ink-faint); font-style: italic; }
   pre.code .c-str { color: var(--warm); }
 
-  .pager { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
+  .pager { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
   .pager button { font: inherit; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); padding: 7px 16px; cursor: pointer; }
   .pager button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-bright); }
   .pager button:disabled { opacity: 0.3; cursor: default; }
@@ -203,9 +202,8 @@
   <nav class="chapters" id="nav"></nav>
   <tour-app></tour-app>
   <p class="note">
-    A guided read, not a slide deck. The fingerprints in the “drive the dial” chapter are computed
-    <b>live, in your browser</b>: riffcat compiled to wasm, no backend. Numbers there are this run;
-    corpus-level figures elsewhere are the 2026-06-11 schema-2 stage, the rest are measured builds.
+    The “drive the dial” fingerprints run <b>live in your browser</b> (riffcat as wasm). Those numbers
+    are this run; corpus-level figures are the 2026-06-11 schema-2 stage.
   </p>
 </main>
 <script src="/realdata.js"></script>
