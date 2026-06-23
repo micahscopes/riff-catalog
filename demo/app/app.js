@@ -175,20 +175,11 @@ const CH = [
     body: `<live-xref></live-xref>`,
   },
   {
-    nav: "in the wild",
-    kicker: "the same, on real code, version-proof",
-    title: "Four unrelated contracts, one OpenZeppelin surface.",
-    lede: "An ERC20, an NFT, a soulbound voucher, and Vouch, fetched from Sourcify, compared at the source level.",
-    body: `
-      <div class="figure"><div class="cap">shared OZ chunks (sol-fn, names-blind), of 4 unrelated contracts</div>
-        <table>
-          <tr><td><code>Context._msgSender</code>, <code>Initializable</code></td><td class="n">4 / 4</td></tr>
-          <tr><td><code>ReentrancyGuard</code>, <code>Strings</code>, <code>Ownable</code>, <code>Math</code></td><td class="n">3 / 4</td></tr>
-          <tr><td><code>ERC721</code> core, <code>ERC20</code> surface</td><td class="n">2 / 4</td></tr>
-        </table></div>
-      <p>This is at the <em>source</em> level (<code>sol-fn</code>), which does not drift with the compiler version
-      the way Yul does. So it is the right substrate for “same library code,” and the shared chunks are recognizable
-      by name. Compiler version is recorded as provenance, never folded into the shape.</p>`,
+    nav: "recognized",
+    kicker: "the same, on real mainnet code",
+    title: "We know this code: it is OpenZeppelin.",
+    lede: "Real verified contracts off Sourcify. Each function fingerprinted at the source level and looked up in a catalog built from pinned OpenZeppelin, Solady, and Solmate. Colored by the library it was recognized as; grey is novel app code. Hover for the source.",
+    body: `<recog-scan></recog-scan>`,
   },
   {
     nav: "sourcify",
@@ -231,21 +222,43 @@ riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
   },
 ];
 
+// The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
+// chapter may own a sub-anchor after a slash ("#recognized/Contract.fn"). The
+// chapter part is handled here; sub-anchors are left to the chapter's component.
+const slugify = (s) => s.replace(/\s+/g, "-");
+
 customElements.define("tour-app", class extends HTMLElement {
   connectedCallback() {
-    this.i = 0;
     const nav = document.getElementById("nav");
     nav.innerHTML = CH.map((c, k) => `<button data-k="${k}">${k === 0 ? "·" : k}. ${c.nav}</button>`).join("");
     nav.querySelectorAll("button").forEach((b) =>
       b.addEventListener("click", () => this.go(+b.dataset.k)));
     document.addEventListener("keydown", (e) => {
-      if (e.target.closest("live-dial")) return; // let the dial keep focus
+      if (e.target.closest("live-dial") || e.target.closest("recog-scan")) return; // let those keep focus
       if (e.key === "ArrowRight") this.go(this.i + 1);
       if (e.key === "ArrowLeft") this.go(this.i - 1);
     });
+    this.i = this.chapterFromHash();
+    addEventListener("hashchange", () => {
+      const k = this.chapterFromHash();
+      if (k !== this.i) this.go(k, true); // chapter changed via hash; do not rewrite it
+    });
     this.render();
   }
-  go(k) { if (k >= 0 && k < CH.length) { this.i = k; this.render(); } }
+  chapterFromHash() {
+    const seg = decodeURIComponent((location.hash || "").replace(/^#/, "")).split("/")[0];
+    const k = CH.findIndex((c) => slugify(c.nav) === seg);
+    return k >= 0 ? k : 0;
+  }
+  go(k, fromHash) {
+    if (k < 0 || k >= CH.length) return;
+    this.i = k;
+    this.render();
+    if (!fromHash) {
+      const h = "#" + slugify(CH[k].nav); // navigating chapters clears any sub-anchor
+      if (location.hash !== h) location.hash = h;
+    }
+  }
   render() {
     const c = CH[this.i];
     document.querySelectorAll("#nav button").forEach((b, k) =>
@@ -374,5 +387,125 @@ customElements.define("live-xref", class extends HTMLElement {
     } catch (e) {
       this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
     }
+  }
+});
+
+// Recognition: real verified contracts (baked in realdata.js) scanned against
+// the committed std-lib catalog. Each function is colored by the library it was
+// recognized as (or grey if novel app code); hovering lights the same shape
+// across every contract and shows the actual Solidity in a code panel. The
+// recognition is precomputed (fingerprint + catalog lookup), so this view needs
+// no engine at runtime.
+// keyed by the catalog's lowercase library id; n = display name, h = hue.
+const LIB = {
+  openzeppelin: { n: "OpenZeppelin", h: 210 },
+  solady: { n: "Solady", h: 145 },
+  solmate: { n: "Solmate", h: 32 },
+};
+
+// Minimal, safe Solidity highlighter: tokenize comments/strings out first, then
+// color keywords and value types only inside code segments (no nested mangling).
+function solHi(src) {
+  const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const KW = /\b(function|returns?|memory|storage|calldata|public|private|internal|external|view|pure|payable|require|revert|assert|if|else|for|while|do|mapping|struct|enum|event|emit|new|delete|unchecked|assembly|modifier|constructor|using|override|virtual|import|pragma|contract|library|interface|is|abstract|immutable|constant|try|catch)\b/g;
+  const TY = /\b(address|uint\d*|int\d*|bool|bytes\d*|string)\b/g;
+  const code = (t) => esc(t).replace(KW, '<span class="c-kw">$1</span>').replace(TY, '<span class="c-ty">$1</span>');
+  const re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(src))) {
+    out += code(src.slice(last, m.index));
+    out += m[1] ? `<span class="c-com">${esc(m[1])}</span>` : `<span class="c-str">${esc(m[2])}</span>`;
+    last = re.lastIndex;
+  }
+  return out + code(src.slice(last));
+}
+
+const RECOG_HINT = "hover a function for its source; click to pin it (the URL updates, so the view is shareable)";
+customElements.define("recog-scan", class extends HTMLElement {
+  connectedCallback() {
+    const data = window.RIFFCAT_REAL;
+    if (!data || !data.contracts) { this.innerHTML = `<p class="live-note bad">recognition data not loaded</p>`; return; }
+    this.contracts = data.contracts;
+    this.spread = new Map(); // nb12 -> Set(contract index)
+    this.contracts.forEach((c, ci) => c.fns.forEach((f) => {
+      if (!this.spread.has(f.nb)) this.spread.set(f.nb, new Set());
+      this.spread.get(f.nb).add(ci);
+    }));
+    this.onHash = () => this.selectByHash(true);
+    addEventListener("hashchange", this.onHash);
+    this.render();
+    this.selectByHash(false); // honor a deep-link anchor on load
+  }
+  disconnectedCallback() { removeEventListener("hashchange", this.onHash); }
+  render() {
+    const rows = this.contracts.map((c, ci) => {
+      const rec = c.fns.filter((f) => f.lib).length;
+      const chips = c.fns.map((f, fi) => {
+        const cls = f.lib ? "chip rec" : "chip novel";
+        const hue = f.lib && LIB[f.lib] ? `style="--hue:${LIB[f.lib].h}"` : "";
+        const label = f.fn === "constructor" ? "constructor" : f.fn;
+        return `<span class="${cls} eq-${f.nb}" data-eq="eq-${f.nb}" data-ci="${ci}" data-fi="${fi}"`
+          + ` data-anchor="${encodeURIComponent(c.name + "." + f.fn)}" ${hue} title="${c.name}.${f.fn}">${label}</span>`;
+      }).join("");
+      return `<div class="eqrow recogrow">
+        <div class="libname"><b>${c.name}</b><span class="ver">${c.version}</span>
+          <a class="srcfy" href="${c.url}" target="_blank" rel="noopener">sourcify ↗</a>
+          <span class="rate"><b>${rec}</b>/${c.fns.length} std-lib</span></div>
+        <div class="eqgrid" data-ci="${ci}">${chips}</div></div>`;
+    }).join("");
+    const legend = `<div class="legend">`
+      + Object.values(LIB).map(({ n, h }) => `<span><i style="background:hsl(${h} 70% 55%)"></i>${n}</span>`).join("")
+      + `<span><i class="novel"></i>novel / app code</span></div>`;
+    this.innerHTML = `${legend}${rows}<div class="codepanel"><div class="cphint">${RECOG_HINT}</div></div>`;
+    this.panel = this.querySelector(".codepanel");
+    this.addEventListener("mouseover", (e) => { const c = e.target.closest(".chip"); if (c && this.contains(c)) this.show(c); });
+    this.addEventListener("mouseout", (e) => { if (e.target.closest(".chip")) this.rest(); });
+    this.addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (c && this.contains(c)) this.toggleAnchor(c); });
+  }
+  show(chip) { // transient view (hover): light the shape's network + fill the panel
+    this.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit"));
+    this.querySelectorAll(".eqgrid").forEach((g) => g.classList.add("focused"));
+    this.querySelectorAll("." + chip.dataset.eq).forEach((x) => x.classList.add("lit"));
+    this.panel.innerHTML = this.panelHTML(chip);
+  }
+  rest() { // settle back to the pinned anchor, or clear if nothing is pinned
+    if (this.anchorChip) this.show(this.anchorChip);
+    else {
+      this.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit"));
+      this.querySelectorAll(".eqgrid").forEach((g) => g.classList.remove("focused"));
+      this.panel.innerHTML = `<div class="cphint">${RECOG_HINT}</div>`;
+    }
+  }
+  toggleAnchor(chip) {
+    if (chip === this.anchorChip) { // click the pinned one again to unpin
+      chip.classList.remove("anchored"); this.anchorChip = null; this.rest();
+      if (location.hash !== "#recognized") location.hash = "#recognized";
+      return;
+    }
+    this.pin(chip, false);
+  }
+  pin(chip, fromHash) {
+    this.querySelectorAll(".chip.anchored").forEach((x) => x.classList.remove("anchored"));
+    chip.classList.add("anchored");
+    this.anchorChip = chip;
+    this.show(chip);
+    if (!fromHash) { const h = "#recognized/" + chip.dataset.anchor; if (location.hash !== h) location.hash = h; }
+  }
+  selectByHash(fromHash) {
+    const parts = (location.hash || "").replace(/^#/, "").split("/");
+    if (parts[0] !== "recognized" || !parts[1]) return;
+    const chip = this.querySelector(`.chip[data-anchor="${parts.slice(1).join("/")}"]`);
+    if (chip && chip !== this.anchorChip) { this.pin(chip, true); chip.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  }
+  panelHTML(chip) {
+    const c = this.contracts[+chip.dataset.ci], f = c.fns[+chip.dataset.fi];
+    const inN = this.spread.get(f.nb)?.size || 1;
+    const verdict = f.lib && LIB[f.lib]
+      ? `recognized as <span class="reclib" style="color:hsl(${LIB[f.lib].h} 70% 62%)">${LIB[f.lib].n} ${f.canon}</span>`
+      : `<span class="recnovel">novel / app-specific</span> (no std-lib match)`;
+    const also = inN > 1 ? ` · same shape in <b>${inN}</b> of these contracts` : "";
+    return `<div class="cphead"><b>${c.name}.${f.fn}</b> · ${verdict} · <span class="fp">${f.nb.slice(0, 8)}</span>${also}`
+      + `<a href="${c.url}" target="_blank" rel="noopener">on sourcify ↗</a></div>`
+      + `<pre class="code">${solHi(f.src)}</pre>`;
   }
 });
