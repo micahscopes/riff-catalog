@@ -17,6 +17,90 @@ engineReady.then(() => { badge.textContent = "wasm live ✓"; })
 
 const short = (hex) => (hex || "").slice(0, 8);
 
+// --- equivalence visuals -------------------------------------------------
+// Each function becomes a chip. Its class at a facet IS its fingerprint there,
+// so we derive both a CSS class and a color straight from the digest: same
+// shape -> same class -> same color, automatically, and hovering one chip can
+// light its whole twin-network by selecting that one class (the fe trick).
+
+// CSS-safe class key from a digest (hex, so already safe). Same digest -> same
+// key -> shared class across every chip and every grid on the page.
+const eqKey = (digest) => "eq-" + digest.slice(0, 12);
+
+// Deterministic hue from a digest. Hash the prefix so neighbors in hex space
+// still land on visibly different hues.
+function digestHue(digest) {
+  let h = 0;
+  for (let i = 0; i < 10 && i < digest.length; i++) h = (h * 131 + digest.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+// Compact, human label for a yul function name (the name is shown for people,
+// never folded into the fingerprint).
+function chipLabel(name) {
+  let s = name.replace(/^fun_/, "").replace(/^constructor_\w*?_(\d+)$/, "constructor")
+    .replace(/^constructor_/, "constructor·").replace(/_\d+$/, "");
+  return s.length > 18 ? s.slice(0, 17) + "…" : s;
+}
+
+// The five dimensions a fingerprint decomposes into, shown shortest-name first.
+const DIMS = [["structure", "struct"], ["names", "names"], ["constants", "const"], ["types", "types"], ["trace_events", "trace"]];
+
+// Render one function as a chip carrying its class + color + the per-dimension
+// digests (so a hover can show which dimensions a twin-network shares vs differs
+// on: the "faceted preimage signature" that explains why two differently-named
+// functions are the same shape).
+function chip(u, facet, lib) {
+  const d = u.facets[facet];
+  const dims = DIMS.map(([k]) => short(u.digests[k]).slice(0, 6)).join(",");
+  return `<span class="chip ${eqKey(d)}" style="--hue:${digestHue(d)}" data-eq="${eqKey(d)}"`
+    + ` data-name="${u.name}" data-fp="${short(d)}" data-dims="${dims}"${lib ? ` data-lib="${lib}"` : ""}`
+    + ` title="${u.name}">${chipLabel(u.name)}</span>`;
+}
+
+// Build the dimension breakdown for a hovered chip vs its lit network: a strip
+// of cells (green = identical across the whole network, rose = varies) plus a
+// plain-language note. This is what makes "they differ only in their names"
+// legible: the names cell goes rose, every other cell stays green.
+function dimStrip(c, lit) {
+  const mine = c.dataset.dims.split(",");
+  const arrs = [...lit].map((x) => x.dataset.dims.split(","));
+  const same = (i) => arrs.every((a) => a[i] === mine[i]);
+  const cells = DIMS.map(([, lab], i) =>
+    `<span class="dimcell ${same(i) ? "same" : "diff"}">${lab} ${mine[i]}</span>`).join("");
+  const diff = DIMS.filter((_, i) => !same(i)).map(([, lab]) => lab);
+  const note = lit.length === 1 ? "unique here at this facet"
+    : diff.length === 0 ? `all <b>${lit.length}</b> identical in every dimension`
+    : `<b>${lit.length}</b> identical except <span class="vary">${diff.join(", ")}</span>`;
+  return `<div class="dims">${cells}</div><div class="dimnote">${note}</div>`;
+}
+
+// Wire hover highlighting for every .eqgrid inside `host`. Hovering a chip lights
+// every chip sharing its class (across all grids in the host) and dims the rest,
+// then writes a one-line readout. Delegated on `host` and wired once: re-renders
+// replace the inner DOM, so handlers re-query rather than capture stale nodes.
+// The idle readout is restored from the current `.eqread`'s data-idle attribute.
+function wireHighlight(host, describe) {
+  if (host._wired) return;
+  host._wired = true;
+  host.addEventListener("mouseover", (e) => {
+    const c = e.target.closest(".chip");
+    if (!c || !host.contains(c)) return;
+    const lit = host.querySelectorAll("." + c.dataset.eq);
+    host.querySelectorAll(".eqgrid").forEach((g) => g.classList.add("focused"));
+    lit.forEach((x) => x.classList.add("lit"));
+    const read = host.querySelector(".eqread");
+    if (read) read.innerHTML = describe(c, lit);
+  });
+  host.addEventListener("mouseout", (e) => {
+    if (!e.target.closest(".chip")) return;
+    host.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit"));
+    host.querySelectorAll(".eqgrid").forEach((g) => g.classList.remove("focused"));
+    const read = host.querySelector(".eqread");
+    if (read) read.innerHTML = read.dataset.idle || "";
+  });
+}
+
 const CH = [
   {
     nav: "start",
@@ -34,13 +118,9 @@ const CH = [
   {
     nav: "drive the dial",
     kicker: "live, in your browser",
-    title: "Turn the dial on a real contract.",
-    lede: "Every function a small token compiled to. Fingerprinted right now, client-side, at three facets. Watch the classes collapse as you loosen the dial.",
-    body: `
-      <live-dial></live-dial>
-      <p>No backend answered this. The contract's Yul went into riffcat-compiled-to-wasm and came back as facet
-      fingerprints, in the time shown. Loosen from <em>full</em> to <em>names-blind</em> to <em>structure</em> and
-      identical-shaped functions fall into the same class: that collapse is the dial doing its job.</p>`,
+    title: "Same color, same shape.",
+    lede: "Every function a small token compiled to, one chip each, colored by its fingerprint. Loosen the dial and watch the colors merge. Hover a chip to light its twins.",
+    body: `<live-dial></live-dial>`,
   },
   {
     nav: "dedup",
@@ -90,14 +170,9 @@ const CH = [
   {
     nav: "library",
     kicker: "provenance",
-    title: "Which library did you actually vendor?",
-    lede: "The same primitive in OpenZeppelin, Solady, and Solmate is a different fingerprint. Computed live, right here, from each library's own source.",
-    body: `
-      <live-xref></live-xref>
-      <p>Within a library the chunk is one fingerprint across every contract that vendors it: the three digests
-      above each held identical across three unrelated wrapper contracts (a vault, an airdrop, a lottery). Across
-      libraries the same math has a different shape. The supply chain is in the fingerprint. The fuller sweep,
-      five primitives across the three libraries, lands <b>zero collisions</b> the same way.</p>`,
+    title: "Shared machinery, lit across libraries.",
+    lede: "Three contracts, each vendoring one library's mul·div, fingerprinted live. Hover a chip: the machinery they share lights up across all three rows, but each library's mul·div stands alone.",
+    body: `<live-xref></live-xref>`,
   },
   {
     nav: "in the wild",
@@ -193,91 +268,74 @@ customElements.define("tour-app", class extends HTMLElement {
   }
 });
 
-// The live chapter: fingerprint the baked Demo contract in-browser and let the
-// reader turn the dial (shape vs identity; full / names-blind / structure).
+// Drive the dial: fingerprint the baked Demo contract in-browser, render every
+// function as a chip colored by its fingerprint, and let the reader turn the
+// dial. The facet ladder doubles as the selector and shows the class count at
+// each stop, so the visual collapse and the number move together.
 const FACETS = ["full", "names-blind", "structure"];
-const FACET_LABEL = { full: "full (every detail)", "names-blind": "names-blind", structure: "structure only" };
 
 customElements.define("live-dial", class extends HTMLElement {
   async connectedCallback() {
     this.mode = "shape";
+    this.facet = "names-blind";
     this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
     try {
-      const b = await engineReady;
-      const raw = b.fixture("demo");
-      if (!raw) throw new Error("demo fixture missing");
-      this.fixture = raw;
-      this.bindings = b;
+      this.bindings = await engineReady;
+      this.fixture = this.bindings.fixture("demo");
+      if (!this.fixture) throw new Error("demo fixture missing");
       this.render();
     } catch (e) {
       this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
     }
   }
-  compute() {
-    const t0 = performance.now();
-    const units = JSON.parse(this.bindings.fingerprint_yul(this.fixture, this.mode));
-    const ms = (performance.now() - t0);
-    const object = units[0];
-    const funcs = units.slice(1);
-    const classesAt = (facet) => new Set(funcs.map((u) => u.facets[facet])).size;
-    // largest twin group at the structure facet (shape-identical functions)
-    const byStruct = new Map();
-    for (const u of funcs) {
-      const k = u.facets.structure;
-      if (!byStruct.has(k)) byStruct.set(k, []);
-      byStruct.get(k).push(u.name);
+  unitsFor(mode) {
+    this._cache = this._cache || {};
+    if (!this._cache[mode]) {
+      const t0 = performance.now();
+      this._cache[mode] = JSON.parse(this.bindings.fingerprint_yul(this.fixture, mode));
+      this._ms = performance.now() - t0;
     }
-    const biggest = [...byStruct.values()].sort((a, b) => b.length - a.length)[0] || [];
-    return { ms, object, n: funcs.length, classesAt, biggest };
+    return this._cache[mode];
   }
   render() {
-    const r = this.compute();
-    const n = r.n;
-    const rows = FACETS.map((f) => {
-      const k = r.classesAt(f);
-      const pct = n ? Math.round((1 - k / n) * 100) : 0;
-      const w = Math.max(2, Math.round((k / Math.max(1, n)) * 220));
-      return `<tr><td>${FACET_LABEL[f]}</td>
-        <td class="n">${n} → ${k}</td>
-        <td><span class="bar" style="width:${w}px"></span> ${pct}% twins</td></tr>`;
-    }).join("");
-    const members = r.biggest.slice(0, 6).map((s) => `<code>${s}</code>`).join(" ");
-    const more = r.biggest.length > 6 ? ` +${r.biggest.length - 6} more` : "";
-    const hint = this.mode === "shape"
-      ? "shape: paths never enter the digest, so same-shaped code collapses as you loosen the dial."
-      : "identity: each artifact is path-bound, so nothing collapses. That is the contrast that shows what shape buys you.";
+    const funcs = this.unitsFor(this.mode).slice(1);
+    const count = (f) => new Set(funcs.map((u) => u.facets[f])).size;
+    const ladder = FACETS.map((f) =>
+      `<span class="stop ${f === this.facet ? "on" : ""}" data-facet="${f}"><b>${count(f)}</b> ${f}</span>`).join("");
+    const grid = funcs.map((u) => chip(u, this.facet)).join("");
+    const k = count(this.facet);
+    const idle = `${funcs.length} functions · <b>${k}</b> classes at ${this.facet} · ${this.mode} ·`
+      + ` ${this.mode === "shape" ? "loosen the dial and the colors merge" : "identity pins every artifact, so nothing merges"}`
+      + ` · ${this._ms.toFixed(0)} ms in your browser`;
     this.innerHTML = `
-      <div class="dial">
+      <div class="dialbar">
         <div class="grp"><span>mode</span>
           <button data-mode="shape" aria-pressed="${this.mode === "shape"}">shape</button>
           <button data-mode="identity" aria-pressed="${this.mode === "identity"}">identity</button>
         </div>
+        <div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div>
       </div>
-      <div class="figure"><div class="cap">demo · ${n} yul functions · fingerprinted live (${this.mode})</div>
-        <table>
-          <tr><th>facet</th><th>distinct classes</th><th>collapse</th></tr>
-          ${rows}
-        </table></div>
-      <p class="live-note">${hint}</p>
-      <p class="live-note">object fingerprint at structure: <b>${short(r.object.facets.structure)}</b> ·
-        largest shape-identical group (${r.biggest.length}): ${members}${more}</p>
-      <p class="live-note">computed in your browser in <b>${r.ms.toFixed(1)} ms</b>: riffcat, as wasm, no server.</p>`;
-    this.querySelectorAll("[data-mode]").forEach((btn) =>
-      btn.addEventListener("click", () => {
-        if (this.mode === btn.dataset.mode) return;
-        this.mode = btn.dataset.mode;
-        this.render();
-      }));
+      <div class="eqgrid">${grid}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>`;
+    this.querySelectorAll("[data-mode]").forEach((b) =>
+      b.addEventListener("click", () => { if (this.mode !== b.dataset.mode) { this.mode = b.dataset.mode; this.render(); } }));
+    this.querySelectorAll("[data-facet]").forEach((b) =>
+      b.addEventListener("click", () => { if (this.facet !== b.dataset.facet) { this.facet = b.dataset.facet; this.render(); } }));
+    wireHighlight(this, (c, lit) =>
+      `<span class="sw" style="background:hsl(${digestHue(c.dataset.eq.slice(3))} 70% 55%)"></span>`
+      + `${c.dataset.name} · <span style="color:var(--warm)">${c.dataset.fp}</span>`
+      + dimStrip(c, lit));
   }
 });
 
-// The library cross-reference, computed live: fingerprint one wrapper contract
-// per library, locate that library's full-precision mul·div function, and show
-// its names-blind shape. Same math, three libraries, three fingerprints.
+// Library cross-reference: one wrapper per library, every emitted function as a
+// chip at names-blind. Because color and class come from the fingerprint, the
+// machinery the three libraries share lands on the same color in every row, and
+// hovering it lights all three; each library's mul·div is its own island.
 const XREF = [
-  { id: "oz-muldiv", lib: "OpenZeppelin", call: "Math.mulDiv", token: "mulDiv" },
-  { id: "solady-muldiv", lib: "Solady", call: "FixedPointMathLib.fullMulDiv", token: "fullMulDiv" },
-  { id: "solmate-muldiv", lib: "Solmate", call: "FixedPointMathLib.mulDivDown", token: "mulDivDown" },
+  { id: "oz-muldiv", lib: "OpenZeppelin", short: "OZ" },
+  { id: "solady-muldiv", lib: "Solady", short: "Solady" },
+  { id: "solmate-muldiv", lib: "Solmate", short: "Solmate" },
 ];
 
 customElements.define("live-xref", class extends HTMLElement {
@@ -285,22 +343,34 @@ customElements.define("live-xref", class extends HTMLElement {
     this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
     try {
       const b = await engineReady;
+      const F = "names-blind";
       const t0 = performance.now();
-      const found = XREF.map((x) => {
-        const units = JSON.parse(b.fingerprint_yul(b.fixture(x.id), "shape")).slice(1);
-        const fn = units.find((u) => u.name.startsWith("fun_") && u.name.includes(x.token));
-        return { ...x, nb: fn ? fn.facets["names-blind"] : null, st: fn ? fn.facets.structure : null };
+      const rows = XREF.map((x) => ({ x, funcs: JSON.parse(b.fingerprint_yul(b.fixture(x.id), "shape")).slice(1) }));
+      const ms = (performance.now() - t0).toFixed(0);
+      // how many distinct chunks are shared across all three libraries
+      const spread = new Map();
+      for (const { x, funcs } of rows)
+        for (const u of funcs) {
+          const d = u.facets[F];
+          if (!spread.has(d)) spread.set(d, new Set());
+          spread.get(d).add(x.short);
+        }
+      const all3 = [...spread.values()].filter((s) => s.size === 3).length;
+      const gridRows = rows.map(({ x, funcs }) =>
+        `<div class="eqrow"><div class="libname"><b>${x.short}</b>${funcs.length} fns</div>`
+        + `<div class="eqgrid" data-lib="${x.short}">${funcs.map((u) => chip(u, F, x.short)).join("")}</div></div>`).join("");
+      const idle = `${spread.size} distinct chunks · <b>${all3}</b> shared across all three libraries`
+        + ` · hover one to trace it · ${ms} ms in your browser`;
+      this.innerHTML = `${gridRows}<div class="eqread" data-idle="${idle}">${idle}</div>`;
+      wireHighlight(this, (c, lit) => {
+        const libs = new Set([...lit].map((x) => x.dataset.lib));
+        const where = libs.size === 3 ? "shared across <b>all three</b> libraries"
+          : libs.size === 2 ? `shared across <b>two</b> (${[...libs].join(", ")})`
+          : `<b>only</b> in ${[...libs][0]}`;
+        return `<span class="sw" style="background:hsl(${digestHue(c.dataset.eq.slice(3))} 70% 55%)"></span>`
+          + `${c.dataset.name} · <span style="color:var(--warm)">${c.dataset.fp}</span> · ${where}`
+          + dimStrip(c, lit);
       });
-      const ms = (performance.now() - t0).toFixed(1);
-      const distinct = new Set(found.map((f) => f.nb)).size;
-      const rows = found.map((f) =>
-        `<tr><td>${f.lib} <code>${f.call}</code></td><td class="fp">${short(f.nb)}</td></tr>`).join("");
-      this.innerHTML = `
-        <div class="figure"><div class="cap">full-precision mul·div, names-blind · fingerprinted live</div>
-          <table>${rows}</table></div>
-        <p class="live-note"><b>${distinct} / ${found.length}</b> distinct
-          ${distinct === found.length ? ", zero collisions" : ""} ·
-          computed in your browser in <b>${ms} ms</b> from each library's own source.</p>`;
     } catch (e) {
       this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
     }
