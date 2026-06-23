@@ -149,11 +149,7 @@ const CH = [
     kicker: "the one idea",
     title: "“The same” has a dial.",
     lede: "Compile a contract and most of what comes out is not unique. The question is how strict you want “the same” to be.",
-    body: `
-      <p>Same in every detail? Same once you ignore the names, the embedded constants, the types? Each setting is
-      a <em>facet</em>, and two pieces of code can <b>rhyme</b> at a facet even when they read differently.</p>
-      <p>Two artifacts on the same fingerprint at a facet are <em>twins</em> there. Loosen the dial and twins
-      multiply; tighten it and they split. Next chapter, you turn it yourself.</p>`,
+    body: `<p>Same in every detail, or same once you ignore the names, the constants, the types? Each setting is a <em>facet</em>. You turn the dial yourself next.</p>`,
   },
   {
     nav: "facets",
@@ -184,54 +180,18 @@ const CH = [
     body: `<recog-dedup></recog-dedup>`,
   },
   {
-    nav: "sniff it out",
-    kicker: "fingerprint the bug",
-    title: "We know this bug. Find it everywhere.",
-    lede: "A known ERC-4626 inflation shape, fingerprinted, then matched across deployed contracts. The patch is a different shape, so you can tell who fixed it, and a keyword search trips where the fingerprint does not.",
-    body: `<vuln-sniff></vuln-sniff>`,
-  },
-  {
     nav: "the compiler too",
     kicker: "one level down, post-compilation",
     title: "Below the source, the compiler repeats itself even harder.",
     lede: "The same dial, now on the Yul one contract compiles to: machinery you never wrote. Loosen it and the colors merge; hover a chip to light its twins.",
-    body: `<live-dial></live-dial>
-      <p>At the shape facet, <b>94%</b> of a nine-contract corpus's emitted functions are structural duplicates: the
-      same panic helpers, allocators, and checked arithmetic, again and again. It dedups perfectly, which is good to
-      know. The story that sells, though, is the one above, on the code you actually wrote.</p>`,
+    body: `<live-dial></live-dial>`,
   },
   {
-    nav: "sourcify",
-    kicker: "at the bytecode level",
-    title: "Partial and exact match are one dial.",
-    lede: "",
-    body: `
-      <p>The <b>Structure</b> facet drops the metadata trailer: a Sourcify <em>partial match</em>. A
-      constants-bearing facet keeps it: an <em>exact match</em>. Full-vs-partial, and the Verifier Alliance
-      transformations schema, are the same facet idea in another vocabulary.</p>`,
-  },
-  {
-    nav: "trust",
-    kicker: "sameness that is not structural",
-    title: "Claims, attestations, and a receipt.",
-    lede: "",
-    body: `
-      <p>Some equivalence is not structural. A <b>claim</b> is an attributable, removable assertion that two things
-      are equivalent: a wrong one merges them <em>visibly</em>, never silently. An <b>attestation</b> is a one-sided
-      property that can gate a query. The <b>corpus root</b> is an order-independent fingerprint of the whole corpus:
-      recompute it anywhere, <code>--check</code> fails loudly.</p>
-      <pre class="cmd"><span class="c"># the integrity receipt; conditional claims pin to it</span>
-riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
-  },
-  {
-    nav: "coda",
-    kicker: "scope",
-    title: "One shared thing.",
-    lede: "",
-    body: `
-      <p>Not a compiler, not a shared IR, not a database, not a standards proposal: one shared thing, the canonical
-      form plus the facet vocabulary, versioned. EVM is the first corpus, not the last, and it rides the
-      recompilation Sourcify already runs at verification: no crawler, no new compiler.</p>`,
+    nav: "sniff it out",
+    kicker: "find a known bug by shape",
+    title: "We know this bug. Find it everywhere.",
+    lede: "A known ERC-4626 inflation shape, matched across Sourcify's verified vaults. The patch is a different shape, so you see who fixed it, and the shape reaches forks an exact-source match misses.",
+    body: `<vuln-sniff></vuln-sniff>`,
   },
 ];
 
@@ -716,25 +676,27 @@ customElements.define("vuln-sniff", class extends HTMLElement {
     this.render();
   }
   render() {
-    const tabs = this.shapes.map((s, i) => {
+    const r = this.data.reach;
+    const rows = this.shapes.map((s, i) => {
       const st = VULN_STATUS[s.status];
-      const meta = s.count ? `${s.count} contracts` : "no shape match";
-      return `<button class="vtab ${i === this.sel ? "on" : ""}" data-i="${i}" style="--hue:${st.hue}">`
-        + `<span class="vt-badge">${st.label}</span>`
-        + `<span class="vt-n">${s.label.replace("OpenZeppelin", "OZ")}</span>`
-        + `<span class="vsub">${s.sub}</span>`
-        + `<span class="vt-meta">${meta}</span>`
-        + `</button>`;
+      const verd = s.status === "vulnerable" ? "vulnerable" : s.status === "patched" ? "safe: patched" : "safe: look-alike";
+      const exact = s.exact == null ? "-" : s.exact.toLocaleString();
+      const reach = s.reach == null ? "-" : s.reach.toLocaleString();
+      return `<tr class="lxrow ${i === this.sel ? "on" : ""}" data-i="${i}" style="--hue:${st.hue}">`
+        + `<td class="lx-shape">${s.label.replace("OpenZeppelin", "OZ")} <span class="vsub">${s.sub}</span></td>`
+        + `<td class="lx-fp">${s.structure.slice(0, 8)}</td>`
+        + `<td class="lx-verd ${s.status === "vulnerable" ? "bad" : "ok"}">${verd}</td>`
+        + `<td class="lx-n">${exact}</td>`
+        + `<td class="lx-n lx-reach">${reach}</td></tr>`;
     }).join("");
-    const kw = this.shapes.filter((s) => s.keyword).length, vuln = this.shapes.filter((s) => s.status === "vulnerable").length;
     this.innerHTML = `
       <p class="vbug">${this.data.bug}</p>
-      <p class="vlead">Matched across the <b>${this.data.corpus.toLocaleString()}</b> ERC-4626 vaults on Sourcify by <b>shape</b>, not by exact source (forks rename and reformat) and not by name (a safe library can keep the bug's name). Pick a shape:</p>
-      <div class="vtabs">${tabs}</div>
-      <div class="vbody codepanel"></div>
-      <p class="twnote vgrep"><b>Where this beats Sourcify and grep.</b> Sourcify matches byte-identical source; a text search matches names. Neither separates the vulnerable shape from the patched one, follows a fork that renamed its variables, or clears the safe look-alike that kept the name. The structure fingerprint does all three.</p>`;
-    this.querySelectorAll(".vtab").forEach((t) =>
-      t.addEventListener("click", () => { this.sel = +t.dataset.i; this.querySelectorAll(".vtab").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
+      <p class="vlead">All four rows are functions named <code>convertToShares</code>. Across Sourcify's verified ERC-4626 vaults, an exact-source match flags <b>${r.exactVuln.toLocaleString()}</b> as the vulnerable file; matching the <b>shape</b> flags <b>${r.shapeVuln.toLocaleString()}</b>, the same bug in <b>${r.extra}</b> more vaults (${r.variants} source variants) an exact match treats as unrelated.</p>
+      <table class="vledger"><thead><tr><th>shape</th><th>structure</th><th>riffcat</th><th>Sourcify exact</th><th>riffcat shape</th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="vledger-cap">These counts classify the distinct source files (one exact file is one shape), so they are exact within Sourcify's corpus and a floor, not a per-contract crawl. Click a row for its source and real deployed examples. Solady (last row) keeps the function name a text search would flag, but its shape is the safe one.</p>
+      <div class="vbody codepanel"></div>`;
+    this.querySelectorAll(".lxrow").forEach((row) =>
+      row.addEventListener("click", () => { this.sel = +row.dataset.i; this.querySelectorAll(".lxrow").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
     this.renderBody();
   }
   renderBody() {
@@ -742,8 +704,8 @@ customElements.define("vuln-sniff", class extends HTMLElement {
     const wits = this.witnesses.filter((w) => w.shape === s.key);
     const chips = wits.map((w) =>
       `<a class="wchip" href="${w.url}" target="_blank" rel="noopener">${w.name}<span class="wch">${w.chainName}</span></a>`).join("");
-    const match = s.count
-      ? `riffcat matched this exact shape in <b>${s.count}</b> verified contracts, for example:`
+    const match = s.reach
+      ? `riffcat matched this shape in <b>${s.reach.toLocaleString()}</b> verified vaults (an exact-source match finds ${s.exact.toLocaleString()}), for example:`
       : `kept the name, but its shape is not the vulnerable one; these are safe:`;
     this.querySelector(".vbody").innerHTML =
       `<div class="vhead" style="--hue:${st.hue}"><span class="vbadge">${st.label}</span> <b>${s.label}</b> <span class="vsub">${s.sub}</span>`
