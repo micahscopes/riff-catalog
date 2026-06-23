@@ -173,8 +173,8 @@ const CH = [
   },
   {
     nav: "twins",
-    kicker: "the same function, contract after contract",
-    title: "You do not audit this nine times.",
+    kicker: "the same shape, across real contracts",
+    title: "One function, contract after contract.",
     lede: "Library functions that turn up, the exact same shape, across these real contracts. Pick one to see it and everywhere it lands.",
     body: `<recog-twins></recog-twins>`,
   },
@@ -204,21 +204,19 @@ const CH = [
   },
   {
     nav: "sourcify",
-    kicker: "you already run this dial",
-    title: "Sourcify's partial-vs-exact match is a facet.",
-    lede: "At the bytecode level the CBOR metadata trailer is split into its own node.",
+    kicker: "at the bytecode level",
+    title: "Partial and exact match are one dial.",
+    lede: "The metadata trailer splits into its own node, so a facet can keep it or drop it.",
     body: `
-      <p>The <b>Structure</b> facet forgets the metadata value: a Sourcify <em>partial match</em>. A
-      Constants-bearing facet keeps it: an <em>exact match</em>. Full-vs-partial, and the Verifier Alliance
-      transformations schema (cborAuxdata, library masks), are facet normalization you already ship.</p>
-      <div class="say">“You invented this twice. What riffcat answers is what the payload of a
-      ‘similar contracts’ surface should carry.”</div>`,
+      <p>The <b>Structure</b> facet drops the metadata value: that is a Sourcify <em>partial match</em>. A
+      constants-bearing facet keeps it: an <em>exact match</em>. Full-vs-partial, and the Verifier Alliance
+      transformations schema (cborAuxdata, library masks), are the same facet idea in another vocabulary.</p>`,
   },
   {
     nav: "trust",
     kicker: "sameness that is not structural",
-    title: "Claims are inputs, and the corpus has a receipt.",
-    lede: "Witnessed equivalence assertions, attestations that gate queries, and a commitment over the whole corpus.",
+    title: "Claims, attestations, and a receipt.",
+    lede: "Some equivalence the fingerprint cannot infer. Three inputs carry it instead.",
     body: `
       <p>A <b>claim</b> is an attributable, removable assertion that two things are equivalent: a wrong one merges
       them <em>visibly</em>, never silently. An <b>attestation</b> is a one-sided property (“verified-total”) that
@@ -229,16 +227,15 @@ riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
   },
   {
     nav: "coda",
-    kicker: "what this is not",
-    title: "One shared contract, not a takeover.",
+    kicker: "scope",
+    title: "One shared thing.",
     lede: "",
     body: `
-      <p>NOT an omnilingual compiler, a shared internal IR, a database (JSONL today, rent a store later), or a
-      standards proposal. One shared thing: the canonical form plus the facet vocabulary, versioned.</p>
-      <p>EVM is the first corpus, not the spouse: level-tagged and language-agnostic by construction, so fe-emitted
-      Yul ingests through the same two doors. Compilers meet at the artifact level.</p>
-      <div class="say">It rides the recompilation Sourcify already does at verification. No crawler, no new
-      compiler: a post-pass over output you already produce and discard.</div>`,
+      <p>Not a compiler, not a shared IR, not a database, not a standards proposal. One shared thing: the canonical
+      form and the facet vocabulary, versioned.</p>
+      <p>EVM is the first corpus, not the last; the form is level-tagged and language-agnostic, so fe-emitted Yul
+      ingests through the same door. It rides the recompilation Sourcify already runs at verification: no crawler,
+      no new compiler, a post-pass over output already produced.</p>`,
   },
 ];
 
