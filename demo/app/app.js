@@ -152,18 +152,16 @@ const CH = [
     title: "“The same” has a dial.",
     lede: "Compile a contract and most of what comes out is not unique. The question is how strict you want “the same” to be.",
     body: `
-      <p>Same in every detail? Same if you ignore the names? Ignore the embedded constants and the types too?
-      Each setting is a <em>facet</em>, and two pieces of code can <b>rhyme</b> at a facet even when they read
-      differently. Everything else exists to keep the dial honest.</p>
-      <p>Two artifacts that land on the same fingerprint at a facet are <em>twins</em> there. Drag the dial looser
-      and twins multiply; tighten it and they split. The next chapter lets you turn that dial yourself, on a real
-      contract, computed in your browser.</p>`,
+      <p>Same in every detail? Same once you ignore the names, the embedded constants, the types? Each setting is
+      a <em>facet</em>, and two pieces of code can <b>rhyme</b> at a facet even when they read differently.</p>
+      <p>Two artifacts on the same fingerprint at a facet are <em>twins</em> there. Loosen the dial and twins
+      multiply; tighten it and they split. Next chapter, you turn it yourself.</p>`,
   },
   {
     nav: "drive the dial",
     kicker: "live, in your browser",
     title: "Same color, same shape.",
-    lede: "Every function a small token compiled to, one chip each, colored by its fingerprint. Loosen the dial and watch the colors merge. Hover a chip to light its twins.",
+    lede: "Every function the token compiled to, one chip each, colored by its fingerprint. Loosen the dial and the colors merge; hover a chip to light its twins.",
     body: `<live-dial></live-dial>`,
   },
   {
@@ -178,9 +176,9 @@ const CH = [
           <tr><td>all (every detail)</td><td class="n">7,939 → 1,713</td><td>78.4%</td></tr>
           <tr><td>structure only (shape)</td><td class="n">→ 481</td><td>93.9%</td></tr>
         </table></div>
-      <p>At the shape facet, <b>94%</b> of the functions are structural duplicates of each other. The compiler has
-      been repeating itself this whole time with no way to see it. The generated helpers dedup perfectly: that
-      consistency is an exploitable asset, not a flaw. The chapter you just drove is this, on one contract.</p>`,
+      <p>At the shape facet, <b>94%</b> of the functions are structural duplicates. The compiler has been repeating
+      itself with no way to see it, and the generated helpers dedup perfectly: that consistency is an asset, not a
+      flaw. Same as the chapter you just drove, past one contract.</p>`,
   },
   {
     nav: "twins",
@@ -190,10 +188,9 @@ const CH = [
     body: `
       <div class="say">“That is Seaport, fetched verified from Sourcify and recompiled with its own pinned 0.8.24.
       Names-blind it shares <b>37</b> function-level fingerprint classes with the little ERC20 we built locally:
-      the same panic helpers, the same checked arithmetic, the same memory allocator, the same
-      address→uint256 mapping accessor. Twins by shape, not by name.”</div>
-      <p>Lead with the 37 shared classes, not the ratio: a 591-class contract against a 68-class one. The rhyme is
-      the recognizable scaffolding every contract carries.</p>`,
+      the same panic helpers, checked arithmetic, memory allocator, address→uint256 mapping accessor. Twins by
+      shape, not by name.”</div>
+      <p>591 classes against 68: the rhyme is the scaffolding every contract carries.</p>`,
   },
   {
     nav: "triage",
@@ -207,22 +204,21 @@ const CH = [
           <tr><td>a token verified the same morning</td><td class="n">23 / 169</td><td>86% machinery</td></tr>
           <tr><td>ERC-4337 EntryPoint</td><td class="n">206 / 601</td><td>genuinely novel</td></tr>
         </table></div>
-      <p>“This unverified contract is 94% standard machinery. Here are the three functions that are actually new.
-      Audit those.” The query agrees with auditor intuition in both directions, and it speaks straight to the
-      public worry that <em>verified is not safe</em>.</p>`,
+      <p>“94% standard machinery; here are the three functions that are actually new, audit those.” It matches
+      auditor intuition both ways, and answers the public worry that <em>verified is not safe</em>.</p>`,
   },
   {
     nav: "library",
     kicker: "provenance",
     title: "Shared machinery, lit across libraries.",
-    lede: "Three contracts, each vendoring one library's mul·div, fingerprinted live. Hover a chip: the machinery they share lights up across all three rows, but each library's mul·div stands alone.",
+    lede: "Three contracts, each vendoring one library's mul·div, fingerprinted live. Hover a chip: shared machinery lights up across all three rows, but each library's mul·div stands alone.",
     body: `<live-xref></live-xref>`,
   },
   {
     nav: "recognized",
     kicker: "the same, on real mainnet code",
     title: "We know this code: it is OpenZeppelin.",
-    lede: "Real verified contracts off Sourcify. Each function fingerprinted at the source level and looked up in a catalog built from pinned OpenZeppelin, Solady, and Solmate. Colored by the library it was recognized as; grey is novel app code. Hover for the source.",
+    lede: "Real verified contracts off Sourcify, each function fingerprinted at the source level against a catalog of pinned OpenZeppelin, Solady, and Solmate. Colored by the library it matches; grey is novel app code. Hover for the source.",
     body: `<recog-scan></recog-scan>`,
   },
   {
@@ -231,11 +227,10 @@ const CH = [
     title: "Sourcify's partial-vs-exact match is a facet.",
     lede: "At the bytecode level the CBOR metadata trailer is split into its own node.",
     body: `
-      <p>The <b>Structure</b> facet forgets the metadata value: that is a Sourcify <em>partial match</em>, two
-      contracts that are Structure-twins here. A Constants-bearing facet keeps it: that is an <em>exact match</em>.
-      Full-vs-partial match, and the Verifier Alliance transformations schema (cborAuxdata, library masks), are
-      facet normalization you already ship. Here is the general dial.</p>
-      <div class="say">“You invented this twice. The question riffcat answers is what the payload of a
+      <p>The <b>Structure</b> facet forgets the metadata value: a Sourcify <em>partial match</em>. A
+      Constants-bearing facet keeps it: an <em>exact match</em>. Full-vs-partial, and the Verifier Alliance
+      transformations schema (cborAuxdata, library masks), are facet normalization you already ship.</p>
+      <div class="say">“You invented this twice. What riffcat answers is what the payload of a
       ‘similar contracts’ surface should carry.”</div>`,
   },
   {
@@ -244,10 +239,10 @@ const CH = [
     title: "Claims are inputs, and the corpus has a receipt.",
     lede: "Witnessed equivalence assertions, attestations that gate queries, and a commitment over the whole corpus.",
     body: `
-      <p>A <b>claim</b> is an attributable, removable assertion that two things are equivalent: validity is the
-      auditor's job, and a wrong claim merges things <em>visibly</em>, never silently. An <b>attestation</b> is a
-      one-sided property (“verified-total”) that can gate a query. And the <b>corpus root</b> is a canonical,
-      order-independent fingerprint of the whole corpus: recompute it anywhere, <code>--check</code> fails loudly.</p>
+      <p>A <b>claim</b> is an attributable, removable assertion that two things are equivalent: a wrong one merges
+      them <em>visibly</em>, never silently. An <b>attestation</b> is a one-sided property (“verified-total”) that
+      can gate a query. The <b>corpus root</b> is a canonical, order-independent fingerprint of the whole corpus:
+      recompute it anywhere, <code>--check</code> fails loudly.</p>
       <pre class="cmd"><span class="c"># the integrity receipt; conditional claims pin to it</span>
 riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
   },
@@ -257,12 +252,12 @@ riffcat --corpus demo/corpus root --unit yul-fn --mode shape</pre>`,
     title: "One shared contract, not a takeover.",
     lede: "",
     body: `
-      <p>NOT an omnilingual compiler. NOT a shared internal IR. NOT a database (JSONL today, rent a store later).
-      NOT a standards proposal. One shared thing: the canonical form plus the facet vocabulary, versioned.</p>
-      <p>EVM is the first corpus, not the spouse: the architecture is level-tagged and language-agnostic by
-      construction. fe-emitted Yul ingests through the same two doors. Compilers meet at the artifact level.</p>
-      <div class="say">It rides the recompilation Sourcify already does at verification time. No crawler, no new
-      compiler. The fingerprint is a post-pass over output you already produce and discard.</div>`,
+      <p>NOT an omnilingual compiler, a shared internal IR, a database (JSONL today, rent a store later), or a
+      standards proposal. One shared thing: the canonical form plus the facet vocabulary, versioned.</p>
+      <p>EVM is the first corpus, not the spouse: level-tagged and language-agnostic by construction, so fe-emitted
+      Yul ingests through the same two doors. Compilers meet at the artifact level.</p>
+      <div class="say">It rides the recompilation Sourcify already does at verification. No crawler, no new
+      compiler: a post-pass over output you already produce and discard.</div>`,
   },
 ];
 
@@ -307,17 +302,20 @@ customElements.define("tour-app", class extends HTMLElement {
     const c = CH[this.i];
     document.querySelectorAll("#nav button").forEach((b, k) =>
       b.setAttribute("aria-current", k === this.i ? "true" : "false"));
+    // Pager rides above the stage so the only thing below the content is the
+    // live panel: the page then grows and shrinks at the bottom, anchored from
+    // the top, and scroll-anchoring holds the chips while a panel resizes.
     this.innerHTML = `
+      <div class="pager">
+        <button data-d="-1" ${this.i === 0 ? "disabled" : ""}>← prev</button>
+        <span class="count">${this.i + 1} / ${CH.length} · ${c.nav}</span>
+        <button data-d="1" ${this.i === CH.length - 1 ? "disabled" : ""}>next →</button>
+      </div>
       <div class="stage">
         <div class="kicker">${c.kicker}</div>
         <h1>${c.title}</h1>
         ${c.lede ? `<p class="lede">${c.lede}</p>` : ""}
         ${c.body}
-      </div>
-      <div class="pager">
-        <button data-d="-1" ${this.i === 0 ? "disabled" : ""}>← prev</button>
-        <span class="count">${this.i + 1} / ${CH.length} · ${c.nav}</span>
-        <button data-d="1" ${this.i === CH.length - 1 ? "disabled" : ""}>next →</button>
       </div>`;
     this.querySelectorAll(".pager button").forEach((b) =>
       b.addEventListener("click", () => this.go(this.i + (+b.dataset.d))));
