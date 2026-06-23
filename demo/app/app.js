@@ -17,6 +17,44 @@ engineReady.then(() => { badge.textContent = "wasm live ✓"; })
 
 const short = (hex) => (hex || "").slice(0, 8);
 
+// Session-scoped memo for yul fingerprints: each (fixture, mode) runs through
+// the engine at most once. The live chapters read through this, so navigating
+// back to one is an instant re-render instead of re-running the engine. The
+// library chapter alone is ~0.5s of synchronous work across three fixtures, and
+// tour-app rebuilds the chapter element on every visit, so without this the
+// cost was paid again on every switch into the tab.
+const yulCache = new Map(); // `${id}:${mode}` -> { units, ms }
+function yulUnits(b, id, mode) {
+  const key = id + ":" + mode;
+  let v = yulCache.get(key);
+  if (!v) {
+    const t0 = performance.now();
+    const units = JSON.parse(b.fingerprint_yul(b.fixture(id), mode));
+    v = { units, ms: performance.now() - t0 };
+    yulCache.set(key, v);
+  }
+  return v;
+}
+
+// Warm the live chapters right after boot, one fixture per idle slice, so the
+// heavy synchronous engine calls fall in idle time at startup rather than on a
+// tab switch. Best-effort: a failure just leaves that fixture to compute on
+// first visit, exactly as before.
+(function warmEngine() {
+  const jobs = [["demo", "shape"], ["demo", "identity"],
+    ["oz-muldiv", "shape"], ["solady-muldiv", "shape"], ["solmate-muldiv", "shape"]];
+  const ric = window.requestIdleCallback || ((f) => setTimeout(f, 16));
+  engineReady.then((b) => {
+    const step = () => {
+      const j = jobs.shift();
+      if (!j) return;
+      try { yulUnits(b, j[0], j[1]); } catch { /* leave it for first visit */ }
+      ric(step);
+    };
+    ric(step);
+  }).catch(() => {});
+})();
+
 // --- equivalence visuals -------------------------------------------------
 // Each function becomes a chip. Its class at a facet IS its fingerprint there,
 // so we derive both a CSS class and a color straight from the digest: same
@@ -86,14 +124,20 @@ function wireHighlight(host, describe) {
   host.addEventListener("mouseover", (e) => {
     const c = e.target.closest(".chip");
     if (!c || !host.contains(c)) return;
+    host.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit")); // drop the previous network before lighting this one
     const lit = host.querySelectorAll("." + c.dataset.eq);
     host.querySelectorAll(".eqgrid").forEach((g) => g.classList.add("focused"));
     lit.forEach((x) => x.classList.add("lit"));
     const read = host.querySelector(".eqread");
     if (read) read.innerHTML = describe(c, lit);
   });
+  // mouseout/mouseover both bubble, and the order across adjacent chips is not
+  // guaranteed: sweeping A->B, mouseout(A) can fire after mouseover(B) and wipe
+  // B's fresh highlight (the flicker). When the pointer is moving to another
+  // chip, skip the clear and let that chip's mouseover own the repaint.
   host.addEventListener("mouseout", (e) => {
     if (!e.target.closest(".chip")) return;
+    if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".chip")) return;
     host.querySelectorAll(".chip.lit").forEach((x) => x.classList.remove("lit"));
     host.querySelectorAll(".eqgrid").forEach((g) => g.classList.remove("focused"));
     const read = host.querySelector(".eqread");
@@ -294,21 +338,16 @@ customElements.define("live-dial", class extends HTMLElement {
     this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
     try {
       this.bindings = await engineReady;
-      this.fixture = this.bindings.fixture("demo");
-      if (!this.fixture) throw new Error("demo fixture missing");
+      if (!this.bindings.fixture("demo")) throw new Error("demo fixture missing");
       this.render();
     } catch (e) {
       this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
     }
   }
   unitsFor(mode) {
-    this._cache = this._cache || {};
-    if (!this._cache[mode]) {
-      const t0 = performance.now();
-      this._cache[mode] = JSON.parse(this.bindings.fingerprint_yul(this.fixture, mode));
-      this._ms = performance.now() - t0;
-    }
-    return this._cache[mode];
+    const r = yulUnits(this.bindings, "demo", mode); // session-cached; this._ms is the real first-compute time
+    this._ms = r.ms;
+    return r.units;
   }
   render() {
     const funcs = this.unitsFor(this.mode).slice(1);
@@ -357,9 +396,17 @@ customElements.define("live-xref", class extends HTMLElement {
     try {
       const b = await engineReady;
       const F = "names-blind";
-      const t0 = performance.now();
-      const rows = XREF.map((x) => ({ x, funcs: JSON.parse(b.fingerprint_yul(b.fixture(x.id), "shape")).slice(1) }));
-      const ms = (performance.now() - t0).toFixed(0);
+      // If the three libraries are not warm yet, say so before the (one-time,
+      // synchronous) engine work and let that note paint first, so a cold visit
+      // reads as "computing" rather than a frozen tab. A warm visit skips this
+      // and renders straight from cache.
+      if (!XREF.every((x) => yulCache.has(x.id + ":shape"))) {
+        this.innerHTML = `<p class="live-note">fingerprinting three libraries in your browser…</p>`;
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      }
+      let ms = 0;
+      const rows = XREF.map((x) => { const r = yulUnits(b, x.id, "shape"); ms += r.ms; return { x, funcs: r.units.slice(1) }; });
+      ms = ms.toFixed(0);
       // how many distinct chunks are shared across all three libraries
       const spread = new Map();
       for (const { x, funcs } of rows)
@@ -459,7 +506,11 @@ customElements.define("recog-scan", class extends HTMLElement {
     this.innerHTML = `${legend}${rows}<div class="codepanel"><div class="cphint">${RECOG_HINT}</div></div>`;
     this.panel = this.querySelector(".codepanel");
     this.addEventListener("mouseover", (e) => { const c = e.target.closest(".chip"); if (c && this.contains(c)) this.show(c); });
-    this.addEventListener("mouseout", (e) => { if (e.target.closest(".chip")) this.rest(); });
+    this.addEventListener("mouseout", (e) => {
+      if (!e.target.closest(".chip")) return;
+      if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".chip")) return; // sweeping to another chip; its mouseover repaints
+      this.rest();
+    });
     this.addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (c && this.contains(c)) this.toggleAnchor(c); });
   }
   show(chip) { // transient view (hover): light the shape's network + fill the panel
