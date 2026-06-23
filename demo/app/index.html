@@ -257,6 +257,23 @@
   .vt-meta { font-size: 10.5px; color: var(--ink-faint); margin-top: 2px; }
   .vt-grep { color: var(--rose); }
   .vt-grep.miss { color: var(--a); }
+  /* sniff-it-out comparison table: shape, fingerprint, verdict, Sourcify
+     exact-match reach vs riffcat shape reach. */
+  .vledger { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+  .vledger th { text-align: left; color: var(--ink-faint); font-weight: 400; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+  .vledger th:nth-child(4), .vledger th:nth-child(5), .vledger td:nth-child(4), .vledger td:nth-child(5) { text-align: right; }
+  .vledger td { padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--ink-dim); }
+  .lxrow { cursor: pointer; }
+  .lxrow td:first-child { border-left: 3px solid hsl(var(--hue) 65% 50%); }
+  .lxrow:hover td { color: var(--ink); }
+  .lxrow.on td { background: hsl(var(--hue) 40% 13%); color: var(--ink); }
+  .lxrow .lx-shape { color: var(--ink); }
+  .lx-fp { color: var(--warm); }
+  .lx-verd.bad { color: var(--rose); font-weight: 700; }
+  .lx-verd.ok { color: var(--a); }
+  .lx-n { font-variant-numeric: tabular-nums; }
+  .lx-reach { color: var(--a); font-weight: 700; }
+  .vledger-cap { color: var(--ink-faint); font-size: 11px; margin: 0 0 12px; }
 
   .pager { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
   .pager button { font: inherit; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); padding: 7px 16px; cursor: pointer; }

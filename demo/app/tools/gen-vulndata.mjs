@@ -111,14 +111,20 @@ const SRC = {
 }`,
 };
 
-// count = verified Sourcify compilations carrying this exact source variant
-// (the dominant source_hash per shape, from the vuln-sniff report; a floor, the
-// capped endpoint cannot sweep all 35M rows). solady has no measured count here.
+// Counts from demo/vuln-reach-2026-06-23.md, which classified every DISTINCT
+// source_hash variant of ERC4626.sol in Sourcify's verified population (one file
+// per variant; a source_hash is one exact file, so every deployment of it shares
+// the shape, and the per-contract totals are arithmetic, not extrapolation).
+//   exact = the single largest source_hash variant (what a Sourcify exact-source
+//           match keyed on one file finds).
+//   reach = sum across every variant whose conversion function has this shape
+//           (what matching the SHAPE finds). exact <= reach.
+// Exact within scope (verified, file named ERC4626.sol) and a floor.
 const shapes = [
-  { key: "oz-vuln", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "pre v4.9 (<= v4.8.x)", status: "vulnerable", keyword: true, count: 152, src: SRC.ozVuln, ...fp("ozVuln") },
-  { key: "solmate-vuln", lib: "solmate", label: "Solmate convertToShares", sub: "no virtual shares", status: "vulnerable", keyword: true, count: 588, src: SRC.solmateVuln, ...fp("solmateVuln") },
-  { key: "oz-patched", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "v4.9.0+ (decimals offset)", status: "patched", keyword: false, count: 977, src: SRC.ozPatched, ...fp("ozPatched") },
-  { key: "solady-mitig", lib: "solady", label: "Solady convertToShares", sub: "virtual shares on by default", status: "mitigated", keyword: true, count: null, src: SRC.soladyMitig, ...fp("soladyMitig") },
+  { key: "oz-vuln", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "pre v4.9 (<= v4.8.x)", status: "vulnerable", keyword: true, exact: 153, reach: 228, src: SRC.ozVuln, ...fp("ozVuln") },
+  { key: "solmate-vuln", lib: "solmate", label: "Solmate convertToShares", sub: "no virtual shares", status: "vulnerable", keyword: true, exact: 588, reach: 1116, src: SRC.solmateVuln, ...fp("solmateVuln") },
+  { key: "oz-patched", lib: "openzeppelin", label: "OpenZeppelin _convertToShares", sub: "v4.9.0+ (decimals offset)", status: "patched", keyword: false, exact: 986, reach: 4227, src: SRC.ozPatched, ...fp("ozPatched") },
+  { key: "solady-mitig", lib: "solady", label: "Solady convertToShares", sub: "virtual shares on by default", status: "mitigated", keyword: true, exact: null, reach: null, src: SRC.soladyMitig, ...fp("soladyMitig") },
 ];
 
 const CHAIN = { 1: "Ethereum", 137: "Polygon", 8453: "Base", 56: "BSC", 10: "Optimism", 42161: "Arbitrum" };
@@ -151,7 +157,9 @@ console.log("solady mitigated shape != oz-vulnerable shape:", sol !== ozV ? "YES
 const out = {
   generated: "2026-06-23",
   bug: "ERC-4626's first-deposit inflation bug: when a vault is empty, the old _convertToShares mints shares 1:1, so an attacker front-runs with a tiny deposit, donates assets to skew the price, and the next depositor's shares round to zero.",
-  corpus: 7237, // ERC4626.sol source rows on Sourcify
+  corpus: 5711, // verified ERC4626.sol vaults classified (OZ + solmate)
+  // the two vulnerable shapes, exact-match reach vs shape reach (see report)
+  reach: { exactVuln: 741, shapeVuln: 1344, extra: 603, variants: 35 },
   shapes, witnesses,
 };
 writeFileSync(join(HERE, "../vulndata.js"), "window.RIFFCAT_VULN = " + JSON.stringify(out) + ";\n");
