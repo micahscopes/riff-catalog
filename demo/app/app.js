@@ -278,6 +278,7 @@ const CH = [
   { nav: "the cheap yes", kicker: "generalizing a fast-path hevm already ships", title: "When structure is enough to skip the solver.", lede: "hevm opens its equivalence check with a syntactic cheap yes: if two bytecodes are byte-identical it returns equivalent and never calls a solver. riffcat generalizes that exact-equality check to a facet, so the yes fires on more pairs. Turn the dial and watch where the yes stays sound, where it becomes only a candidate, and the one place it must not fire at all.", body: `<cy-cheap-yes></cy-cheap-yes>` },
   { nav: "seat filled", kicker: "the seat, filled: a Lean proof takes it", title: "The verdict seat, filled: this bytecode is this spec.", lede: "The previous chapter left the seat empty on purpose. Here is one occupant, cited statically: a Lean proof from EquiVM (argotorg/EquiVM, pinned) that a solc-produced ERC20 runtime bytecode is observationally equivalent to a hand-written Solm spec, with a four-way case split and a named trust boundary. The riffcat tie: that proof is a fact anchored to a facet address, so it transports to every behavior-complete twin (prove once, recognize everywhere), and the Solm spec is itself a forgetting, so it is a facet too. Step the panels; nothing here runs Lean.", body: `<seat-filled></seat-filled>` },
   { nav: "two instantiations", kicker: "the edge of the method: one generic, two ways", title: "Same source, two instantiations: where the address agrees, and where it parts.", lede: "One generic shape, instantiated two ways. At the structure facet the two share an address: it is one skeleton. Keep the type spelling and the addresses part. Hover a dimension to see exactly where they agree and where they diverge, and read the honest gap underneath: this divergence is the syntactic shadow of the instantiation, not the monomorphized form.", body: `<two-instantiations></two-instantiations>` },
+  { nav: "the engine checks too", kicker: "the same discipline, turned inward", title: "The engine checks too.", lede: "riffcat content-addresses the structure of code. The same discipline is turned on its own core. The digest function is written twice: in Rust, the engine that ships, and in Lean, where the rules are stated as theorems. Because the output is a fixed hash and every ordering inside it is canonical, a corpus of graphs is hashed by both and the bytes must match, exactly, in CI. This is a cited plan over the existing golden and conformance substrate, not a live proof: a Lean run needs the deferred toolchain.", body: `<lockstep-bench></lockstep-bench>` },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -300,7 +301,7 @@ const SECTIONS = [
   ["structure and meaning", ["structure vs meaning", "prove it", "seat filled", "anchors", "the cheap yes", "prior art", "the proofs check"]],
   ["the address up close", ["two instantiations"]],
   ["a building block", ["a shared block", "what we need"]],
-  ["in honesty", ["what we sampled"]],
+  ["in honesty", ["the engine checks too", "what we sampled"]],
 ];
 {
   const byNav = new Map(CH.map((c) => [c.nav, c]));
@@ -2984,5 +2985,175 @@ customElements.define("two-instantiations", class extends HTMLElement {
           : `<b>${d.lab}</b> · dropped at the ${facet.lab} facet, so it is not part of this address: ${d.why}`;
       }));
     this.addEventListener("mouseleave", () => { read.innerHTML = read.dataset.idle; });
+  }
+});
+
+// "the engine checks too" (page_key engine-checks-too). A STATIC, CITED chapter:
+// it renders synchronously over baked, illustrative data and makes no live
+// engine call and runs no Lean. The claim is the spike-note plan (Phases 0-2 of
+// /workspace/lean-riffcat-lockstep-spike-2026-06-24.md), not a live proof.
+//
+// Three parts, all prose-as-data:
+//   (1) the lockstep bench: a corpus of canonical Graph inputs hashed by two
+//       cores, Rust (the engine that ships) and a Lean executable spec, with the
+//       output bytes required equal in CI. This is mechanism (a), the existing
+//       golden.rs/conformance.rs move with Lean added as a third path. Both
+//       sides call the SAME blake3 C library, so the hash is identical bytes.
+//   (2) the laws ledger: what Lean would PROVE about the abstract construction
+//       (section 2 of the spike): determinism/order-independence, the facet
+//       refinement lattice, anchor/transport soundness, AnonymousShape
+//       correctness, SCC/WL termination, encoding injectivity.
+//   (3) the trust tiers, kept apart on purpose: kernel-checked laws, one NAMED
+//       assumption (blake3 collision-resistance is a Lean axiom, not a theorem),
+//       and the open gap (the proofs are about the Lean model; the shipping Rust
+//       is held to it by golden vectors and reading, not yet verified extraction).
+//
+// All top-level names are prefixed `lck` to avoid app.js collisions. Reuses the
+// .twnote/.eqread/.shapedot/.codepanel/.cphead/.vledger classes and theme vars;
+// new visuals are the .lck* classes in the css field. The digest chips are baked
+// illustrative content addresses styled like the engine's, NOT live engine
+// output: a small deterministic string-to-color so the bytes read as addresses
+// without claiming a run. If chipColor is present it is reused for fidelity.
+
+// A deterministic illustrative color from a baked hex string, so a digest chip
+// looks like the engine's content-address chips without any engine call. Falls
+// back to the app's chipColor when that helper is available (same look as the
+// live chapters); otherwise an in-page hash keeps it self-contained.
+function lckChip(hex) {
+  try { if (typeof chipColor === "function") return chipColor(hex); } catch (_) {}
+  let h = 0;
+  for (let i = 0; i < hex.length; i++) h = (h * 31 + hex.charCodeAt(i)) >>> 0;
+  const hue = h % 360, sat = 60 + (h >> 9) % 25, lit = 58 + (h >> 17) % 12;
+  return `hsl(${hue} ${sat}% ${lit}%)`;
+}
+const lckShort = (h) => (h || "").slice(0, 10);
+
+// The corpus rows. Each is a canonical Graph input plus ONE baked digest the
+// two cores must agree on byte-for-byte. The shapes are the adversarial ones the
+// spike names as the corpus's real job (the SCHEMA_VERSION 2 cases, symmetric
+// SCCs, the empty and self-loop edges): exactly the subtle-invariant class that
+// has bitten this engine before. `bytes` is illustrative (baked), not a run.
+const LCK_CORPUS = [
+  { id: "f(1,2) vs f(2,1)", shape: "argument order kept at the constants facet", bytes: "b3:1f7a4cd0", why: "the SCHEMA_VERSION 2 bump fixed a collision here; the corpus pins it so neither core can regress it." },
+  { id: "flat-edge-role swap", shape: "two edges whose roles are exchanged", bytes: "b3:9c20e1b8", why: "another SCHEMA_VERSION 2 case: role is part of the canonical key, so the swap must move the digest." },
+  { id: "symmetric SCC", shape: "a cycle whose nodes are pairwise interchangeable", bytes: "b3:4e83fa17", why: "exercises CondenseScc plus the Weisfeiler-Leman fold; isomorphic components must hash equal, WL-equivalent ones may collide by design." },
+  { id: "duplicate (ordinal,label)", shape: "two children sharing an ordinal and label", bytes: "b3:70b6c95d", why: "forces the child sort to break ties on digest, not on key, so AnonymousShape stays name-blind." },
+  { id: "empty graph", shape: "no nodes, no edges", bytes: "b3:00d1aa30", why: "the degenerate framing case: the magic plus schema_version header must still commit." },
+  { id: "single self-loop", shape: "one node, one recursive edge to itself", bytes: "b3:c4f209ee", why: "the smallest cycle: the recursive-edge path and the cycle policy both fire on one node." }
+];
+
+// The two cores on the bench. Same input corpus, same blake3 library, output
+// bytes required equal in CI. Rust is the engine that ships; Lean is the
+// executable spec where the rules are also theorems.
+const LCK_CORES = [
+  { k: "rust", t: "Rust", sub: "the engine that ships", note: "riff-catalog-core: the dimension-tagged graph model, the canonical encoder (MAGIC plus schema_version framing), the bottom-up fold, the facet address, the SCC condensation. About 1200 to 1600 LOC, pure and deterministic." },
+  { k: "lean", t: "Lean 4", sub: "the rules as theorems", note: "a Lean executable spec mirroring the same core, built to run (lake exe) and reproduce the same digests once the toolchain lands. The laws below are what it is built to state and prove over this model." }
+];
+
+// The laws Lean would carry (spike section 2), easiest to hardest. status is
+// the honest state: `proved` = a theorem about the abstract construction once
+// the spec lands; `axiom` = a named assumption, not a theorem. Nothing here is
+// claimed run today.
+const LCK_LAWS = [
+  { k: "det", t: "determinism", status: "proved", says: "same (policy, graph) gives the same digest; insensitive to field and edge insertion order and to internal node-id choice. The Rust gets this from sorting; the spec shows the sorts canonicalize." },
+  { k: "lattice", t: "facet refinement lattice", status: "proved", says: "equal at a finer facet implies equal at every coarser one. A facet address over a dimension set commits the sorted per-dimension digests, so equality at the larger set forces equality at every subset. This is the lattice the facet UI and the claims layer lean on." },
+  { k: "anchor", t: "anchor / transport soundness", status: "proved", says: "a fact transports along a facet address exactly when the facet covers the fact's footprint. The per-dimension digest for dimension d is a function only of the d-tagged fields plus the skeleton: one-directional dimension purity." },
+  { k: "anon", t: "AnonymousShape correctness", status: "proved", says: "names never enter the digest. Renaming all node keys by any injection leaves every AnonymousShape digest unchanged. The deepest correctness law, touching the tree fold, the graph record, and the whole WL path. The prototype got this wrong before." },
+  { k: "term", t: "SCC / WL termination", status: "proved", says: "SCC condensation is well-defined (Tarjan gives a partition, emitted reverse-topologically) and WL refinement terminates (monotone partition refinement, capped at the member count). Honest caveat: 1-WL is incomplete on pathological regular graphs, so anonymous equality is WL-equivalence under policy, not isomorphism." },
+  { k: "inj", t: "encoding injectivity", status: "proved", says: "the canonical byte encoding is injective: distinct graphs at a facet produce distinct pre-image bytes, from length prefixes plus domain-separating tags. So distinct digests imply distinct shapes, unless blake3 collides." }
+];
+
+// The trust tiers, kept apart on purpose (the overclaim lives in blurring them).
+const LCK_TIERS = [
+  { k: "checked", t: "kernel-checked", s: "the six laws above are theorems about the abstract construction, verified by the Lean 4 kernel once the spec lands. Checked, not merely tested." },
+  { k: "axiom", t: "one named assumption", s: "blake3 collision-resistance is a Lean axiom, not a theorem. Everything is sound GIVEN a collision-free hash. The same blake3 C library runs on both sides, so it is never re-implemented and never drifts. Named in the open." },
+  { k: "open", t: "the open gap", s: "the laws are about the Lean model of the encoder. The shipping Rust is held to it by the golden vectors and by reading, not yet by verified extraction (that is the research-grade Aeneas/Kani follow-on). Stated up front." }
+];
+
+// Honest scope line, always visible: what the substrate already is, and what the
+// chapter does NOT claim.
+const LCK_SCOPE = "The golden vectors are the actual lockstep; the existing golden.rs and dual-path conformance.rs already do the within-language version of this byte-for-byte check, and adding Lean is a third path that must agree. The proofs are mostly confidence and ecosystem fit. A live Lean run needs the deferred toolchain (Lean, lake, a blake3 binding, the CI job), so the bench below is a cited plan, not a run.";
+
+customElements.define("lockstep-bench", class extends HTMLElement {
+  connectedCallback() {
+    // renders synchronously: static cited chapter, no engine call, no Lean run.
+    this.sel = 0; // selected corpus row
+    this.render();
+  }
+  render() {
+    const idle = "Hover a corpus row to see the adversarial shape it pins, a law to read what Lean proves, or a trust tier to keep the three apart. Nothing here runs live: it is the spike-note plan over the existing golden substrate.";
+
+    // (1) the bench: corpus rows, each with a chip per core, required equal.
+    const rows = LCK_CORPUS.map((c, i) => {
+      const col = lckChip(c.bytes);
+      const chip = (coreK) =>
+        `<span class="shapedot lck-dot" style="--chip:${col}" title="${coreK} digest ${lckShort(c.bytes)} (baked, illustrative)"></span>`;
+      return `<tr class="lck-row ${i === this.sel ? "on" : ""}" data-i="${i}">`
+        + `<td class="lck-shape"><code>${c.id}</code> <span class="lck-sub">${c.shape}</span></td>`
+        + `<td class="lck-cell">${chip("rust")}<span class="lck-hex">${lckShort(c.bytes)}</span></td>`
+        + `<td class="lck-eq" title="required equal in CI">=</td>`
+        + `<td class="lck-cell">${chip("lean")}<span class="lck-hex">${lckShort(c.bytes)}</span></td></tr>`;
+    }).join("");
+    const heads = LCK_CORES.map((cr) =>
+      `<div class="lck-core lck-core-${cr.k}" data-core="${cr.k}"><b>${cr.t}</b><span class="lck-coresub">${cr.sub}</span></div>`).join("<div class=\"lck-vs\">held to the same bytes</div>");
+
+    // (2) the laws ledger.
+    const laws = LCK_LAWS.map((l) =>
+      `<button class="lck-law" data-law="${l.k}"><span class="lck-law-st lck-st-${l.status}">${l.status === "axiom" ? "axiom" : "to prove"}</span>${l.t}</button>`).join("");
+
+    // (3) the trust tiers.
+    const tiers = LCK_TIERS.map((t) =>
+      `<span class="lck-tier lck-tier-${t.k}" data-tier="${t.k}">${t.t}</span>`).join("");
+
+    this.innerHTML = `
+      <div class="lck-bench codepanel">
+        <div class="cphead lck-head"><b>one corpus, two cores</b> <span class="lck-sub">the output bytes must match, exactly, in CI &middot; baked illustrative digests, no live run</span></div>
+        <div class="lck-cores">${heads}</div>
+        <table class="vledger lck-ledger">
+          <thead><tr><th>canonical graph (corpus input)</th><th>Rust digest</th><th></th><th>Lean digest</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p class="lck-cap">Both sides call the same blake3 C library, so the hash is identical bytes. The corpus is the actual lockstep: byte-equality on a fixed hash is exact and has no oracle ambiguity. Its strength is the corpus's coverage, so it is seeded from the adversarial shapes that have bitten this engine before.</p>
+      </div>
+      <div class="lck-laws-wrap">
+        <div class="lck-laws-label">above the bytes, Lean carries the laws the product rests on</div>
+        <div class="lck-laws">${laws}</div>
+      </div>
+      <div class="lck-tiers-wrap">
+        <div class="lck-tiers-label">three tiers, kept apart on purpose</div>
+        <div class="lck-tiers">${tiers}</div>
+      </div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">${LCK_SCOPE} The self-referential part is on theme: the claim that the Lean rules equal the Rust bytes on this corpus is itself an <b>anchored equivalence</b>, the exact shape riffcat is built to record. A claim, at a stated facet (the byte-identity of the digest function over the corpus), against the corpus root as the anchor, modulo one named assumption (the blake3 axiom). riffcat could ingest its own two cores and address them. Honestly: the proofs are mostly confidence and ecosystem fit, the golden vectors are the load-bearing lockstep, and the real bug class they catch is the subtle-invariant kind, names leaking into a digest, an order that fails to canonicalize, that has slipped past review on this engine before.</p>`;
+
+    const read = this.querySelector(".eqread");
+    const idleHTML = read.dataset.idle;
+
+    this.querySelectorAll(".lck-row").forEach((row) =>
+      row.addEventListener("mouseenter", () => {
+        const c = LCK_CORPUS[+row.dataset.i];
+        this.querySelectorAll(".lck-row").forEach((x) => x.classList.toggle("lit", x === row));
+        read.innerHTML = `<span class="sw" style="background:${lckChip(c.bytes)}"></span><b>${c.id}</b> &middot; ${c.why}`;
+      }));
+    this.querySelectorAll(".lck-core").forEach((el) =>
+      el.addEventListener("mouseenter", () => {
+        const cr = LCK_CORES.find((x) => x.k === el.dataset.core);
+        read.innerHTML = `<b>${cr.t}</b> &middot; ${cr.note}`;
+      }));
+    this.querySelectorAll(".lck-law").forEach((el) =>
+      el.addEventListener("mouseenter", () => {
+        const l = LCK_LAWS.find((x) => x.k === el.dataset.law);
+        const tag = l.status === "axiom" ? "named assumption" : "proved law";
+        read.innerHTML = `<b>${l.t}</b> <span class="lck-read-st">(${tag})</span> &middot; ${l.says}`;
+      }));
+    this.querySelectorAll(".lck-tier").forEach((el) =>
+      el.addEventListener("mouseenter", () => {
+        const t = LCK_TIERS.find((x) => x.k === el.dataset.tier);
+        read.innerHTML = `<b>${t.t}</b> &middot; ${t.s}`;
+      }));
+    this.addEventListener("mouseleave", () => {
+      this.querySelectorAll(".lck-row").forEach((x) => x.classList.remove("lit"));
+      read.innerHTML = idleHTML;
+    });
   }
 });
