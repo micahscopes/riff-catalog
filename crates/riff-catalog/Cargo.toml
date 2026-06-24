@@ -1,0 +1,16 @@
+[package]
+name = "riff-catalog"
+description = "Facade over the riff-catalog engine: re-exports the core API, a solc-free graph ingest, and weighted-containment similarity over per-node Merkle subtree digests."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+riff-catalog-core.workspace = true
+
+[dev-dependencies]
+riff-catalog-music.workspace = true
