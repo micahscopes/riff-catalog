@@ -2045,11 +2045,12 @@ customElements.define("three-rungs", class extends HTMLElement {
 // holds across the same edits. The live structural compute lives in the
 // "drive the dial" chapter; here the point is the contrast of the two axes.
 //
-// Source quote (Sourcify, "Finding Auxdatas in the Bytecode", 2024-02-12): the
-// metadata hash "acts as a fingerprint of the compilation ... the slightest
+// Source quote (Sourcify docs, "Finding Auxdatas in the Bytecode", 2024-02-12):
+// the metadata hash "acts as a fingerprint of the compilation ... the slightest
 // change in the compiler settings or even a whitespace in any of the source
-// files will cause a change in the metadata hash." Kaan (#1659): "the metadata
-// hash is somehow the fingerprint of the compilation."
+// files will cause a change in the metadata hash." This is a docs/org statement,
+// so it is attributed to Sourcify, not an individual. The Main-vs-Meta framing
+// the next chapter uses is @kuzdogan's, in argotorg/sourcify #1643.
 
 // One baseline function and three edits that each move the metadata hash. The
 // structural fingerprint is deliberately insensitive to all three: whitespace is
@@ -2251,7 +2252,7 @@ customElements.define("byte-wall", class extends HTMLElement {
 
     this.innerHTML = `
       <blockquote class="say bw-say">we do not know which parts of the onchain bytecode is Main vs Meta &middot; find potential similar bytecodes, ignore the Meta parts
-        <span class="bw-cite">Kaan Uzdogan, Sourcify, on the similarity work (argotorg/sourcify #1643, 2024)</span>
+        <span class="bw-cite">@kuzdogan, Sourcify, on the similarity work (argotorg/sourcify #1643, 2024)</span>
       </blockquote>
       <svg viewBox="0 0 720 300" class="bw-fig" role="img" aria-label="interleaved onchain bytecode versus the separated source dimensions">
         <text x="${stripX}" y="40" class="latcap">onchain bytecode (one strip)</text>
