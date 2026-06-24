@@ -160,6 +160,16 @@
   .fcard-h .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
   .fcode { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 
+  /* the riff chapter: the same dial, on music */
+  .riffs { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+  .riffrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .playbtn { font: inherit; font-size: 11px; color: var(--ink-dim); background: var(--bg-chip); border: 1px solid var(--line); padding: 3px 10px; cursor: pointer; border-radius: 3px; }
+  .playbtn:hover { color: var(--ink); border-color: var(--line-bright); }
+  .riffname { font-size: 12px; color: var(--ink-dim); min-width: 168px; }
+  .nchips { display: flex; gap: 3px; }
+  .nchip { font-size: 11px; color: var(--ink); background: var(--bg-chip); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; min-width: 22px; text-align: center; }
+  .shapedot { width: 13px; height: 13px; border-radius: 50%; background: var(--chip); border: 1px solid color-mix(in oklch, var(--chip) 55%, var(--bg)); margin-left: auto; }
+
   /* recognition view: real contracts, functions colored by the std-lib they were
      recognized as (grey = novel app code), with a Solidity source panel on hover. */
   .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11.5px; color: var(--ink-dim); margin: 2px 0 14px; }

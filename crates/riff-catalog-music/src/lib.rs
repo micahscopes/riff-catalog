@@ -179,4 +179,39 @@ mod tests {
             "a different pitch-class set should differ"
         );
     }
+
+    #[test]
+    fn storybook_riffs_group_as_the_chapter_claims() {
+        // The five riffs in the storybook's riff-dial. Each facet must collapse a
+        // different set, or the chapter would be lying about what the dial does.
+        use std::collections::BTreeSet;
+        let riffs: [(&str, &[(i32, u32)]); 5] = [
+            ("the riff", &[(60, 2), (62, 1), (64, 1), (67, 2), (64, 2)]),
+            ("up a fifth", &[(67, 2), (69, 1), (71, 1), (74, 2), (71, 2)]),
+            ("same notes, re-voiced", &[(64, 1), (72, 1), (62, 1), (67, 1), (60, 2)]),
+            ("same rhythm, new notes", &[(48, 2), (55, 1), (50, 1), (60, 2), (53, 2)]),
+            ("a different riff", &[(60, 1), (60, 1), (67, 1), (67, 1), (69, 2)]),
+        ];
+        let shapes = |dims: &[Dimension], pcs: bool| {
+            riffs
+                .iter()
+                .map(|(name, spec)| {
+                    if pcs {
+                        let pitches: Vec<i32> = spec.iter().map(|&(p, _)| p).collect();
+                        let (k, g) = encode_pitch_class_set(name, &pitches).unwrap();
+                        facet_hex(&k, &g, dims).unwrap()
+                    } else {
+                        let (k, g) = encode_riff(name, &riff(spec)).unwrap();
+                        facet_hex(&k, &g, dims).unwrap()
+                    }
+                })
+                .collect::<BTreeSet<_>>()
+                .len()
+        };
+        let full = Dimension::ALL.to_vec();
+        assert_eq!(shapes(&full, false), 5, "full: all five are distinct");
+        assert_eq!(shapes(&HARMONIC_RELATIONSHIPS, false), 4, "intervals: the riff = up a fifth");
+        assert_eq!(shapes(&RHYTHM, false), 2, "rhythm: two duration classes");
+        assert_eq!(shapes(&PITCH_CLASS_SET, true), 4, "note set: the riff = re-voiced");
+    }
 }
