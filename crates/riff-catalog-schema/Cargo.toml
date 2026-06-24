@@ -1,0 +1,17 @@
+[package]
+name = "riff-catalog-schema"
+description = "The pure-data interchange contract: canonical graph form, identity keys, the closed dimension set, field values, and the digest and name newtypes. No hashing, so a producer can speak the wire format without the engine."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
