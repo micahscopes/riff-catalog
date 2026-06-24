@@ -538,6 +538,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "riff-catalog-music"
+version = "0.1.0"
+dependencies = [
+ "riff-catalog-core",
+]
+
+[[package]]
 name = "riff-catalog-solc"
 version = "0.1.0"
 dependencies = [

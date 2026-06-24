@@ -1,0 +1,13 @@
+[package]
+name = "riff-catalog-music"
+description = "Encode riffs and pitch-class sets as riff-catalog graphs: the same facet machinery on a second, audible domain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+riff-catalog-core.workspace = true
