@@ -160,7 +160,7 @@ const CH = [
   {
     nav: "start",
     kicker: "the one idea",
-    title: "“The same” has a dial.",
+    title: "“The same” is a setting, not a fact.",
     lede: "Compile a contract and most of what comes out is not unique. The question is how strict you want “the same” to be.",
     body: `<p>Same in every detail, or same once you ignore the names, the constants, the types? Each setting is a <em>facet</em>. You turn the dial yourself next.</p>`,
   },
