@@ -849,6 +849,58 @@
 .foldgraphedge { stroke: var(--warm); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; opacity: 0; transition: opacity 0.25s ease; }
 .foldgraphedge.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .foldnode rect, .foldgraphedge { transition: none; } }
+
+  /* locality-limit */
+/* when locality runs out: the honest edge of a local bottom-up merkle
+   address. Two cases, one tabbed component. Reuses .dialbar/.ladder/.stop,
+   .lattice/.latcap/.latdivide/.latarrhead/.latarrhead, .eqread (data-idle),
+   .shapedot, .twnote, .vsub, code. New rules are all loclim-* scoped. */
+.loclim-stage { margin: 8px 0 2px; }
+.loclim-svg { max-width: 720px; }
+.loclim-node circle { fill: var(--bg-chip); stroke: var(--ink-dim); stroke-width: 1.5; }
+.loclim-node text { fill: var(--ink); font-family: var(--mono); font-size: 13px; text-anchor: middle; pointer-events: none; }
+.loclim-cedge { fill: none; stroke: var(--ink-faint); stroke-width: 1.6; }
+.loclim-cyc.on .loclim-cedge { stroke: var(--rose); }
+.loclim-cyc.on .loclim-node circle { stroke: var(--rose); }
+.loclim-mem circle { stroke: color-mix(in oklch, var(--bg) 30%, transparent); stroke-width: 1; }
+.loclim-mem text { fill: var(--bg); font-family: var(--mono); font-size: 11px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+.loclim-scc { fill: color-mix(in oklch, var(--a) 9%, var(--bg)); stroke: var(--a); stroke-width: 1.4; }
+.loclim-comp.on .loclim-scc { fill: color-mix(in oklch, var(--a) 18%, var(--bg)); stroke-width: 2; }
+.loclim-scclab { fill: var(--a); font-family: var(--mono); font-size: 11px; }
+.loclim-wllab { fill: var(--ink-faint); font-family: var(--mono); font-size: 10px; }
+.loclim-ext circle { fill: var(--bg-chip); stroke: var(--ink-dim); stroke-width: 1.2; }
+.loclim-ext text { fill: var(--ink-dim); font-family: var(--mono); font-size: 11px; text-anchor: middle; pointer-events: none; }
+.loclim-cedge.content { stroke: var(--cool); }
+.loclim-cedge.context { stroke: var(--ink-faint); stroke-dasharray: 4 4; }
+.loclim-out.on .loclim-cedge.content { stroke-width: 2.4; }
+.loclim-in.on .loclim-cedge.context { stroke: var(--warm); }
+.loclim-edgelab { font-family: var(--mono); font-size: 10px; }
+.loclim-edgelab.content { fill: var(--cool); }
+.loclim-edgelab.context { fill: var(--ink-faint); }
+.loclim-in.on .loclim-edgelab.context { fill: var(--warm); }
+.loclim-flow { font-family: var(--mono); font-size: 10px; fill: var(--ink-faint); }
+.loclim-flow.bad { fill: var(--rose); }
+.loclim-cyc, .loclim-comp, .loclim-out, .loclim-in, .loclim-mem { cursor: default; }
+/* instantiation family panel */
+.loclim-inst { border: 1px solid var(--line-bright); background: var(--bg); padding: 12px 14px 14px; }
+.loclim-inst-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.loclim-inst-gen { color: var(--a); font-size: 15px; }
+.loclim-inst-head.on { background: color-mix(in oklch, var(--a) 7%, transparent); }
+.loclim-inst-cols { display: flex; justify-content: space-between; color: var(--ink-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; padding: 9px 0 4px; }
+.loclim-inst-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; padding: 7px 6px; border-radius: 4px; }
+.loclim-inst-row.on { background: var(--bg-chip); }
+.loclim-inst-name { color: var(--ink); font-size: 13px; }
+.loclim-inst-shape { display: block; color: var(--ink-dim); font-size: 11px; }
+.loclim-inst-pair { display: flex; gap: 14px; }
+.loclim-addr { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--ink-dim); }
+.loclim-addr .shapedot { margin-left: 0; width: 11px; height: 11px; }
+.loclim-addr.struct { color: var(--ink); }
+.loclim-col-l { }
+.loclim-col-r { text-align: right; }
+.loclim-inst-edge { margin-top: 10px; padding: 9px 11px; border: 1px solid var(--warm); border-radius: 5px; color: var(--ink); font-size: 12px; background: color-mix(in oklch, var(--warm) 6%, var(--bg)); }
+.loclim-inst-edge.on { background: color-mix(in oklch, var(--warm) 12%, var(--bg)); }
+.loclim-edge-mark, .loclim-inst-edge .loclim-edge-mark { display: inline-block; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--warm); border: 1px solid var(--warm); border-radius: 3px; padding: 1px 5px; margin-right: 7px; vertical-align: 1px; }
+.twnote.loclim-foot { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; }
 </style>
 </head>
 <body>

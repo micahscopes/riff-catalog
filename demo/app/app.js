@@ -280,6 +280,7 @@ const CH = [
   { nav: "two instantiations", kicker: "the edge of the method: one generic, two ways", title: "Same source, two instantiations: where the address agrees, and where it parts.", lede: "One generic shape, instantiated two ways. At the structure facet the two share an address: it is one skeleton. Keep the type spelling and the addresses part. Hover a dimension to see exactly where they agree and where they diverge, and read the honest gap underneath: this divergence is the syntactic shadow of the instantiation, not the monomorphized form.", body: `<two-instantiations></two-instantiations>` },
   { nav: "the engine checks too", kicker: "the same discipline, turned inward", title: "The engine checks too.", lede: "riffcat content-addresses the structure of code. The same discipline is turned on its own core. The digest function is written twice: in Rust, the engine that ships, and in Lean, where the rules are stated as theorems. Because the output is a fixed hash and every ordering inside it is canonical, a corpus of graphs is hashed by both and the bytes must match, exactly, in CI. This is a cited plan over the existing golden and conformance substrate, not a live proof: a Lean run needs the deferred toolchain.", body: `<lockstep-bench></lockstep-bench>` },
   { nav: "the fold", kicker: "how a facet address is made", title: "A content address is a fold.", lede: "One small unit lowers to a graph. Each node gets a context-free local digest, then the addresses snap in bottom-up: a parent folds its own local content with its children's tree digests, and the whole-graph digest lands last. Step through the fold, then drop a dimension and watch every address change.", body: `<fold-merkle></fold-merkle>` },
+  { nav: "locality runs out", kicker: "the honest edge of a local merkle address", title: "When locality runs out.", lede: "A bottom-up node digest is a function of its own subtree and nothing else (invariant I3). Two real cases push past that: a cycle has no leaf to fold from, and an instantiated shape gets its identity from a context the subtree cannot see. One ships a workaround, one stays an open edge.", body: `<locality-limit></locality-limit>` },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -300,7 +301,7 @@ const SECTIONS = [
   ["on real code", ["recognized", "twins", "dedup"]],
   ["in the compiler", ["the compiler too", "sniff it out", "modified", "two fingerprints", "main vs meta"]],
   ["structure and meaning", ["structure vs meaning", "prove it", "seat filled", "anchors", "the cheap yes", "prior art", "the proofs check"]],
-  ["the address up close", ["the fold", "two instantiations"]],
+  ["the address up close", ["the fold", "two instantiations", "locality runs out"]],
   ["a building block", ["a shared block", "what we need"]],
   ["in honesty", ["the engine checks too", "what we sampled"]],
 ];
@@ -3431,4 +3432,113 @@ customElements.define("fold-merkle", class extends HTMLElement {
     }
   }
   disconnectedCallback() { if (this._timer) clearInterval(this._timer); }
+});
+
+const LOCLIM_VIEWS = [
+  { key: "scc", label: "cycle / SCC (ships)", idle: "A recursive region has no leaf to begin the bottom-up fold from. The engine condenses each strongly connected component to one unit and addresses the component as a whole. Hover a piece." },
+  { key: "inst", label: "instantiation family (open edge)", idle: "One generic source, a family of concrete shapes once instantiated. The shape's identity depends on the instantiation context, which a context-free node digest excludes by design (I3). Hover a row." },
+];
+const LOCLIM_STRUCT_COLOR = "var(--ink-dim)";
+const LOCLIM_FAMILY = [
+  { hov: "n4", name: "RPow<Pair, 4>", shape: "a depth-4 nest, finite and acyclic, nothing recursive remains", struct: "7f3a2c", types: "a14e90", typesColor: "var(--warm)" },
+  { hov: "n8", name: "RPow<Pair, 8>", shape: "a depth-8 nest, a different concrete structure with different behaviour", struct: "7f3a2c", types: "c0d255", typesColor: "var(--cool)" },
+];
+const LOCLIM_HOVERS = {
+  noleaf: "A, B, C form a cycle. The fold is post-order: a parent waits on its children's tree digests. Here every node waits on a child that waits back, so there is no base case and the acyclic fold raises CycleDetected rather than starting.",
+  condense: "CondenseScc (Tarjan SCC plus a Weisfeiler-Leman refine) raises the unit of addressing from the node to the component. The whole SCC gets one ComponentHash; no context-free identity is finer than the SCC (invariant I4). This is the non-local workaround that ships.",
+  wl: "Inside the component, members are distinguished by their WL color, not by node key order. Under AnonymousShape no key-derived bytes enter any digest, so the colors stand in for who-is-who within the cycle (invariant I5).",
+  content: "A member's outgoing cross-component edge points at a shape it depends on, so it is folded into the member's initial color: it is content.",
+  context: "A member's incoming cross-component edge says who points at this component. That is context, not content, and deliberately stays out of the digest (invariant I3). One comment in condensed.rs draws this exact content-versus-context line.",
+  generic: "RPow<Pair, N> is one recursive thing in source. Hash this pre-instantiation form and every N shares one address, but which instantiation is lost. This is the cyclic, condense-scc side of the boundary.",
+  n4: "After instantiation at N=4 the recursion is unrolled away: a finite acyclic nest with its own subtree digest. Concrete and addressable, but the family relationship to N=8 is gone.",
+  n8: "N=8 is a different concrete shape with different behaviour. At structure-only it shares the family address with N=4; keeping the type spelling splits them. No single local digest carries both readings.",
+  openedge: "Instantiation is a semantic resolution: the type arguments live at the call site, outside the subtree the fold can see. A local syntactic hash cannot hold it. The engine keeps a syntactic type spelling today, not a resolved instantiation, so this stays an open edge.",
+};
+const LOCLIM_SCC_NOTE = `<p class="twnote">A node's tree digest is a pure function of its own local content plus its children's tree digests (acyclic.rs). A cycle has no leaf, so there is no base case and the plain fold cannot start. <b>CondenseScc</b> handles this by raising the unit it addresses: each strongly connected component is condensed to one unit, members are refined by Weisfeiler-Leman color, and the component is hashed as a whole. The deliberate asymmetry is the point: a member's <b>outgoing</b> cross edge is content (it is folded into the color), while an <b>incoming</b> cross edge is <b>context</b> and stays out (invariant I3). When a single local digest cannot capture the whole, the method raises the unit it addresses rather than smuggling context into the bytes.</p>`;
+const LOCLIM_INST_NOTE = `<p class="twnote">This is the same content-versus-context line, now on the open side. A generic <code>RPow&lt;Pair, N&gt;</code> is one recursive source; instantiating it gives a family of distinct finite acyclic shapes, one per N. A local digest is forced to pick: hash the generic form and every N collapses to one address (which instantiation is lost), or hash a monomorphized form and each N is its own address (the family relationship is gone, and the type arguments from the call site get baked into a digest advertised as a local subtree fold). The equality that matters here, <em>same generic, instantiated here</em> versus <em>same shape, different instantiation</em>, is a semantic fact about resolution, and resolution is not a property of any one subtree. So instantiation context is naturally <b>two facets</b>, never one contested address, and the resolved instantiation is not represented today.</p>`;
+customElements.define("locality-limit", class extends HTMLElement {
+  connectedCallback() {
+    this.view = "scc";
+    this.render();
+  }
+  render() {
+    const tabs = LOCLIM_VIEWS.map((v) =>
+      `<span class="stop ${v.key === this.view ? "on" : ""}" data-view="${v.key}">${v.label}</span>`).join("");
+    const idle = LOCLIM_VIEWS.find((v) => v.key === this.view).idle;
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>case</span><div class="ladder">${tabs}</div></div></div>
+      <div class="loclim-stage">${this.view === "scc" ? this.sccSvg() : this.instSvg()}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      ${this.view === "scc" ? LOCLIM_SCC_NOTE : LOCLIM_INST_NOTE}
+      <p class="twnote loclim-foot">Pre-baked illustration. The per-node <code>local</code> and <code>tree</code> digests and the per-component <code>ComponentHash</code> plus WL member colors are all computed by the engine today inside <code>digest_graph</code>, but the wasm wrapper surfaces only graph-level addresses, so the digests shown here are short stand-ins, not a live read of those exports. The SCC condensation, the WL refine, and the content-vs-context edge rule are real in the engine (<code>condensed.rs</code>); the instantiation case is an <b>open edge</b>: the engine keeps a syntactic type spelling, not a resolved instantiation, so the relationship between the family members is not addressed today.</p>`;
+    this.querySelectorAll("[data-view]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.view !== s.dataset.view) { this.view = s.dataset.view; this.render(); } }));
+    this.wire();
+  }
+  wire() {
+    const read = this.querySelector(".eqread");
+    if (!read) return;
+    const clear = () => this.querySelectorAll("[data-hov]").forEach((x) => x.classList.remove("on"));
+    this.querySelectorAll("[data-hov]").forEach((g) =>
+      g.addEventListener("mouseenter", () => {
+        clear(); g.classList.add("on");
+        read.innerHTML = LOCLIM_HOVERS[g.dataset.hov] || read.dataset.idle;
+      }));
+    this.addEventListener("mouseleave", () => { clear(); read.innerHTML = read.dataset.idle; });
+  }
+  sccSvg() {
+    return `
+      <svg viewBox="0 0 720 312" class="lattice loclim-svg" role="img" aria-label="a strongly connected component condensed to one unit of addressing">
+        <defs><marker id="loclim-arr" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="latarrhead"/></marker></defs>
+        <text x="172" y="26" text-anchor="middle" class="latcap">acyclic fold: no leaf to start from</text>
+        <text x="548" y="26" text-anchor="middle" class="latcap sem">condense-scc: raise the unit to the component</text>
+        <line x1="360" y1="40" x2="360" y2="296" class="latdivide"/>
+
+        <g class="loclim-cyc" data-hov="noleaf">
+          <path class="loclim-cedge" d="M 120 96 C 96 130, 96 170, 120 204" marker-end="url(#loclim-arr)"/>
+          <path class="loclim-cedge" d="M 150 214 C 192 234, 232 234, 268 214" marker-end="url(#loclim-arr)"/>
+          <path class="loclim-cedge" d="M 268 116 C 226 92, 178 92, 150 110" marker-end="url(#loclim-arr)"/>
+          <g class="loclim-node" transform="translate(120,90)"><circle r="22"/><text y="5">A</text></g>
+          <g class="loclim-node" transform="translate(120,214)"><circle r="22"/><text y="5">B</text></g>
+          <g class="loclim-node" transform="translate(290,150)"><circle r="22"/><text y="5">C</text></g>
+          <text x="172" y="284" text-anchor="middle" class="loclim-flow bad">every node waits on a child digest that waits on it</text>
+        </g>
+
+        <g class="loclim-comp" data-hov="condense">
+          <rect class="loclim-scc" x="446" y="66" width="204" height="118" rx="12"/>
+          <text x="548" y="58" text-anchor="middle" class="loclim-scclab">one SCC = one address</text>
+          <g class="loclim-mem" data-hov="wl" transform="translate(486,98)"><circle r="15" style="fill:var(--cool)"/><text y="4">A</text></g>
+          <g class="loclim-mem" data-hov="wl" transform="translate(486,152)"><circle r="15" style="fill:var(--warm)"/><text y="4">B</text></g>
+          <g class="loclim-mem" data-hov="wl" transform="translate(606,125)"><circle r="15" style="fill:var(--a)"/><text y="4">C</text></g>
+          <text x="548" y="176" text-anchor="middle" class="loclim-wllab">members keyed by WL color, not by node order</text>
+        </g>
+        <g class="loclim-out" data-hov="content">
+          <path class="loclim-cedge content" d="M 640 150 C 678 150, 678 226, 640 240" marker-end="url(#loclim-arr)"/>
+          <g class="loclim-ext" transform="translate(606,248)"><circle r="16"/><text y="4">D</text></g>
+          <text x="548" y="232" text-anchor="middle" class="loclim-edgelab content">outgoing cross edge: folded in as content</text>
+        </g>
+        <g class="loclim-in" data-hov="context">
+          <path class="loclim-cedge context" d="M 430 256 C 470 244, 470 200, 448 178"/>
+          <g class="loclim-ext ctx" transform="translate(414,262)"><circle r="16"/><text y="4">E</text></g>
+          <text x="500" y="296" text-anchor="middle" class="loclim-edgelab context">incoming cross edge: context, kept out (I3)</text>
+        </g>
+      </svg>`;
+  }
+  instSvg() {
+    const row = (m) =>
+      `<div class="loclim-inst-row" data-hov="${m.hov}">`
+      + `<span class="loclim-inst-name">${m.name}</span>`
+      + `<span class="loclim-inst-shape">${m.shape}</span>`
+      + `<span class="loclim-inst-pair">`
+      + `<span class="loclim-addr struct" title="structure-only address"><span class="shapedot" style="--chip:${LOCLIM_STRUCT_COLOR}"></span>${m.struct}</span>`
+      + `<span class="loclim-addr types" title="keeps the type spelling"><span class="shapedot" style="--chip:${m.typesColor}"></span>${m.types}</span>`
+      + `</span></div>`;
+    return `
+      <div class="loclim-inst">
+        <div class="loclim-inst-head" data-hov="generic"><span class="loclim-inst-gen">RPow&lt;Pair, N&gt;</span><span class="vsub">one generic source: a perfect binary tree of depth N, recursive before instantiation</span></div>
+        <div class="loclim-inst-cols"><span class="loclim-col-l">name &amp; concrete shape</span><span class="loclim-col-r">structure-only&nbsp;&nbsp;·&nbsp;&nbsp;keeps types</span></div>
+        ${LOCLIM_FAMILY.map(row).join("")}
+        <div class="loclim-inst-edge" data-hov="openedge"><span class="loclim-edge-mark">open</span> the address that says <em>these are one generic</em> and the address that says <em>which instantiation</em> are not the same address. A context-free local digest cannot hold both, and the resolved instantiation is not represented today.</div>
+      </div>`;
+  }
 });
