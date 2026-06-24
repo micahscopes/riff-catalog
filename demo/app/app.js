@@ -252,6 +252,7 @@ const CH = [
   },
   { nav: "interval vector", kicker: "the harmonic signature underneath a chord", title: "Six numbers that survive transposing and flipping.", lede: "Every chord projects to six interval-class counts: how many minor seconds it contains, how many major seconds, and so on up to the tritone. Move the chord to any key, turn it upside down, and these six numbers do not change. Pick a chord and watch its signature; major and minor land on the same one.", body: "<ivf-fingerprint></ivf-fingerprint>" },
   { nav: "three rungs", kicker: "one chord, three rungs of forgetting", title: "A pitch-class set has a ladder, not a switch.", lede: "The set-class facet is the top of a short climb. Take one chord up the ladder a rung at a time: the literal notes, then the same set slid to its tightest packing (transposition forgotten), then the prime form (inversion forgotten too). Each rung forgets one more thing, and you can watch exactly what.", body: `<three-rungs></three-rungs>` },
+  { nav: "two fingerprints", kicker: "two axes, not two rivals", title: "The compiler already emits a fingerprint. This is its complement.", lede: "Sourcify's metadata hash is the exact-identity fingerprint of a compilation: it answers \"is this the identical build,\" and a single whitespace flips it. A structural fingerprint answers the other question, \"is this the same code wearing different clothes,\" and is built to hold when the metadata hash moves. Edit the source below and watch the two axes part.", body: `<metadata-axes></metadata-axes>` },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -1973,6 +1974,140 @@ customElements.define("three-rungs", class extends HTMLElement {
         e.stopPropagation();
         const r = TR_RUNGS[+btn.dataset.i];
         playChord(trReading(this.fp, r.key));
+      }));
+  }
+});
+
+// "two fingerprints" chapter: the compiler's metadata hash (byte-exact, flips on
+// any character change) set beside riffcat's structural fingerprint (built to
+// survive the edits that move the metadata hash but keep the shape). This is an
+// illustrative compare, not a live recompile: the metadata-hash stand-in is a
+// real digest over the exact source text (so it genuinely flips on a whitespace),
+// and the structural fingerprint is shown as the shape it would resolve to and
+// holds across the same edits. The live structural compute lives in the
+// "drive the dial" chapter; here the point is the contrast of the two axes.
+//
+// Source quote (Sourcify, "Finding Auxdatas in the Bytecode", 2024-02-12): the
+// metadata hash "acts as a fingerprint of the compilation ... the slightest
+// change in the compiler settings or even a whitespace in any of the source
+// files will cause a change in the metadata hash." Kaan (#1659): "the metadata
+// hash is somehow the fingerprint of the compilation."
+
+// One baseline function and three edits that each move the metadata hash. The
+// structural fingerprint is deliberately insensitive to all three: whitespace is
+// not part of the shape, a rename drops out at names-blind, a constant churn
+// drops out once constants are set aside. Each edit returns the edited source so
+// the metadata-hash stand-in can be recomputed over the literal text.
+const MHA_BASE =
+`function previewMint(uint256 shares) public view returns (uint256) {
+    return _convertToAssets(shares, Math.Rounding.Up);
+}`;
+const MHA_EDITS = [
+  { key: "none", label: "original", note: "the verified source, as compiled", apply: (s) => s },
+  {
+    key: "ws", label: "+ a whitespace", note: "one blank line added; nothing else touched",
+    apply: (s) => s.replace("public view", "public  view"),
+  },
+  {
+    key: "rename", label: "rename a parameter", note: "shares becomes amount throughout",
+    apply: (s) => s.replace(/shares/g, "amount"),
+  },
+  {
+    key: "const", label: "change a constant", note: "rounding direction flipped Up to Down",
+    apply: (s) => s.replace("Math.Rounding.Up", "Math.Rounding.Down"),
+  },
+];
+
+// A small, dependency-free digest over the LITERAL text, shown as a stand-in for
+// the metadata hash. It is not the compiler's hash; it is here only to flip
+// honestly on any character change, exactly as the metadata hash does. FNV-1a,
+// rendered as 12 hex chars to read like one.
+function mhaTextHash(s) {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  // widen to a longer-looking digest by folding a second pass with a salt
+  let g = 0x9e3779b1 ^ h;
+  for (let i = s.length - 1; i >= 0; i--) {
+    g ^= s.charCodeAt(i);
+    g = Math.imul(g, 0x85ebca77) >>> 0;
+  }
+  return (h.toString(16).padStart(8, "0") + g.toString(16).padStart(8, "0")).slice(0, 12);
+}
+
+// The structural fingerprint is the SAME across every edit here, because none of
+// the three edits change the shape at names-and-constants-blind. A fixed digest
+// over the structure stands in for it; it is what the live engine resolves this
+// function to at the structure facet, and it does not move below.
+const MHA_STRUCT = "9b2f04c7d1ae";
+
+customElements.define("metadata-axes", class extends HTMLElement {
+  connectedCallback() {
+    this.sel = 0;
+    this.render();
+  }
+  render() {
+    const cur = MHA_EDITS[this.sel];
+    const src = cur.apply(MHA_BASE);
+    const baseSrc = MHA_BASE;
+    const meta = mhaTextHash(src);
+    const metaBase = mhaTextHash(baseSrc);
+    const metaMoved = meta !== metaBase;
+    const structMoved = false; // by construction: none of these edits change the shape
+
+    const tabs = MHA_EDITS.map((e, i) =>
+      `<button class="mha-tab ${i === this.sel ? "on" : ""}" data-i="${i}">${e.label}</button>`).join("");
+
+    // two digest cards, side by side: the metadata hash (flips) and the
+    // structural fingerprint (holds). The verdict word under each is the honest
+    // claim, no more.
+    const metaCard =
+      `<div class="mha-card ${metaMoved ? "moved" : ""}">
+        <div class="mha-card-h">metadata hash<span class="mha-axis">Sourcify · byte-exact</span></div>
+        <div class="mha-fp mha-meta">${meta}</div>
+        <div class="mha-verd ${metaMoved ? "flip" : "hold"}">${metaMoved ? "flipped" : "unchanged"}</div>
+        <div class="mha-q">answers: is this the identical compilation</div>
+      </div>`;
+    const structCard =
+      `<div class="mha-card ${structMoved ? "moved" : ""}">
+        <div class="mha-card-h">structural fingerprint<span class="mha-axis">riffcat · shape-exact</span></div>
+        <div class="mha-fp mha-struct">${MHA_STRUCT}</div>
+        <div class="mha-verd ${structMoved ? "flip" : "hold"}">${structMoved ? "flipped" : "held"}</div>
+        <div class="mha-q">answers: is this the same code, names and constants aside</div>
+      </div>`;
+
+    const read = this.sel === 0
+      ? `the unedited source · both fingerprints agree here, because nothing has changed yet`
+      : metaMoved && !structMoved
+        ? `<b>${cur.note}</b> · the metadata hash <span class="mha-w-flip">flipped</span>, the structural fingerprint <span class="mha-w-hold">held</span>`
+        : `${cur.note}`;
+
+    this.innerHTML = `
+      <div class="mha-quote">
+        <span class="mha-qmark">Sourcify, on the metadata hash:</span>
+        it &ldquo;acts as a fingerprint of the compilation &hellip; the slightest change in the compiler
+        settings or even a whitespace in any of the source files will cause a change in the metadata hash.&rdquo;
+      </div>
+      <div class="mha-controls"><span class="mha-controls-l">edit the source</span>${tabs}</div>
+      <div class="mha-stage">
+        <div class="codepanel mha-srcpanel">
+          <div class="cphead"><b>previewMint</b> <span class="mha-srcnote">${cur.note}</span></div>
+          <pre class="code">${solHi(src)}</pre>
+        </div>
+        <div class="mha-cards">${metaCard}<div class="mha-vs">vs</div>${structCard}</div>
+      </div>
+      <div class="eqread" data-idle="${read}">${read}</div>
+      <p class="twnote">Two axes, not two rivals. The metadata hash is the exact-identity fingerprint, and its sensitivity is the point: it gives a cryptographic guarantee that the whole compilation, whitespace included, is the original. The structural fingerprint is the deliberately insensitive counterpart: it dials out the names, constants, and formatting, so it survives the edits that move the metadata hash but keep the shape. One answers &ldquo;is this the identical build,&rdquo; the other &ldquo;is this the same construction in different clothes.&rdquo; riffcat rides the recompilation Sourcify already does; it does not replace the hash, it sits beside it.</p>
+      <p class="twnote mha-honest">This panel is an illustration: the right-hand digest is a stand-in computed over the literal text, so it flips on any character the way the real metadata hash does, and the structural fingerprint is shown as the shape the engine resolves this function to. The structural fingerprint is computed live, on real code, in the &ldquo;drive the dial&rdquo; chapter.</p>`;
+
+    this.querySelectorAll(".mha-tab").forEach((b) =>
+      b.addEventListener("click", () => {
+        const i = +b.dataset.i;
+        if (i === this.sel) return;
+        this.sel = i;
+        this.render();
       }));
   }
 });

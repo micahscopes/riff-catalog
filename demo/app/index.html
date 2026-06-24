@@ -538,6 +538,38 @@
   .rungrow.pending { opacity: .6; border-left-style: dashed; }
   .rungrow.pending .rung-name::after { content: " (pending)"; color: var(--warm); font-weight: 400; font-size: 10.5px; }
   .eqread .rung-pending { color: var(--warm); }
+
+  /* metadata-vs-structural */
+/* two fingerprints: the metadata hash (byte-exact, flips) beside the structural
+     fingerprint (shape-exact, holds). Reuses .codepanel/.code/.eqread/.twnote;
+     the new rules are the quote, the edit tabs, and the two digest cards. */
+  .mha-quote { border-left: 2px solid var(--a-dim); padding: 4px 0 4px 14px; margin: 8px 0 14px; color: var(--ink); font-size: 13.5px; }
+  .mha-quote .mha-qmark { color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; display: block; margin-bottom: 3px; }
+  .mha-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 12px; }
+  .mha-controls-l { color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; margin-right: 6px; }
+  .mha-tab { font: inherit; font-size: 12px; color: var(--ink-dim); background: var(--bg-chip); border: 1px solid var(--line); padding: 4px 10px; cursor: pointer; }
+  .mha-tab:hover { color: var(--ink); border-color: var(--line-bright); }
+  .mha-tab.on { color: var(--bg); background: var(--cool); border-color: var(--cool); font-weight: 700; }
+  .mha-stage { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; margin: 4px 0 6px; }
+  .mha-srcpanel { flex: 1 1 340px; min-width: 280px; }
+  .mha-srcpanel .cphead .mha-srcnote { color: var(--ink-faint); font-size: 11px; margin-left: 6px; }
+  .mha-cards { flex: 1 1 300px; min-width: 260px; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+  .mha-vs { text-align: center; color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: .15em; }
+  .mha-card { border: 1px solid var(--line); border-left: 3px solid var(--line-bright); background: var(--bg); padding: 10px 14px; transition: border-color .18s ease, box-shadow .18s ease; }
+  .mha-card-h { font-size: 12px; font-weight: 700; color: var(--ink); display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .mha-card-h .mha-axis { font-weight: 400; font-size: 10.5px; color: var(--ink-faint); }
+  .mha-fp { font-size: 17px; letter-spacing: .04em; margin: 6px 0 4px; transition: color .18s ease; }
+  .mha-meta { color: var(--warm); }
+  .mha-struct { color: var(--a); }
+  .mha-card.moved { border-left-color: var(--rose); box-shadow: -3px 0 12px -8px var(--rose); }
+  .mha-card.moved .mha-meta { color: var(--rose); }
+  .mha-verd { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; }
+  .mha-verd.flip { color: var(--rose); }
+  .mha-verd.hold { color: var(--a); }
+  .mha-q { color: var(--ink-dim); font-size: 11.5px; margin-top: 4px; }
+  .eqread .mha-w-flip { color: var(--rose); font-weight: 700; }
+  .eqread .mha-w-hold { color: var(--a); font-weight: 700; }
+  .twnote.mha-honest { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
 </style>
 </head>
 <body>
