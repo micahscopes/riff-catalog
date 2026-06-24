@@ -172,6 +172,13 @@ const CH = [
     body: `<facet-primer></facet-primer>`,
   },
   {
+    nav: "the riff",
+    kicker: "the same dial, on music",
+    title: "Why “riff”? Transpose it and it is still the riff.",
+    lede: "A short motif and a few variants, fingerprinted live by the same engine. Turn the dial and see which count as the same: transpose-proof intervals, rhythm alone, or the set of notes. Press play to hear each one.",
+    body: `<riff-dial></riff-dial>`,
+  },
+  {
     nav: "recognized",
     kicker: "the pitch, on real mainnet code",
     title: "We know this code: it is OpenZeppelin.",
@@ -776,5 +783,93 @@ customElements.define("fuzzy-scan", class extends HTMLElement {
       + `<a class="vsrcfy" href="https://sourcify.dev/#/lookup/${v.address}" target="_blank" rel="noopener">on sourcify ↗</a></div>`
       + `<p class="vrole">${v.edit}</p>`
       + `<pre class="code">${solHi(v.src)}</pre>`;
+  }
+});
+
+// The riff chapter: the same dial, on music. A short motif and a few variants,
+// fingerprinted by the very same engine (fingerprint_riff) at musical facets.
+// Pick a facet and the variants that count as "the same" share a color, exactly
+// like the code chapters. Playback is raw Web Audio (one triangle osc per note);
+// the click is the user gesture the browser needs to start audio.
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const noteName = (p) => NOTE_NAMES[((p % 12) + 12) % 12] + (Math.floor(p / 12) - 1);
+const RIFF_FACETS = [
+  ["full", "every note"],
+  ["harmonic_relationships", "intervals"],
+  ["rhythm", "rhythm"],
+  ["pitch_class_set", "note set"],
+];
+const RIFFS = [
+  { name: "the riff", notes: [[60, 2], [62, 1], [64, 1], [67, 2], [64, 2]] },
+  { name: "up a fifth", notes: [[67, 2], [69, 1], [71, 1], [74, 2], [71, 2]] },
+  { name: "same notes, re-voiced", notes: [[64, 1], [72, 1], [62, 1], [67, 1], [60, 2]] },
+  { name: "same rhythm, new notes", notes: [[48, 2], [55, 1], [50, 1], [60, 2], [53, 2]] },
+  { name: "a different riff", notes: [[60, 1], [60, 1], [67, 1], [67, 1], [69, 2]] },
+];
+function playRiff(notes) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  const ac = new Ctx();
+  const sec = 0.19;
+  let t = ac.currentTime + 0.03;
+  for (const [pitch, dur] of notes) {
+    const d = dur * sec;
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.2, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d * 0.9);
+    osc.connect(g).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + d);
+    t += d;
+  }
+  setTimeout(() => ac.close().catch(() => {}), (t - ac.currentTime + 0.3) * 1000);
+}
+customElements.define("riff-dial", class extends HTMLElement {
+  async connectedCallback() {
+    this.facet = "harmonic_relationships";
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      this.b = await engineReady;
+      this.fp = RIFFS.map((r) => ({
+        ...r,
+        addr: JSON.parse(this.b.fingerprint_riff(
+          JSON.stringify({ notes: r.notes.map(([pitch, dur]) => ({ pitch, dur })) }))),
+      }));
+      this.render();
+    } catch (e) { this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`; }
+  }
+  render() {
+    const ladder = RIFF_FACETS.map(([k, label]) =>
+      `<span class="stop ${k === this.facet ? "on" : ""}" data-facet="${k}">${label}</span>`).join("");
+    const groups = new Map();
+    for (const r of this.fp) {
+      const a = r.addr[this.facet];
+      if (!groups.has(a)) groups.set(a, []);
+      groups.get(a).push(r.name);
+    }
+    const rows = this.fp.map((r, i) => {
+      const a = r.addr[this.facet];
+      const chips = r.notes.map(([p]) => `<span class="nchip">${noteName(p)}</span>`).join("");
+      return `<div class="riffrow"><button class="playbtn" data-i="${i}">▶ play</button>`
+        + `<span class="riffname">${r.name}</span>`
+        + `<span class="nchips">${chips}</span>`
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="shape ${a.slice(0, 10)}"></span></div>`;
+    }).join("");
+    const n = groups.size;
+    const groupTxt = [...groups.values()]
+      .map((names) => names.length > 1 ? `<b>${names.join(" = ")}</b>` : names[0]).join(" · ");
+    const idle = `<b>${n}</b> shape${n === 1 ? "" : "s"} at this facet · ${groupTxt}`;
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
+      <div class="riffs">${rows}</div>
+      <div class="eqread">${idle}</div>
+      <p class="twnote">The same dial as the code chapters, on music. Transpose the riff and the <b>intervals</b> survive; keep the durations and the <b>rhythm</b> survives; reorder and re-octave the notes and the <b>note set</b> survives. The engine computes each with the very same facet machinery (<code>fingerprint_riff</code>).</p>`;
+    this.querySelectorAll("[data-facet]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
+    this.querySelectorAll(".playbtn").forEach((btn) =>
+      btn.addEventListener("click", () => playRiff(this.fp[+btn.dataset.i].notes)));
   }
 });
