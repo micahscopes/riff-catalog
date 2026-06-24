@@ -558,6 +558,12 @@
   .rungrow.pending { opacity: .6; border-left-style: dashed; }
   .rungrow.pending .rung-name::after { content: " (pending)"; color: var(--warm); font-weight: 400; font-size: 10.5px; }
   .eqread .rung-pending { color: var(--warm); }
+  /* the Forte A/B tag and the named "fold inversion" step tag on a rung row.
+     The Forte tag reuses .fcat-num; inside a flex row its margin-left:auto would
+     fight the flex:1 nchips, so pin it back to a plain gap and let the step tag
+     (a softer, italic marker for the rung-2-to-rung-3 fold) sit just before it. */
+  .rungrow .fcat-num { margin-left: 0; flex: none; }
+  .rungrow .fcat-num[title] { background: transparent; border-color: transparent; color: var(--warm); font-style: italic; }
 
   /* metadata-vs-structural */
 /* two fingerprints: the metadata hash (byte-exact, flips) beside the structural
