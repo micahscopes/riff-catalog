@@ -18,6 +18,7 @@
 //! class -> Names, and the Names facet over that graph is the set's identity.
 
 pub mod chord;
+pub mod set_theory;
 
 use riff_catalog_core::{
     CatalogError, CyclePolicy, Dimension, DigestRequest, EntityKey, Facet, Graph, GraphKey,
