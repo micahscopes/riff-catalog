@@ -3166,15 +3166,14 @@ customElements.define("lockstep-bench", class extends HTMLElement {
 // children in skeleton order; graph.full = the whole-graph digest). Then a facet
 // (a subset of dimensions) is chosen and "equal at a facet" is the address.
 //
-// ENGINE GAP (see engine_needs): the wasm wrapper exposes only graph-level
-// digests and three facet addresses today, NOT the per-node NodeHashes the engine
-// already computes inside digest_graph. This chapter is written against an
-// assumed thin new export window.wasmBindings.node_digests(fixtureJson, mode)
-// that serializes the already-computed per-node local/tree and per-component
-// digests to the shape FOLD_SHAPE documents below. With that export absent, the
-// component renders from a baked example (FOLD_BAKED) and labels it as
-// illustrative in the copy, so it is complete and reviewable now and goes live
-// unchanged once the export exists.
+// LIVE: the wasm wrapper now exports window.wasmBindings.node_digests(fixtureJson,
+// mode), a thin serializer over the per-node NodeHashes that digest_graph already
+// computes (no new hashing): per-node local/tree, per-component digests, and the
+// graph digest, in the shape FOLD_SHAPE documents below. The component lowers a
+// baked solc fixture (b.fixture("demo")), folds one small fn-like unit, and
+// renders those real digests. If the export is ever missing or errors, it falls
+// back to the baked example (FOLD_BAKED) and the copy says so, so the chapter is
+// safe either way; the live path is the default.
 //
 // All top-level names are prefixed `fold` to avoid collisions with app.js. Reuses
 // engineReady, chipColor, the .dialbar/.ladder/.stop/.eqread/.twnote/.live-note
@@ -3191,19 +3190,23 @@ const FOLD_FACETS = [
   { key: "structure", label: "structure-only", dims: ["structure"], gloss: "shape only; names, constants, and types all dropped" }
 ];
 
-// The assumed JSON shape from the new wasm export node_digests(fixtureJson, mode).
-// Documented here so the integrator can match the serializer to it exactly:
+// The JSON shape the wasm export node_digests(fixtureJson, mode) returns, the
+// shape this component (and the baked FOLD_BAKED stand-in) consumes:
 //   {
-//     nodes:   [ { id:int, kind:str, parent:int|null, order:int,
+//     nodes:   [ { id:str, kind:str, parent:str|null, order:int,
 //                  local:{ <dim>:hex }, tree:{ <dim>:hex } }, ... ],
-//     components: [ { index:int, members:[int], digests:{ <dim>:hex } }, ... ],
+//     components: [ { index:int, members:[str], digests:{ <dim>:hex } }, ... ],
 //     graph:   { <dim>:hex }
 //   }
-// `local` mirrors NodeHashes.local (context-free, invariant I3), `tree` mirrors
-// NodeHashes.tree (the Merkle subtree fold), `graph` mirrors GraphHashes.graph,
-// `components` mirrors GraphHashes.components (unused on this acyclic example but
-// carried for the locality chapter). `order` is the child's position in its
-// parent's skeleton, so the fold over children is deterministic.
+// `id` is each node's stable canonical key (a string); `parent` is the parent's
+// id, or null at the root. `local` mirrors NodeHashes.local (context-free,
+// invariant I3), `tree` mirrors NodeHashes.tree (the Merkle subtree fold),
+// `graph` mirrors GraphHashes.graph, `components` mirrors GraphHashes.components
+// (singletons on this acyclic unit; carried for the locality chapter). `order` is
+// the child's position in its parent's skeleton, so the fold is deterministic.
+// The live payload carries no (x,y); foldLayout assigns those for the SVG. The
+// baked FOLD_BAKED uses small integer ids and hand-placed (x,y) for the same
+// shape; both render identically.
 const FOLD_SHAPE = "node_digests(fixtureJson, mode) -> the shape documented above";
 
 // A small lowered unit: a tiny function with two statements and a handful of leaf
@@ -3269,6 +3272,56 @@ function foldLayers(nodes) {
   return { layerOf, layerCount: maxD + 1, byId, kids };
 }
 
+// Place nodes in the SVG when the payload carries none. The baked example hand-
+// codes (x,y) for a pretty layout; the live engine export carries only the tree
+// (id/kind/parent/order), so we lay it out here: depth sets the row (root at the
+// top, leaves at the bottom), and siblings spread evenly across the width in
+// skeleton (parent, order) order. Same viewBox the baked layout targets (720 x
+// 446), with a top/bottom margin so the synthetic graph.full node still fits
+// below the root. Mutates the nodes in place; a no-op once every node has an x.
+function foldLayout(nodes) {
+  if (nodes.every((n) => typeof n.x === "number")) return;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const kids = new Map(nodes.map((n) => [n.id, []]));
+  let root = null;
+  for (const n of nodes) {
+    if (n.parent != null && kids.has(n.parent)) kids.get(n.parent).push(n);
+    else root = n;
+  }
+  // Children in skeleton order so the drawing matches the fold order.
+  for (const cs of kids.values()) cs.sort((a, b) => (a.order || 0) - (b.order || 0));
+  const depthOf = new Map();
+  const setDepth = (n, d) => {
+    depthOf.set(n.id, d);
+    for (const c of kids.get(n.id)) setDepth(c, d + 1);
+  };
+  if (root) setDepth(root, 0);
+  const maxDepth = Math.max(0, ...nodes.map((n) => depthOf.get(n.id) || 0));
+  // Order leaves left-to-right by a depth-first walk, then place every node at
+  // the average x of its own leaves so parents sit centered over their subtree.
+  const VIEW_W = 720, TOP = 60, ROWH = maxDepth > 0 ? Math.min(96, (372 - TOP) / maxDepth) : 0;
+  const leaves = [];
+  const collect = (n) => {
+    const cs = kids.get(n.id);
+    if (cs.length === 0) leaves.push(n);
+    else cs.forEach(collect);
+  };
+  if (root) collect(root);
+  const slot = VIEW_W / (leaves.length + 1);
+  leaves.forEach((n, i) => { n._lx = slot * (i + 1); });
+  const place = (n) => {
+    const cs = kids.get(n.id);
+    if (cs.length === 0) { n.x = Math.round(n._lx); }
+    else {
+      cs.forEach(place);
+      n.x = Math.round(cs.reduce((s, c) => s + c.x, 0) / cs.length);
+    }
+    n.y = Math.round(TOP + (depthOf.get(n.id) || 0) * ROWH);
+  };
+  if (root) place(root);
+  for (const n of nodes) { delete n._lx; if (typeof n.x !== "number") { n.x = 360; n.y = 60; } }
+}
+
 const foldShort = (h) => (h || "").slice(0, 8);
 
 customElements.define("fold-merkle", class extends HTMLElement {
@@ -3292,6 +3345,10 @@ customElements.define("fold-merkle", class extends HTMLElement {
       }
     } catch (_) { /* keep the baked example; the copy labels it */ }
     this.data = data;
+    // The live engine export carries the tree but no coordinates; lay it out so
+    // the SVG can draw it. The baked example already has (x,y), so this is a
+    // no-op there.
+    foldLayout(data.nodes);
     this.layers = foldLayers(data.nodes);
     // total steps: 1 (locals) + layerCount (tree layers) + 1 (graph)
     this.maxStep = 1 + this.layers.layerCount;
@@ -3358,10 +3415,13 @@ customElements.define("fold-merkle", class extends HTMLElement {
     else if (!gv) phase = `step ${this.step + 1}: a parent folds its local content with its children's <b>tree</b> digests in skeleton order; deeper layers settled first.`;
     else phase = `last step: the kept node trees fold into one <b>graph.full</b> address. That join is the facet address: <b>equal at ${facetMeta.label}</b> means equal here.`;
     const src = this.live
-      ? `per-node digests are live from the engine`
-      : `per-node digests shown are an <b>illustrative</b> example (the live per-node export is not wired yet; see the note)`;
+      ? `per-node digests are computed <b>live</b> by the engine (riffcat, in this page as wasm), not baked`
+      : `per-node digests shown are a <b>baked illustrative</b> example (the live per-node read fell through; see the note)`;
     const idle = `facet <b>${facetMeta.label}</b>: ${facetMeta.gloss} \u00b7 ${phase} \u00b7 ${src}`;
 
+    const prov = this.live
+      ? ` This unit is folded <b>live</b> in your browser: the engine lowers a baked solc fixture, computes the per-node <code>local</code>/<code>tree</code> digests inside <code>digest_graph</code>, and the wasm wrapper serializes them straight to this view, so the digests above are the real bytes, not stand-ins.`
+      : ` The digests above are a <b>baked illustrative</b> example: the engine computes these per-node digests inside <code>digest_graph</code>, and the wasm wrapper can serialize them, but the live read fell through here, so these specific bytes are stand-ins for the shape of the fold.`;
     const atStart = this.step === 0, atEnd = this.step >= this.maxStep;
     this.innerHTML = `
       <div class="dialbar">
@@ -3382,7 +3442,7 @@ customElements.define("fold-merkle", class extends HTMLElement {
         ${graphSvg}
       </svg>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">A facet address is not read off the source, it is <b>folded</b>. First each node is hashed alone: <code>node.local</code> is its own content for the kept dimensions, and nothing else (invariant I3, no context). Then the addresses snap in <b>bottom-up</b>: a node's <code>node.tree</code> is its local content folded with its children's tree digests in skeleton order, so a parent can only settle once its whole subtree has. The last fold is <code>graph.full</code>, the whole-graph digest. A <b>facet</b> is just a chosen subset of the five dimensions, and <em>equal at a facet</em> means equal on exactly those dimensions: slide the dial and the same graph produces a different address as a dimension drops out of every fold. Equal subtrees collide on purpose, that is the overlap the catalog is built on. What a bottom-up fold cannot see is anything non-local: the context a node was resolved in never enters its digest, by construction.</p>`;
+      <p class="twnote">A facet address is not read off the source, it is <b>folded</b>. First each node is hashed alone: <code>node.local</code> is its own content for the kept dimensions, and nothing else (invariant I3, no context). Then the addresses snap in <b>bottom-up</b>: a node's <code>node.tree</code> is its local content folded with its children's tree digests in skeleton order, so a parent can only settle once its whole subtree has. The last fold is <code>graph.full</code>, the whole-graph digest. A <b>facet</b> is just a chosen subset of the five dimensions, and <em>equal at a facet</em> means equal on exactly those dimensions: slide the dial and the same graph produces a different address as a dimension drops out of every fold. Equal subtrees collide on purpose, that is the overlap the catalog is built on. What a bottom-up fold cannot see is anything non-local: the context a node was resolved in never enters its digest, by construction.${prov}</p>`;
 
     this.read = this.querySelector(".eqread");
     this.querySelectorAll("[data-facet]").forEach((s) =>

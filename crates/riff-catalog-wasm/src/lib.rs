@@ -11,8 +11,8 @@ use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 
 use riff_catalog_core::{
-    CyclePolicy, DigestRequest, Facet, Graph, GraphHashes, GraphKey, HashPolicy, ViewMode,
-    digest_graph,
+    CyclePolicy, DigestRequest, DimensionDigests, Facet, Graph, GraphHashes, GraphKey, HashPolicy,
+    NodeKey, ViewMode, digest_graph,
 };
 
 fn js_err(msg: impl std::fmt::Display) -> JsValue {
@@ -92,6 +92,149 @@ pub fn fingerprint_yul(ir_ast_json: &str, mode: &str) -> Result<String, JsValue>
         )?);
     }
     serde_json::to_string(&out).map_err(js_err)
+}
+
+/// Project one node's `DimensionDigests` to `{dimension_name: hex}`, exactly the
+/// shape the storybook reads (e.g. `{"structure": "9f01..", "names": ".."}`).
+/// Mirrors how `digest_unit` serializes `hashes.graph.values`, one node deeper.
+fn dimension_map(digests: &DimensionDigests) -> Value {
+    let mut out = serde_json::Map::new();
+    for (dimension, digest) in digests.iter() {
+        out.insert(dimension.as_str().to_string(), json!(digest.to_hex()));
+    }
+    Value::Object(out)
+}
+
+/// Serialize the per-node `local`/`tree` digests, per-component digests, and the
+/// whole-graph digest that `digest_graph` already computes for one graph. This is
+/// the "the fold" chapter's substrate: it surfaces `GraphHashes.nodes` (the
+/// `NodeHashes` per node, discarded by `digest_unit`), `GraphHashes.components`,
+/// and `GraphHashes.graph`. Pure additive serialization, no new hashing.
+///
+/// `id` is each node's canonical key (a stable string); `parent`/`order` come
+/// from the graph's `ChildEdge` skeleton (root parent is `null`), so the
+/// consumer can lay out and fold bottom-up. Every digest is projected onto its
+/// dimensions as `{dimension_name: hex}`, matching the facet readouts.
+fn fold_payload(graph: &Graph, hashes: &GraphHashes) -> Value {
+    // child key -> (parent key, ordinal), from the skeleton. A node with no
+    // incoming child edge is a root (parent: null).
+    let mut parent_of: std::collections::BTreeMap<&NodeKey, (&NodeKey, u32)> =
+        std::collections::BTreeMap::new();
+    for edge in &graph.children {
+        parent_of.insert(&edge.child, (&edge.parent, edge.ordinal));
+    }
+
+    let nodes: Vec<Value> = hashes
+        .nodes
+        .iter()
+        .map(|(key, node_hashes)| {
+            let node = graph.nodes.get(key);
+            let kind = node.map_or("node", |n| n.kind.as_str());
+            let (parent, order) = match parent_of.get(key) {
+                Some((parent, ordinal)) => (json!(parent.canonical_key()), *ordinal),
+                None => (Value::Null, 0),
+            };
+            json!({
+                "id": key.canonical_key(),
+                "kind": kind,
+                "parent": parent,
+                "order": order,
+                "local": dimension_map(&node_hashes.local),
+                "tree": dimension_map(&node_hashes.tree),
+            })
+        })
+        .collect();
+
+    let components: Vec<Value> = hashes
+        .components
+        .iter()
+        .map(|component| {
+            let members: Vec<Value> = component
+                .members
+                .iter()
+                .map(|m| json!(m.canonical_key()))
+                .collect();
+            json!({
+                "index": component.component_index,
+                "members": members,
+                "digests": dimension_map(&component.digests),
+            })
+        })
+        .collect();
+
+    json!({
+        "nodes": nodes,
+        "components": components,
+        "graph": dimension_map(&hashes.graph),
+    })
+}
+
+/// Surface the per-node digests `digest_graph` computes for one lowered unit, for
+/// the "the fold" chapter. Input is solc's `irAst` JSON for one object (same as
+/// `fingerprint_yul`); it lowers the object and folds one small fn-like unit (see
+/// `node_digests_impl` for the selection), so the payload reads as a small tree
+/// with statements, an expression, and leaves. `mode` is "shape" (default,
+/// anonymous) or "identity", exactly as the other exports. Returns the JSON the
+/// `fold-merkle` element consumes: `nodes` (with `local`/`tree` per dimension),
+/// `components`, and the `graph` digest.
+#[wasm_bindgen]
+pub fn node_digests(ir_ast_json: &str, mode: &str) -> Result<String, JsValue> {
+    node_digests_impl(ir_ast_json, mode).map_err(js_err)
+}
+
+/// Native-testable core of [`node_digests`]: lower the object, fold one small
+/// fn-like unit, and serialize its per-node digests. Errors are plain strings so
+/// the wasm wrapper can map them to `JsValue` and tests can assert on them.
+fn node_digests_impl(ir_ast_json: &str, mode: &str) -> Result<String, String> {
+    use riff_catalog_yul::from_solc_value;
+    use riff_catalog_yul::lower::{LowerOptions, YUL_AST_LEVEL, LoweredUnit, lower_object};
+    let value: Value = serde_json::from_str(ir_ast_json).map_err(|e| e.to_string())?;
+    let object = from_solc_value(&value).map_err(|e| e.to_string())?;
+    let lowered =
+        lower_object(&object, "wasm", &LowerOptions::default()).map_err(|e| e.to_string())?;
+
+    // The fold reads best on a small function body: a few statements, an
+    // expression, and a leaf, laid out in a handful of layers. Among functions
+    // that carry both an assignment (a statement) and a call (an expression),
+    // pick the one whose node count is closest to the chapter's reference size
+    // (8), tie-broken by fewer nodes then by name so the choice is stable across
+    // builds. Fall back to the largest function, then to the object graph.
+    const FOLD_TARGET_NODES: usize = 8;
+    let fn_like = |u: &&LoweredUnit| -> bool {
+        let mut has_assign = false;
+        let mut has_call = false;
+        for node in u.graph.nodes.values() {
+            match node.kind.as_str() {
+                "yul.assign" => has_assign = true,
+                "yul.call" => has_call = true,
+                _ => {}
+            }
+        }
+        has_assign && has_call
+    };
+    let unit = lowered
+        .functions
+        .iter()
+        .filter(fn_like)
+        .min_by(|a, b| {
+            let n = |u: &LoweredUnit| u.graph.nodes.len();
+            let key =
+                |u: &LoweredUnit| (n(u).abs_diff(FOLD_TARGET_NODES), n(u), u.name.clone());
+            key(a).cmp(&key(b))
+        })
+        .or_else(|| lowered.functions.iter().max_by_key(|u| u.graph.nodes.len()))
+        .unwrap_or(&lowered.object);
+
+    let policy = HashPolicy::new(YUL_AST_LEVEL, view(mode), CyclePolicy::CondenseScc)
+        .map_err(|e| e.to_string())?;
+    let hashes = digest_graph(
+        &DigestRequest::all_dimensions(unit.graph_key.clone(), policy),
+        &unit.graph,
+    )
+    .map_err(|e| e.to_string())?
+    .hashes;
+
+    serde_json::to_string(&fold_payload(&unit.graph, &hashes)).map_err(|e| e.to_string())
 }
 
 /// Fingerprint a contract's Solidity source. Input is solc's source `ast` JSON;
@@ -246,6 +389,47 @@ pub fn fingerprint_chord(notation: &str) -> Result<String, JsValue> {
 #[cfg(test)]
 mod tests {
     use super::oklch_chip;
+
+    const DEMO_YUL: &str = include_str!("../../../demo/app/fixtures/demo.yul.json");
+
+    #[test]
+    fn node_digests_match_fold_shape() {
+        let out = super::node_digests_impl(DEMO_YUL, "shape").expect("node_digests");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let nodes = v["nodes"].as_array().expect("nodes array");
+        assert!(!nodes.is_empty(), "fold needs at least one node");
+        assert!(nodes.len() <= 16, "fold unit should stay small, got {}", nodes.len());
+        // Exactly one root (parent: null), the others all parented in the skeleton.
+        let roots = nodes.iter().filter(|n| n["parent"].is_null()).count();
+        assert_eq!(roots, 1, "a tree has exactly one root");
+        // Every field the consumer reads is present and well-typed.
+        for n in nodes {
+            assert!(n["id"].is_string());
+            assert!(n["kind"].is_string());
+            assert!(n["order"].is_u64());
+            for facet in ["local", "tree"] {
+                let map = n[facet].as_object().expect("dimension map");
+                for dim in ["structure", "names", "constants", "types"] {
+                    let hex = map[dim].as_str().expect("hex");
+                    assert_eq!(hex.len(), 64, "{dim} digest is 32-byte hex");
+                }
+            }
+        }
+        assert!(v["components"].is_array());
+        let graph = v["graph"].as_object().expect("graph digests");
+        assert_eq!(graph["structure"].as_str().unwrap().len(), 64);
+    }
+
+    #[test]
+    fn node_digests_is_deterministic_and_shape_anonymizes() {
+        // Same input, same bytes (the digests are a pure function of the graph).
+        let a = super::node_digests_impl(DEMO_YUL, "shape").unwrap();
+        let b = super::node_digests_impl(DEMO_YUL, "shape").unwrap();
+        assert_eq!(a, b, "node_digests is deterministic");
+        // shape (anonymous) and identity differ: names/paths enter only in identity.
+        let id = super::node_digests_impl(DEMO_YUL, "identity").unwrap();
+        assert_ne!(a, id, "shape view should not equal identity view");
+    }
 
     #[test]
     fn chip_color_stable_distinct_and_formatted() {
