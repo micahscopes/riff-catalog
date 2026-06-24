@@ -233,6 +233,7 @@ pub fn fingerprint_chord(notation: &str) -> Result<String, JsValue> {
         "notation": notation,
         "pitch_classes": pcs,
         "prime_form": pf,
+        "transposition_normal_form": tnf,
         "interval_vector": interval_vector(&pcs),
         "note_set": facet_hex(&key, &graph, &PITCH_CLASS_SET).map_err(js_err)?,
         "transposition_normal": facet_hex(&tk, &tg, &PITCH_CLASS_SET).map_err(js_err)?,

@@ -516,6 +516,28 @@
 .ivf-bra { color: var(--warm); font-variant-numeric: tabular-nums; }
 .ivf-share { font-size: 11.5px; color: var(--ink-faint); margin-top: 4px; }
 .ivf-share b { color: var(--a); }
+
+  /* three-rungs */
+/* the three rungs: one chord climbing note_set -> transposition normal form ->
+     prime form. Reuses .ladder/.stop, .riffrow-ish rows, .nchip, .shapedot,
+     .eqread, .twnote. New: a row that lights when its rung is the selected one,
+     and a muted "pending" state for the rung that awaits an engine field. */
+  .rungs { gap: 4px; }
+  .rungrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    border: 1px solid var(--line); border-left: 3px solid var(--line); background: var(--bg-chip);
+    padding: 6px 10px; cursor: pointer; transition: border-color .15s ease, background .15s ease, opacity .15s ease; }
+  .rungrow:hover { border-color: var(--line-bright); }
+  .rungrow.on { border-left-color: var(--a); background: var(--a-dim); }
+  .rungrow .rung-ix { flex: none; width: 18px; text-align: center; color: var(--ink-faint);
+    font-size: 11px; border: 1px solid var(--line); border-radius: 50%; line-height: 16px; }
+  .rungrow.on .rung-ix { color: var(--a); border-color: var(--a-dim); }
+  .rungrow .rung-name { flex: 0 0 172px; font-size: 12px; color: var(--ink-dim); }
+  .rungrow.on .rung-name { color: var(--ink); font-weight: 700; }
+  .rungrow .nchips { flex: 1; }
+  .rungrow .shapedot { margin-left: 0; }
+  .rungrow.pending { opacity: .6; border-left-style: dashed; }
+  .rungrow.pending .rung-name::after { content: " (pending)"; color: var(--warm); font-weight: 400; font-size: 10.5px; }
+  .eqread .rung-pending { color: var(--warm); }
 </style>
 </head>
 <body>

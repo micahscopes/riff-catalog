@@ -251,6 +251,7 @@ const CH = [
     body: `<forte-catalog></forte-catalog>`,
   },
   { nav: "interval vector", kicker: "the harmonic signature underneath a chord", title: "Six numbers that survive transposing and flipping.", lede: "Every chord projects to six interval-class counts: how many minor seconds it contains, how many major seconds, and so on up to the tritone. Move the chord to any key, turn it upside down, and these six numbers do not change. Pick a chord and watch its signature; major and minor land on the same one.", body: "<ivf-fingerprint></ivf-fingerprint>" },
+  { nav: "three rungs", kicker: "one chord, three rungs of forgetting", title: "A pitch-class set has a ladder, not a switch.", lede: "The set-class facet is the top of a short climb. Take one chord up the ladder a rung at a time: the literal notes, then the same set slid to its tightest packing (transposition forgotten), then the prime form (inversion forgotten too). Each rung forgets one more thing, and you can watch exactly what.", body: `<three-rungs></three-rungs>` },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -1867,4 +1868,111 @@ customElements.define("ivf-fingerprint", class extends HTMLElement {
       btn.addEventListener("click", (e) => { e.stopPropagation(); playChord(this.data[+btn.dataset.i].fp.pitch_classes); }));
   }
   pick(i) { if (i !== this.sel && this.data[i]) { this.sel = i; this.render(); } }
+});
+
+// The three rungs of the structural ladder on a pitch-class set, on one chord.
+// Each rung is a stricter facet: note_set (the literal pitch classes) -> the
+// transposition normal form (the same set rotated to its minimal, tightest-packed
+// reading, transposition forgotten) -> set_class / prime form (inversion folded in
+// too). We climb one chord up the ladder and name what each rung drops.
+//
+// The middle rung reads a field the engine does not expose yet: a transposition-
+// normal-form address from fingerprint_chord, matching polyphonotopes-math's
+// normalFormBits (the minimal-rotation, transposition-invariant canonical form
+// that sits between the literal set and the inversion-folded prime form). The
+// component is written against that future field, with a graceful fallback note
+// when it is absent. See engine_needs.
+const TR_RUNGS = [
+  {
+    key: "note_set",
+    rung: "the literal notes",
+    forgets: "nothing yet: the actual pitch classes, exactly as written",
+    keeps: "register folded to one octave; the bare set of pitch classes",
+  },
+  {
+    key: "transposition_normal",
+    rung: "transposition forgotten",
+    forgets: "where the set sits: every transposition reads as one tightest-packed rotation",
+    keeps: "the inside spacing of the chord, still distinguishing a shape from its mirror",
+  },
+  {
+    key: "set_class",
+    rung: "inversion forgotten too",
+    forgets: "the mirror as well: a shape and its inversion share one prime form",
+    keeps: "only the interval content: Allen Forte's catalog address",
+  },
+];
+// A chord whose three rungs are all visibly distinct, so the ladder reads as a
+// climb and not a collapse. G major works: written as {D,G,B} the literal set is
+// not its own tightest rotation (rung 1 != rung 2), and a major triad is not
+// inversion-symmetric, so the prime form folds it further (rung 2 != rung 3). Its
+// prime form is [0,3,7], the 3-11 class the set-class chapters land on.
+const TR_CHORD = "G";
+// Render the chosen rung's address as a small set of pitch-class chips, using the
+// engine's own field for that rung. The literal set always shows; the normal-form
+// rung shows the rotated reading; the set-class rung shows the prime form.
+const trReading = (fp, key) => {
+  if (key === "set_class") return fp.prime_form;
+  if (key === "transposition_normal" && fp.transposition_normal_form)
+    return fp.transposition_normal_form;
+  return fp.pitch_classes;
+};
+const trPcLabel = (pc) => ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][((pc % 12) + 12) % 12];
+customElements.define("three-rungs", class extends HTMLElement {
+  async connectedCallback() {
+    this.rung = "note_set";
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      this.fp = JSON.parse(b.fingerprint_chord(TR_CHORD));
+      this.hasNormal = this.fp.transposition_normal != null
+        && this.fp.transposition_normal_form != null;
+      this.render();
+    } catch (e) { this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`; }
+  }
+  addrFor(key) {
+    if (key === "set_class") return this.fp.set_class;
+    if (key === "transposition_normal") return this.fp.transposition_normal || this.fp.set_class;
+    return this.fp.note_set;
+  }
+  render() {
+    const fp = this.fp;
+    const ladder = TR_RUNGS.map((r) =>
+      `<span class="stop ${r.key === this.rung ? "on" : ""}" data-rung="${r.key}">${r.rung}</span>`).join("");
+    // The chord climbs the same ladder; each rung is a row, lit when selected,
+    // showing its address-color dot and the set reading the engine returns there.
+    const rows = TR_RUNGS.map((r, i) => {
+      const addr = this.addrFor(r.key);
+      const reading = trReading(fp, r.key);
+      const chips = reading.map((pc) => `<span class="nchip">${trPcLabel(pc)}</span>`).join("");
+      const on = r.key === this.rung;
+      const missing = r.key === "transposition_normal" && !this.hasNormal;
+      return `<div class="rungrow ${on ? "on" : ""} ${missing ? "pending" : ""}" data-rung="${r.key}">`
+        + `<span class="rung-ix">${i + 1}</span>`
+        + `<span class="rung-name">${r.rung}</span>`
+        + `<span class="nchips">${chips}</span>`
+        + `<button class="playbtn" data-i="${i}">▶ hear it</button>`
+        + `<span class="shapedot" style="--chip:${chipColor(addr)}" title="${r.key} ${addr.slice(0, 10)}"></span></div>`;
+    }).join("");
+    const sel = TR_RUNGS.find((r) => r.key === this.rung);
+    const pendNote = (this.rung === "transposition_normal" && !this.hasNormal)
+      ? ` <span class="rung-pending">(this rung is awaiting an engine field; showing the literal set as a placeholder)</span>` : "";
+    const idle = `rung <b>${TR_RUNGS.indexOf(sel) + 1}</b> of 3 · forgets ${sel.forgets} · keeps ${sel.keeps}${pendNote}`;
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>climb</span><div class="ladder">${ladder}</div></div></div>
+      <div class="riffs rungs">${rows}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">One chord (<b>${TR_CHORD}</b>), three readings of "the same." The first rung is the literal set of pitch classes. The second slides the set to its tightest-packed rotation, so every transposition reads alike: the same move a listener makes hearing a riff moved up a fifth as still the riff. The third folds in inversion as well and lands on the prime form, Forte's catalog address. Each step up forgets exactly one more thing, and never adds anything back: equal at a lower rung is always equal at every rung above it.</p>`;
+    this.querySelectorAll("[data-rung]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const k = el.dataset.rung;
+        if (k && this.rung !== k) { this.rung = k; this.render(); }
+      }));
+    this.querySelectorAll(".playbtn").forEach((btn) =>
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const r = TR_RUNGS[+btn.dataset.i];
+        playChord(trReading(this.fp, r.key));
+      }));
+  }
 });
