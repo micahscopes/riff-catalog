@@ -2045,11 +2045,12 @@ customElements.define("three-rungs", class extends HTMLElement {
 // holds across the same edits. The live structural compute lives in the
 // "drive the dial" chapter; here the point is the contrast of the two axes.
 //
-// Source quote (Sourcify, "Finding Auxdatas in the Bytecode", 2024-02-12): the
-// metadata hash "acts as a fingerprint of the compilation ... the slightest
+// Source quote (Sourcify docs, "Finding Auxdatas in the Bytecode", 2024-02-12):
+// the metadata hash "acts as a fingerprint of the compilation ... the slightest
 // change in the compiler settings or even a whitespace in any of the source
-// files will cause a change in the metadata hash." Issue #1659: "the metadata
-// hash is somehow the fingerprint of the compilation."
+// files will cause a change in the metadata hash." This is a docs/org statement,
+// so it is attributed to Sourcify, not an individual. The Main-vs-Meta framing
+// the next chapter uses comes from argotorg/sourcify #1643.
 
 // One baseline function and three edits that each move the metadata hash. The
 // structural fingerprint is deliberately insensitive to all three: whitespace is
