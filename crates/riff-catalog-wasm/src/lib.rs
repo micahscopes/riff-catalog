@@ -206,6 +206,28 @@ pub fn chip_color(digest_hex: &str) -> String {
     oklch_chip(digest_hex)
 }
 
+/// Fingerprint a chord written as a real notation string. Parses it with the
+/// vibe-grammars pest parser, derives its pitch-class set, and returns the
+/// note-set facet address (plus full). A real string parsed to a structural
+/// fingerprint: the music analogue of parsing Solidity source.
+#[wasm_bindgen]
+pub fn fingerprint_chord(notation: &str) -> Result<String, JsValue> {
+    use riff_catalog_core::Dimension;
+    use riff_catalog_music::{
+        PITCH_CLASS_SET, chord::chord_to_pitch_classes, encode_pitch_class_set, facet_hex,
+    };
+    let pcs = chord_to_pitch_classes(notation).map_err(js_err)?;
+    let (key, graph) = encode_pitch_class_set("chord", &pcs).map_err(js_err)?;
+    let full = Dimension::ALL.to_vec();
+    let out = json!({
+        "notation": notation,
+        "pitch_classes": pcs,
+        "note_set": facet_hex(&key, &graph, &PITCH_CLASS_SET).map_err(js_err)?,
+        "full": facet_hex(&key, &graph, &full).map_err(js_err)?,
+    });
+    serde_json::to_string(&out).map_err(js_err)
+}
+
 #[cfg(test)]
 mod tests {
     use super::oklch_chip;
