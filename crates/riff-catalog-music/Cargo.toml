@@ -11,3 +11,5 @@ doctest = false
 
 [dependencies]
 riff-catalog-core.workspace = true
+vibe-grammars = { git = "https://github.com/micahscopes/vibe-grammars", rev = "69884c8eeadfe5655c7cfdb68d9b813ed12cf8a4" }
+pest = "2"
