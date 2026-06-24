@@ -282,10 +282,46 @@ const CH = [
 // chapter part is handled here; sub-anchors are left to the chapter's component.
 const slugify = (s) => s.replace(/\s+/g, "-");
 
+// The chapters were built in waves, so their array order does not match the
+// talk's arc. SECTIONS is the single source of truth for both order and the
+// grouping the nav shows: each entry is [label, [chapter navs, in order]]. The
+// menu is domain-coherent on purpose (all music together, all code together),
+// so a presenter can jump to the section they want and skip the rest. We reorder
+// CH in place to follow it and tag each chapter with its section, validating
+// that every chapter lands in exactly one section (a typo throws, loudly).
+const SECTIONS = [
+  ["the idea", ["start", "facets"]],
+  ["on music", ["the riff", "forte catalog", "interval vector", "three rungs"]],
+  ["on real code", ["recognized", "twins", "dedup"]],
+  ["in the compiler", ["the compiler too", "sniff it out", "modified", "two fingerprints", "main vs meta"]],
+  ["structure and meaning", ["structure vs meaning", "prove it", "anchors", "prior art", "the proofs check"]],
+  ["a building block", ["a shared block", "what we need"]],
+  ["in honesty", ["what we sampled"]],
+];
+{
+  const byNav = new Map(CH.map((c) => [c.nav, c]));
+  const ordered = [];
+  for (const [label, navs] of SECTIONS) {
+    navs.forEach((nv, i) => {
+      const c = byNav.get(nv);
+      if (!c) throw new Error(`SECTIONS references unknown chapter: ${nv}`);
+      c.sec = label;
+      c.secHead = i === 0; // opens its section, so the nav draws a label before it
+      ordered.push(c);
+      byNav.delete(nv);
+    });
+  }
+  if (byNav.size) throw new Error(`chapters missing from SECTIONS: ${[...byNav.keys()].join(", ")}`);
+  CH.length = 0;
+  CH.push(...ordered);
+}
+
 customElements.define("tour-app", class extends HTMLElement {
   connectedCallback() {
     const nav = document.getElementById("nav");
-    nav.innerHTML = CH.map((c, k) => `<button data-k="${k}">${k === 0 ? "·" : k}. ${c.nav}</button>`).join("");
+    nav.innerHTML = CH.map((c, k) =>
+      (c.secHead ? `<span class="navsec">${c.sec}</span>` : "")
+      + `<button data-k="${k}">${k === 0 ? "·" : k}. ${c.nav}</button>`).join("");
     nav.querySelectorAll("button").forEach((b) =>
       b.addEventListener("click", () => this.go(+b.dataset.k)));
     document.addEventListener("keydown", (e) => {
