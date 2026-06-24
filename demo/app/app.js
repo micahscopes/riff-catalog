@@ -274,6 +274,7 @@ const CH = [
     lede: "riffcat does one leg: it localizes, it points at the matching or changed subtree. The compiler can supply the provenance, source down to bytecode. A verifier adjudicates, with a proof or a counterexample. Hover a leg for the honest version of what we would need from that team, and the question we cannot answer ourselves.",
     body: `<collab-triangle></collab-triangle>`,
   },
+  { nav: "what we sampled", kicker: "the honest numbers, and the ones we owe you", title: "What we sampled, and what we have not measured yet.", lede: "Every number in this storybook is a Sourcify-floor count over distinct source files, plus one null calibration. None of it is precision or recall against a baseline. Here is exactly what each number is, and the measurement we still owe you.", body: "<sampled-ledger></sampled-ledger>" },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -2440,5 +2441,101 @@ customElements.define("collab-triangle", class extends HTMLElement {
       this.querySelectorAll(".ctleg").forEach((x) => x.classList.remove("on"));
       read.innerHTML = read.dataset.idle;
     });
+  }
+});
+
+// What we sampled: the honest-numbers beat. Two ledgers, side by side. The first
+// is what the demo already measures (exact counts over distinct Sourcify source
+// files, and one null-floor calibration); the second is what is NOT yet measured
+// (precision and recall versus a naive name/bytecode baseline on a labelled
+// slice). The second ledger is rendered as explicitly PENDING: no number is
+// invented for it. Click a measured row for how it was produced; the pending
+// rows describe the measurement that would fill them. Static (no engine); the
+// counts are transcribed from the vuln-reach measurement, so they match the
+// other chapters exactly and this chapter cannot drift from them at runtime.
+const SAMPLED_MEASURED = [
+  {
+    what: "ERC-4626 vulnerable shape, exact-source reach",
+    unit: "distinct source files",
+    n: "741",
+    kind: "floor",
+    how: "The largest single Sourcify source_hash for each of two vulnerable convertToShares shapes (OZ 153, solmate 588). One source_hash is one exact file content, so this is the count an exact-source match keyed on the dominant file already groups together. Exact within the ERC4626.sol population, and a floor: flattened and oddly-vendored files were not classified.",
+  },
+  {
+    what: "ERC-4626 vulnerable shape, structure reach",
+    unit: "distinct source files",
+    n: "1,344",
+    kind: "floor",
+    how: "The same two vulnerable structure fingerprints, summed across every source variant that carries them (OZ 228 over 8 variants, solmate 1,116 over 27). 100% of the ERC4626.sol-named OZ and solmate populations were classified, so within that corpus this is the full count, not a sample. It is a floor for the same reason as the exact number, and the shape-minus-exact gap (+603) is itself a floor: more variants only widen it.",
+  },
+  {
+    what: "Multicall fuzzy match, coincidence floor",
+    unit: "null calibration",
+    n: "score",
+    kind: "null",
+    how: "Not a count. The weighted-containment score an unrelated function is expected to reach against the vulnerable Multicall shape by chance, with the OZ patched form used as a clean negative that sits below the catches. This calibrates where a fuzzy score stops being noise. It is one shape's floor, reported alongside the marginal cases the score alone cannot certify, not a corpus-wide error rate.",
+  },
+];
+const SAMPLED_PENDING = [
+  {
+    what: "Precision vs a naive name/bytecode baseline",
+    needs: "labelled slice",
+    how: "Of the contracts riffcat flags as a given shape, what fraction a labelled ground truth agrees with, measured against a baseline that matches on function name or on bytecode hash. We do not have a labelled slice yet, so we report no number here rather than a flattering one.",
+  },
+  {
+    what: "Recall vs a naive name/bytecode baseline",
+    needs: "labelled slice",
+    how: "Of the contracts that truly carry a shape, what fraction riffcat recovers, against the same baseline. The reach numbers above suggest where shape matching gains over exact match, but a gain in reach is not recall until the population is labelled.",
+  },
+];
+customElements.define("sampled-ledger", class extends HTMLElement {
+  connectedCallback() {
+    this.measured = SAMPLED_MEASURED;
+    this.pending = SAMPLED_PENDING;
+    this.sel = 0;
+    this.render();
+  }
+  render() {
+    const mRows = this.measured.map((r, i) => {
+      const hue = r.kind === "null" ? 38 : 145;
+      const tag = r.kind === "null" ? "null floor" : "floor";
+      return `<tr class="lxrow sampled-mrow ${i === this.sel ? "on" : ""}" data-i="${i}" style="--hue:${hue}">`
+        + `<td class="lx-shape">${r.what}</td>`
+        + `<td class="sampled-unit">${r.unit}</td>`
+        + `<td class="lx-verd ok">${tag}</td>`
+        + `<td class="lx-n lx-reach">${r.n}</td></tr>`;
+    }).join("");
+    const pRows = this.pending.map((r) =>
+      `<tr class="lxrow sampled-prow" style="--hue:215">`
+      + `<td class="lx-shape">${r.what}</td>`
+      + `<td class="sampled-unit">${r.needs}</td>`
+      + `<td class="lx-verd sampled-pend">not measured</td>`
+      + `<td class="lx-n sampled-pendn">pending</td></tr>`).join("");
+    this.innerHTML = `
+      <p class="vlead">Two columns of numbers stand behind this demo. The first column exists: exact counts over distinct Sourcify source files, plus one null-floor calibration. The second column does not exist yet: precision and recall against a naive baseline, which needs a labelled slice we have not built. We keep them apart on purpose.</p>
+      <div class="sampled-cap">measured, and a floor</div>
+      <table class="vledger sampled-table"><thead><tr><th>what the number is</th><th>counted over</th><th>kind</th><th>value</th></tr></thead><tbody>${mRows}</tbody></table>
+      <p class="vledger-cap">Every value above is exact within Sourcify's verified corpus and a floor on the true population, never a per-contract crawl of the whole chain. Click a row for how it was produced. One source_hash is one exact file, so classifying one witness per variant classifies all of its compilations exactly.</p>
+      <div class="sampled-cap sampled-cap-pend">not measured yet, owed</div>
+      <table class="vledger sampled-table sampled-pending"><thead><tr><th>the measurement we owe</th><th>needs</th><th>status</th><th>value</th></tr></thead><tbody>${pRows}</tbody></table>
+      <p class="vledger-cap">These two rows are blank on purpose. A reach gain over exact match is not recall, and a clean shape is not precision, until a labelled slice exists to score against. We would rather show the empty cells than fill them with a number we cannot stand behind.</p>
+      <div class="vbody codepanel"></div>
+      <p class="twnote">This narrows what to read; it does not decide what is true. The measured column is honest about being a floor; the pending column is honest about being empty. Same shape, and here are the parts that match: the sentence stops where the evidence does.</p>`;
+    this.querySelectorAll(".sampled-mrow").forEach((row) =>
+      row.addEventListener("click", () => {
+        this.sel = +row.dataset.i;
+        this.querySelectorAll(".sampled-mrow").forEach((x, i) => x.classList.toggle("on", i === this.sel));
+        this.renderBody();
+      }));
+    this.renderBody();
+  }
+  renderBody() {
+    const r = this.measured[this.sel];
+    const hue = r.kind === "null" ? 38 : 145;
+    const badge = r.kind === "null" ? "null floor" : "floor";
+    this.querySelector(".vbody").innerHTML =
+      `<div class="vhead" style="--hue:${hue}"><span class="vbadge">${badge}</span> <b>${r.what}</b>`
+      + `<span class="vsub">${r.unit}</span><span class="vfp">${r.n}</span></div>`
+      + `<p class="vrole sampled-how">${r.how}</p>`;
   }
 });
