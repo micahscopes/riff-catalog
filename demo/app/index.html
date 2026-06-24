@@ -190,6 +190,21 @@
   .latcap.sem { fill: var(--warm); }
   .latfv { fill: var(--ink-faint); font-family: var(--mono); font-size: 10.5px; }
   .latflow { fill: var(--ink-faint); font-family: var(--mono); font-size: 10px; }
+  /* structure vs meaning, refined: facets as addresses + the orthogonal axis */
+  .ss-chip { stroke: rgba(255,255,255,.28); stroke-width: 1; }
+  .ss-coarse { stroke: var(--line-bright); stroke-width: 1; fill: none; }
+  .ss-coarse-lab, .ss-floor-lab { fill: var(--ink-faint); font-family: var(--mono); font-size: 9.5px; letter-spacing: .03em; }
+  .ss-floor { stroke: var(--warm); stroke-width: 1; stroke-dasharray: 2 4; opacity: .7; }
+  .ss-wg .ss-wdot { fill: var(--bg-chip); stroke: var(--ink-dim); stroke-width: 1.5; transition: stroke .14s ease; }
+  .ss-wg text { fill: var(--ink-dim); font-family: var(--mono); font-size: 10.5px; pointer-events: none; }
+  .ss-wg.on .ss-wdot { stroke: var(--ink); }
+  .ss-wg.on text { fill: var(--ink); }
+  .ss-wlink { stroke-width: 1.5; fill: none; }
+  .ss-wlink.eq { stroke: var(--cool); }
+  .ss-wlink.ne { stroke: var(--warm); stroke-dasharray: 3 3; }
+  .ss-pin rect { fill: color-mix(in oklch, var(--a) 16%, var(--bg)); stroke: var(--a); stroke-width: 1; transition: fill .14s ease; }
+  .ss-pin text { fill: var(--ink); font-family: var(--mono); font-size: 11px; pointer-events: none; }
+  .ss-pin.on rect { fill: color-mix(in oklch, var(--a) 30%, var(--bg)); stroke-width: 2; }
 
   /* recognition view: real contracts, functions colored by the std-lib they were
      recognized as (grey = novel app code), with a Solidity source panel on hover. */

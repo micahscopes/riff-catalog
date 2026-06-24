@@ -222,9 +222,9 @@ const CH = [
   },
   {
     nav: "structure vs meaning",
-    kicker: "framing the verifier",
-    title: "Syntactic to semantic is a lattice, not a line.",
-    lede: "Where structure ends and meaning begins, and why riffcat hands that boundary to a verifier.",
+    kicker: "the substrate, not the climb",
+    title: "A facet is an address. Meaning anchors to it.",
+    lede: "riffcat lives entirely on the syntactic side: a lattice of facets, each a content address. It moves toward meaning by forgetting more, but never reaches it and does not aim to. Its job is to be the substrate a semantic claim pins to.",
     body: `<facet-lattice></facet-lattice>`,
   },
   { nav: "prove it", kicker: "the seat we leave open", title: "riffcat localizes. The verdict seat stays empty.", lede: "A shape match is a candidate, not a verdict. riffcat localizes the matching subtree and writes a proof obligation, then leaves the verdict and attested-by columns empty, a seat that only a named verifier can fill. Pick a tool to see what it would have to discharge.", body: `<verdict-seat></verdict-seat>` },
@@ -1101,59 +1101,89 @@ customElements.define("chord-fp", class extends HTMLElement {
   }
 });
 
-// Framing the verifier: the syntactic-to-semantic picture, corrected. The
-// structural side is a LATTICE of facets (forget names, or constants, or types,
-// independently; finer agreement implies coarser), not a point on a line.
-// Semantic equivalence is an ORTHOGONAL axis (undecidable in general), the
-// verifier's job. riffcat localizes on the lattice and hands FV a scoped
-// obligation. Hand-laid SVG; hover a node for what it forgets.
-const LATTICE_NODES = {
-  full: { x: 250, y: 58, t: "full", s: "keep every dimension: exact identity" },
-  namesblind: { x: 118, y: 168, t: "names-blind", s: "forget names: same code modulo identifiers" },
-  constblind: { x: 382, y: 168, t: "constants-blind", s: "forget constants: same shape modulo literals" },
-  structure: { x: 250, y: 278, t: "structure", s: "forget names, constants, and types: pure shape" },
-  semantic: { x: 600, y: 168, t: "semantic", s: "same behavior on all inputs: undecidable in general, and the verifier's axis, not riffcat's", sem: true },
+// Framing the verifier, the gist corrected. riffcat does not climb from
+// syntactic to semantic; it lives on the syntactic side, a LATTICE of facets,
+// each one a CONTENT ADDRESS (a URI for a syntactic equivalence class). Coarser
+// facets forget more and collapse more, moving toward meaning without reaching
+// it or aiming to. Meaning is an ORTHOGONAL, incomparable axis (an optimizer
+// relates programs that share no address; a changed constant splits programs
+// that share one). riffcat is the SUBSTRATE: a semantic statement pins to a
+// facet address and rides it, as far as the facet covers the statement's
+// footprint. Hand-laid SVG; hover a facet, a witness, or the pinned claim.
+const SS_FACETS = {
+  full: { x: 240, y: 66, t: "full", chip: "var(--a)", s: "keep every dimension. The exact-identity address: only literal twins share it, so any claim rides it soundly." },
+  namesblind: { x: 130, y: 170, t: "names-blind", chip: "var(--cool)", s: "forget identifiers. The address two renamings of one program share. A claim rides it unless it depends on a name (a selector, a revert string)." },
+  constblind: { x: 360, y: 170, t: "constants-blind", chip: "var(--warm)", s: "forget literals. The same address across a changed constant, so a claim that depends on that constant must not ride it." },
+  structure: { x: 240, y: 274, t: "structure", chip: "var(--ink-dim)", s: "forget names, constants, and types. Pure shape: the coarsest address, the most collapsed, the closest to meaning without being meaning." },
 };
-const LATTICE_EDGES = [["full", "namesblind"], ["full", "constblind"], ["namesblind", "structure"], ["constblind", "structure"]];
+const SS_EDGES = [["full", "namesblind"], ["full", "constblind"], ["namesblind", "structure"], ["constblind", "structure"]];
+const SS_HOVERS = {
+  optimizer: "Different shape, same behavior. An optimizer turns a program into one that shares no facet with it, yet computes the same thing. Meaning relates them; no syntactic address does. Meaning is not the top of the lattice.",
+  constant: "Same shape, different behavior. PUSH1 3 and PUSH1 4 share the structure address but do not compute the same thing. One address, two meanings. A coarse address is not a proof of equivalence.",
+  anchor: "The substrate. A proof from a verifier, or a verdict from an auditor, pins to a facet address and rides every program at that address, as far as the facet covers what the claim depends on. riffcat does not compute meaning; it gives meaning an address to live at, and a track to travel on.",
+};
 customElements.define("facet-lattice", class extends HTMLElement {
   connectedCallback() {
-    const N = LATTICE_NODES;
-    const edges = LATTICE_EDGES.map(([a, b]) =>
-      `<line x1="${N[a].x}" y1="${N[a].y + 15}" x2="${N[b].x}" y2="${N[b].y - 15}" class="latedge"/>`).join("");
-    const node = (k) => {
-      const n = N[k];
-      return `<g class="latnode ${n.sem ? "sem" : ""}" data-k="${k}" transform="translate(${n.x},${n.y})">`
-        + `<rect x="-68" y="-15" width="136" height="30" rx="5"/>`
-        + `<text x="0" y="4" text-anchor="middle">${n.t}</text></g>`;
+    const F = SS_FACETS;
+    const edges = SS_EDGES.map(([a, b]) =>
+      `<line x1="${F[a].x}" y1="${F[a].y + 16}" x2="${F[b].x}" y2="${F[b].y - 16}" class="latedge"/>`).join("");
+    const fnode = (k) => {
+      const n = F[k];
+      return `<g class="latnode" data-k="${k}" transform="translate(${n.x},${n.y})">`
+        + `<rect x="-70" y="-16" width="140" height="32" rx="5"/>`
+        + `<circle class="ss-chip" cx="-54" cy="0" r="5" style="fill:${n.chip}"/>`
+        + `<text x="10" y="4" text-anchor="middle">${n.t}</text></g>`;
     };
-    const idle = "Hover a facet. Downward edges forget one more dimension; equal at a finer facet implies equal at every coarser one.";
+    const idle = "Hover a facet (each an address), a witness (why meaning is a different axis), or the pinned claim (how a proof rides an address).";
     this.innerHTML = `
-      <svg viewBox="0 0 720 320" class="lattice" role="img" aria-label="facet lattice and the orthogonal semantic axis">
-        <defs><marker id="latarr" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+      <svg viewBox="0 0 720 360" class="lattice" role="img" aria-label="syntactic facets as addresses, and the orthogonal axis of meaning">
+        <defs><marker id="ssarr" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 z" class="latarrhead"/></marker></defs>
-        <text x="250" y="24" text-anchor="middle" class="latcap">structural facets (a lattice)</text>
-        <text x="600" y="24" text-anchor="middle" class="latcap sem">meaning (the verifier's axis)</text>
-        <line x1="478" y1="42" x2="478" y2="292" class="latdivide"/>
+        <text x="240" y="26" text-anchor="middle" class="latcap">syntactic facets, each an address</text>
+        <text x="588" y="26" text-anchor="middle" class="latcap sem">meaning, the verifier's axis</text>
+        <line x1="448" y1="44" x2="448" y2="336" class="latdivide"/>
+        <path d="M 44 80 L 44 262" class="ss-coarse" marker-end="url(#ssarr)"/>
+        <text x="36" y="170" text-anchor="middle" class="ss-coarse-lab" transform="rotate(-90 36 170)">coarser, forgets more, toward meaning</text>
         ${edges}
-        <path d="M 322 232 C 452 256, 506 200, 548 176" class="lathandoff" marker-end="url(#latarr)"/>
-        <text x="430" y="270" text-anchor="middle" class="latflow">localize, then hand off a scoped obligation</text>
-        ${Object.keys(N).map(node).join("")}
-        <text x="600" y="202" text-anchor="middle" class="latfv">hevm · SMTChecker · Lean · Certora</text>
+        ${Object.keys(F).map(fnode).join("")}
+        <line x1="100" y1="314" x2="380" y2="314" class="ss-floor"/>
+        <text x="240" y="330" text-anchor="middle" class="ss-floor-lab">semantic equivalence: never crossed, not aimed at</text>
+        <g class="ss-wg" data-k="optimizer">
+          <text x="588" y="90" text-anchor="middle">different shape, same behavior</text>
+          <circle class="ss-wdot" cx="500" cy="106" r="7"/>
+          <circle class="ss-wdot" cx="676" cy="106" r="7"/>
+          <path class="ss-wlink eq" d="M 508 106 L 668 106"/>
+        </g>
+        <g class="ss-wg" data-k="constant">
+          <text x="588" y="158" text-anchor="middle">same shape, one constant changed</text>
+          <circle class="ss-wdot" cx="566" cy="174" r="7"/>
+          <circle class="ss-wdot" cx="610" cy="174" r="7"/>
+          <path class="ss-wlink ne" d="M 574 174 L 602 174"/>
+        </g>
+        <text x="588" y="222" text-anchor="middle" class="latfv">hevm · EquiVM · SMTChecker · Lean</text>
+        <g class="ss-pin" data-k="anchor">
+          <rect x="470" y="280" width="118" height="30" rx="6"/>
+          <text x="529" y="299" text-anchor="middle">proof / verdict</text>
+        </g>
+        <path d="M 470 294 C 452 250, 452 200, 432 174" class="lathandoff" marker-end="url(#ssarr)"/>
+        <text x="529" y="332" text-anchor="middle" class="latflow">a claim pins to an address, and rides it</text>
       </svg>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">The usual picture is a line from syntactic to semantic. With riffcat the structural side is a <b>lattice</b>: you forget names, or constants, or types, independently, and a finer agreement always implies a coarser one. <b>Semantic equivalence is a different axis</b> (two structurally different programs can compute the same thing, which is what an optimizer does daily), undecidable in general. riffcat lives entirely on the structural lattice; it <b>localizes</b> a candidate at a chosen facet and hands a verifier a tight, scoped proof obligation. The facet it anchors at is exactly the scope that obligation stays sound in.</p>`;
+      <p class="twnote">The usual picture is a line from syntactic to semantic, as if riffcat were climbing toward meaning. It is not, and it does not try to. riffcat lives entirely on the syntactic side, a <b>lattice of facets</b>: forget names, or constants, or types, independently, and a finer agreement always implies a coarser one. Each facet is a <b>content address</b>, a stable name for one syntactic equivalence class, the way a URI names a resource. Going coarser collapses more programs together, which moves toward <em>they mean the same</em> but never arrives, and is not meant to. <b>Meaning is a different axis, not the top of this one</b>: an optimizer makes a structurally different program that computes the same thing (equal in meaning, no shared address), and one changed constant keeps the shape but changes the behavior (one shared address, different meaning). So riffcat's job is to be the <b>substrate</b>. A semantic statement, a proof or a verdict, pins to a facet address and rides every program at that address, as far as the facet covers what the statement depends on. riffcat does not compute meaning. It gives meaning an address to live at, and a track to travel on.</p>`;
     const read = this.querySelector(".eqread");
+    const clear = () => this.querySelectorAll(".latnode, .ss-wg, .ss-pin").forEach((x) => x.classList.remove("on"));
     this.querySelectorAll(".latnode").forEach((g) =>
       g.addEventListener("mouseenter", () => {
-        this.querySelectorAll(".latnode").forEach((x) => x.classList.remove("on"));
-        g.classList.add("on");
-        const n = LATTICE_NODES[g.dataset.k];
+        clear(); g.classList.add("on");
+        const n = SS_FACETS[g.dataset.k];
         read.innerHTML = `<b>${n.t}</b> · ${n.s}`;
       }));
-    this.addEventListener("mouseleave", () => {
-      this.querySelectorAll(".latnode").forEach((x) => x.classList.remove("on"));
-      read.innerHTML = read.dataset.idle;
-    });
+    this.querySelectorAll(".ss-wg, .ss-pin").forEach((g) =>
+      g.addEventListener("mouseenter", () => {
+        clear(); g.classList.add("on");
+        read.innerHTML = SS_HOVERS[g.dataset.k];
+      }));
+    this.addEventListener("mouseleave", () => { clear(); read.innerHTML = read.dataset.idle; });
   }
 });
 
