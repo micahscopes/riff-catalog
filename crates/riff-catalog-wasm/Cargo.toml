@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
+riff-catalog-music.workspace = true
 riff-catalog-core.workspace = true
 riff-catalog-yul.workspace = true
 riff-catalog-solidity.workspace = true

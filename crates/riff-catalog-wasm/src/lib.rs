@@ -120,3 +120,47 @@ pub fn fingerprint_source(ast_json: &str, mode: &str) -> Result<String, JsValue>
     }
     serde_json::to_string(&out).map_err(js_err)
 }
+
+/// Fingerprint a melodic riff (and its pitch-class set). This is the engine on a
+/// second, audible domain: the very same facet machinery, no Solidity in sight.
+/// Input is `{"notes":[{"pitch":<midi int>,"dur":<uint>}, ...]}`; output is the
+/// "equal at facet" address for each musical facet, so the storybook can group
+/// riffs by shape the way it groups code: rhythm (durations), harmonic
+/// relationships (intervals, transposition invariant), pitch-class set, and full.
+#[wasm_bindgen]
+pub fn fingerprint_riff(riff_json: &str) -> Result<String, JsValue> {
+    use riff_catalog_core::Dimension;
+    use riff_catalog_music::{
+        HARMONIC_RELATIONSHIPS, Note, PITCH_CLASS_SET, RHYTHM, encode_pitch_class_set, encode_riff,
+        facet_hex,
+    };
+    let value: Value = serde_json::from_str(riff_json).map_err(js_err)?;
+    let raw = value
+        .get("notes")
+        .and_then(|n| n.as_array())
+        .ok_or_else(|| js_err("riff json must have a \"notes\" array"))?;
+    let mut notes = Vec::with_capacity(raw.len());
+    let mut pitches = Vec::with_capacity(raw.len());
+    for n in raw {
+        let pitch = n
+            .get("pitch")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or_else(|| js_err("each note needs an integer \"pitch\""))? as i32;
+        let dur = n
+            .get("dur")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| js_err("each note needs an unsigned \"dur\""))? as u32;
+        notes.push(Note { pitch, dur });
+        pitches.push(pitch);
+    }
+    let (rk, rg) = encode_riff("riff", &notes).map_err(js_err)?;
+    let (pk, pg) = encode_pitch_class_set("riff", &pitches).map_err(js_err)?;
+    let full = Dimension::ALL.to_vec();
+    let out = json!({
+        "full": facet_hex(&rk, &rg, &full).map_err(js_err)?,
+        "harmonic_relationships": facet_hex(&rk, &rg, &HARMONIC_RELATIONSHIPS).map_err(js_err)?,
+        "rhythm": facet_hex(&rk, &rg, &RHYTHM).map_err(js_err)?,
+        "pitch_class_set": facet_hex(&pk, &pg, &PITCH_CLASS_SET).map_err(js_err)?,
+    });
+    serde_json::to_string(&out).map_err(js_err)
+}
