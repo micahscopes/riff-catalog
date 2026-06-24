@@ -93,6 +93,18 @@ transpose (suc n) p = transpose n (rotate1 p)
 invert : Pcs → Pcs
 invert = rev
 
+-- The EXPLICIT inversion operation: the I generator of the dihedral group, the exact
+-- pitch-class mirror pc -> (12 - pc) mod 12. On the length-12 characteristic vector
+-- this is the positional shuffle out[i] = in[(12 - i) mod 12], i.e. fix index 0 and
+-- swap i with 12-i. This is the SAME move the demo's `invert` toggle performs on a
+-- chord's pitch classes; we write it positionally so it computes by refl. (It differs
+-- from `rev` above only by a transposition, so both give the same set class, but this
+-- one is the on-the-nose I generator the demo shows audibly.)
+invertI : Pcs → Pcs
+invertI (b0 ∷ b1 ∷ b2 ∷ b3 ∷ b4 ∷ b5 ∷ b6 ∷ b7 ∷ b8 ∷ b9 ∷ b10 ∷ b11 ∷ []) =
+  b0 ∷ b11 ∷ b10 ∷ b9 ∷ b8 ∷ b7 ∷ b6 ∷ b5 ∷ b4 ∷ b3 ∷ b2 ∷ b1 ∷ []
+invertI p = p  -- non-12 vectors are left alone; we only ever build length-12 ones
+
 ------------------------------------------------------------------------
 -- Lexicographic order on Bool vectors with `true < false`, so that a vector with a
 -- pitch class present EARLIER is SMALLER. The least rotation under this order is the
@@ -247,6 +259,46 @@ major-augmented-different-setclass eq = true≢false (cong pos3 eq)
 --  inequality of these two concrete vectors, which holds since they differ in a
 --  decidable position; we leave it as the visible computed forms rather than wiring a
 --  Bool-vector apartness proof, to keep the module focused.)
+
+------------------------------------------------------------------------
+-- THE EXPLICIT INVERSION OPERATION (the demo's `invert` toggle, checked).
+--
+-- The set-class quotient FOLDS inversion: major and minor already share a prime form
+-- (above). The finer transposition class does NOT fold it: at the Tn level major and
+-- minor are DISTINCT (this is the standard A/B distinction, 3-11B vs 3-11A). Inversion
+-- is exactly the move between them. We check, all by refl on the concrete vectors:
+--   (1) major and minor are DIFFERENT transposition classes (the A/B distinction holds);
+--   (2) inverting the major triad (the I generator invertI) lands on the MINOR type;
+--   (3) the augmented triad is inversionally SYMMETRIC: invertI fixes it on the nose.
+------------------------------------------------------------------------
+
+-- (1) The A/B distinction: major and minor are NOT the same transposition class, so
+-- the Tn-type keeps them apart (3-11B vs 3-11A). Project a position where their
+-- transposition normal forms differ. (Agda computes tNF Cmajor with a present class
+-- at position 8 and tNF Aminor without one there, so position 8 is true for major and
+-- false for minor; we project it and read off true ≢ false.)
+private
+  pos8 : Pcs → Bool
+  pos8 (_ ∷ _ ∷ _ ∷ _ ∷ _ ∷ _ ∷ _ ∷ _ ∷ b ∷ _) = b
+  pos8 _ = false
+
+major-minor-different-transclass : ¬ (Cmajor ~T Aminor)
+major-minor-different-transclass eq = true≢false (cong pos8 eq)
+
+-- (2) THE inversion headline: invert the C major triad with the explicit I generator
+-- and it lands on the MINOR type (3-11B inverts to 3-11A). Checked at the Tn level,
+-- where the two are genuinely distinct, so this equality has content. By refl.
+invert-major-is-minor : invertI Cmajor ~T Aminor
+invert-major-is-minor = refl
+
+-- the same fact, but reading the minor type off C minor (the literal [0,3,7]).
+invert-major-is-minor-type : invertI Cmajor ~T Cminor
+invert-major-is-minor-type = refl
+
+-- (3) The augmented triad is inversionally symmetric: the I generator fixes it exactly
+-- (not merely up to transposition). By refl on the concrete vector.
+invert-augmented-fixed : invertI Caug ≡ Caug
+invert-augmented-fixed = refl
 
 ------------------------------------------------------------------------
 -- Grounding the abstract HIT: the set-class quotient is a FACET in exactly the sense
