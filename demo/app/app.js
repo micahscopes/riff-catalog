@@ -250,6 +250,7 @@ const CH = [
     lede: "Seven named chords, each parsed from notation and fingerprinted live in your browser. Turn the dial to the set-class facet and watch major and minor fall into one class while augmented and diminished stay apart. The class riffcat computes is Allen Forte's, arrived at from structure alone.",
     body: `<forte-catalog></forte-catalog>`,
   },
+  { nav: "interval vector", kicker: "the harmonic signature underneath a chord", title: "Six numbers that survive transposing and flipping.", lede: "Every chord projects to six interval-class counts: how many minor seconds it contains, how many major seconds, and so on up to the tritone. Move the chord to any key, turn it upside down, and these six numbers do not change. Pick a chord and watch its signature; major and minor land on the same one.", body: "<ivf-fingerprint></ivf-fingerprint>" },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -1751,4 +1752,119 @@ customElements.define("forte-catalog", class extends HTMLElement {
       });
     });
   }
+});
+
+// Interval-vector fingerprint: a chord's six interval-class counts shown as a
+// compact strip of tiny bars, computed live by the same engine (fingerprint_chord,
+// interval_vector field). The interval vector is a projection facet: it counts
+// the unordered intervals present and forgets register, voicing, and root, so it
+// is invariant under transposition and inversion. Two chords with the same vector
+// share one harmonic signature; C major and A minor are the standing example
+// (both set class 3-11), so picking one highlights the other.
+// Reuses .dialbar/.ladder/.stop/.riffs/.riffrow/.riffname/.nchips/.nchip/.playbtn/
+// .shapedot/.eqread/.twnote/.vsub and the chipColor + engineReady + playChord
+// helpers already in app.js; the bar strip is the only genuinely new visual.
+const IVF_CHORDS = ["C", "Am", "Cmaj7", "G7", "Caug", "Cdim"];
+// The six interval classes, shortest first. ic6 (the tritone) is the lone
+// self-inverse interval, which is part of why the vector survives inversion.
+const IVF_IC = [
+  ["ic1", "m2", "minor 2nd / major 7th"],
+  ["ic2", "M2", "major 2nd / minor 7th"],
+  ["ic3", "m3", "minor 3rd / major 6th"],
+  ["ic4", "M3", "major 3rd / minor 6th"],
+  ["ic5", "P4", "perfect 4th / perfect 5th"],
+  ["ic6", "TT", "the tritone, its own inverse"],
+];
+// A vector keys an equivalence class: stringify it so same-signature chords match.
+const ivfKey = (vec) => vec.join("-");
+const ivfTotal = (vec) => vec.reduce((a, b) => a + b, 0);
+
+customElements.define("ivf-fingerprint", class extends HTMLElement {
+  async connectedCallback() {
+    this.sel = 0;
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      this.data = IVF_CHORDS
+        .map((c) => { try { return { c, fp: JSON.parse(b.fingerprint_chord(c)) }; } catch { return null; } })
+        .filter(Boolean);
+      if (!this.data.length) throw new Error("no chord parsed");
+      this.render();
+    } catch (e) { this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`; }
+  }
+  // Tiny bar strip for one interval vector. The widest count present sets the
+  // full-height bar, so a vector reads as a shape at a glance; an empty class is
+  // a faint floor, never a gap. Bars are colored from the vector's own class
+  // color, so two chords with the same signature also wear the same color.
+  strip(vec, color, big) {
+    const peak = Math.max(1, ...vec);
+    const cls = big ? "ivf-strip ivf-big" : "ivf-strip";
+    const bars = vec.map((n, i) => {
+      const h = Math.round(12 + (big ? 40 : 22) * (n / peak));
+      const on = n > 0 ? "on" : "off";
+      return `<span class="ivf-col" title="${IVF_IC[i][2]}: ${n}">`
+        + `<span class="ivf-bar ${on}" style="height:${h}px;--ivc:${color}"></span>`
+        + `<span class="ivf-n">${n}</span>`
+        + (big ? `<span class="ivf-lab">${IVF_IC[i][1]}</span>` : "")
+        + `</span>`;
+    }).join("");
+    return `<span class="${cls}">${bars}</span>`;
+  }
+  render() {
+    // Group by interval vector: every chord sharing a signature is one class.
+    const groups = new Map();
+    for (const d of this.data) {
+      const k = ivfKey(d.fp.interval_vector);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(d.c);
+    }
+    const rows = this.data.map((d, i) => {
+      const vec = d.fp.interval_vector;
+      const color = chipColor(d.fp.set_class);
+      const notes = d.fp.pitch_classes.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
+      return `<div class="riffrow ivf-row ${i === this.sel ? "on" : ""}" data-i="${i}">`
+        + `<button class="playbtn" data-i="${i}">▶ play</button>`
+        + `<span class="riffname">${d.c}</span>`
+        + `<span class="nchips">${notes}</span>`
+        + this.strip(vec, color, false)
+        + `<span class="ivf-vec"><${"" }${vec.join("")}></span>`
+        + `<span class="shapedot" style="--chip:${color}" title="interval vector &lt;${vec.join("")}&gt;"></span></div>`;
+    }).join("");
+    const sel = this.data[this.sel];
+    const svec = sel.fp.interval_vector;
+    const skey = ivfKey(svec);
+    const share = (groups.get(skey) || []).filter((c) => c !== sel.c);
+    const selColor = chipColor(sel.fp.set_class);
+    const total = ivfTotal(svec);
+    // The detail panel: the chosen chord's six-count signature at full size, the
+    // angle-bracket vector notation set theory writes, and an honest line about
+    // who else shares it. The vector is a projection; it forgets ordering and
+    // register, so it cannot tell two chords apart that happen to share counts.
+    const shareLine = share.length
+      ? `the same vector as <b>${share.join(", ")}</b>: same harmonic content, transposition and inversion aside`
+      : `unique among these chords at this projection`;
+    const detail = `<div class="ivf-detail">`
+      + `<div class="ivf-dh"><b>${sel.c}</b> · interval vector <span class="ivf-bra">&lt;${svec.join(" ")}&gt;</span>`
+      + ` <span class="vsub">${total} interval${total === 1 ? "" : "s"} in all</span></div>`
+      + this.strip(svec, selColor, true)
+      + `<div class="ivf-share">${shareLine}</div></div>`;
+    const n = groups.size;
+    const gtxt = [...groups.values()]
+      .map((cs) => cs.length > 1 ? `<b>${cs.join(" = ")}</b>` : cs[0]).join(" · ");
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>chord</span><div class="ladder">`
+      + this.data.map((d, i) => `<span class="stop ${i === this.sel ? "on" : ""}" data-i="${i}">${d.c}</span>`).join("")
+      + `</div></div></div>
+      <div class="riffs">${rows}</div>
+      ${detail}
+      <div class="eqread"><b>${n}</b> distinct signature${n === 1 ? "" : "s"} among ${this.data.length} chords · ${gtxt}</div>
+      <p class="twnote">The interval vector counts the unordered intervals inside a chord, one bin per interval class from the minor second up to the tritone. It keeps no order, no octave, no root, so it is a <b>transposition- and inversion-invariant</b> harmonic signature: shift the chord to any key or turn it upside down and the six numbers hold. That is why <b>C major and A minor</b> share one vector here (both are set class 3-11). It is a projection, honestly partial: it can tell you two chords have the same interval content, not that they are the same chord. The engine reads it straight off the structure (<code>fingerprint_chord</code>).</p>`;
+    this.querySelectorAll(".stop[data-i]").forEach((s) =>
+      s.addEventListener("click", () => this.pick(+s.dataset.i)));
+    this.querySelectorAll(".ivf-row").forEach((r) =>
+      r.addEventListener("click", (e) => { if (!e.target.closest(".playbtn")) this.pick(+r.dataset.i); }));
+    this.querySelectorAll(".playbtn").forEach((btn) =>
+      btn.addEventListener("click", (e) => { e.stopPropagation(); playChord(this.data[+btn.dataset.i].fp.pitch_classes); }));
+  }
+  pick(i) { if (i !== this.sel && this.data[i]) { this.sel = i; this.render(); } }
 });

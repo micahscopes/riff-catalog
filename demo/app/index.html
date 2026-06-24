@@ -493,6 +493,29 @@
   .fcat-pf { font-family: var(--mono); font-size: 11px; color: var(--cool); }
   .fcat-iv { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
   .fcat-iv em { color: var(--ink-dim); font-style: normal; }
+
+  /* interval-vector-fingerprint */
+/* interval-vector fingerprint: six interval-class counts as a tiny bar strip.
+   Reuses the riff row + ladder + readout chrome; only the bar strip is new. */
+.ivf-row { cursor: pointer; padding: 2px 6px; border: 1px solid transparent; border-radius: 3px; }
+.ivf-row:hover { border-color: var(--line); }
+.ivf-row.on { border-color: var(--line-bright); background: var(--bg-chip); }
+.ivf-strip { display: inline-flex; align-items: flex-end; gap: 3px; margin-left: 10px; height: 34px; }
+.ivf-strip.ivf-big { height: 64px; gap: 7px; margin: 10px 0 4px; }
+.ivf-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; }
+.ivf-bar { display: block; width: 9px; border-radius: 2px 2px 0 0; background: var(--ivc); border: 1px solid color-mix(in oklch, var(--ivc) 55%, var(--bg)); }
+.ivf-bar.off { background: var(--bg-chip); border-color: var(--line); }
+.ivf-strip.ivf-big .ivf-bar { width: 16px; }
+.ivf-n { font-size: 10px; color: var(--ink-dim); font-variant-numeric: tabular-nums; line-height: 1; }
+.ivf-strip.ivf-big .ivf-n { font-size: 12px; color: var(--ink); }
+.ivf-lab { font-size: 9.5px; color: var(--ink-faint); letter-spacing: .02em; }
+.ivf-vec { font-size: 10.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; margin-left: 8px; }
+.ivf-detail { border: 1px solid var(--line); background: var(--bg); border-radius: 4px; padding: 10px 14px 12px; margin: 12px 0 8px; }
+.ivf-dh { font-size: 12.5px; color: var(--ink-dim); }
+.ivf-dh b { color: var(--ink); }
+.ivf-bra { color: var(--warm); font-variant-numeric: tabular-nums; }
+.ivf-share { font-size: 11.5px; color: var(--ink-faint); margin-top: 4px; }
+.ivf-share b { color: var(--a); }
 </style>
 </head>
 <body>
