@@ -73,6 +73,19 @@ function digestHue(digest) {
   return h % 360;
 }
 
+// Chip color: a perceptually-uniform OKLCH color for a shape digest. Prefer the
+// Rust harmonizer (palette, gamut-safe, golden-angle hue) the engine exposes;
+// fall back to a JS OKLCH with the same golden-angle hue if a chip happens to
+// render before the engine is live. The whole chip family (dark fill, bright
+// accent, light text) is mixed from this one accent in CSS, in oklch.
+function chipColor(digest) {
+  const b = window.wasmBindings;
+  if (b && b.chip_color) { try { return b.chip_color(digest); } catch (_) { /* fall through */ } }
+  let acc = 0;
+  for (let i = 0; i < 12 && i < digest.length; i++) acc = (acc * 131 + digest.charCodeAt(i)) >>> 0;
+  return `oklch(72% 0.13 ${((acc * 137.508) % 360).toFixed(1)})`;
+}
+
 // Compact, human label for a yul function name (the name is shown for people,
 // never folded into the fingerprint).
 function chipLabel(name) {
@@ -91,7 +104,7 @@ const DIMS = [["structure", "struct"], ["names", "names"], ["constants", "const"
 function chip(u, facet, lib) {
   const d = u.facets[facet];
   const dims = DIMS.map(([k]) => short(u.digests[k]).slice(0, 6)).join(",");
-  return `<span class="chip ${eqKey(d)}" style="--hue:${digestHue(d)}" data-eq="${eqKey(d)}"`
+  return `<span class="chip ${eqKey(d)}" style="--chip:${chipColor(d)}" data-eq="${eqKey(d)}"`
     + ` data-name="${u.name}" data-fp="${short(d)}" data-dims="${dims}"${lib ? ` data-lib="${lib}"` : ""}`
     + ` title="${u.name}">${chipLabel(u.name)}</span>`;
 }
@@ -313,7 +326,7 @@ customElements.define("live-dial", class extends HTMLElement {
     this.querySelectorAll("[data-facet]").forEach((b) =>
       b.addEventListener("click", () => { if (this.facet !== b.dataset.facet) { this.facet = b.dataset.facet; this.render(); } }));
     wireHighlight(this, (c, lit) =>
-      `<span class="sw" style="background:hsl(${digestHue(c.dataset.eq.slice(3))} 70% 55%)"></span>`
+      `<span class="sw" style="background:${chipColor(c.dataset.eq.slice(3))}"></span>`
       + `${c.dataset.name} · <span style="color:var(--warm)">${c.dataset.fp}</span>`
       + dimStrip(c, lit));
   }
@@ -366,7 +379,7 @@ customElements.define("live-xref", class extends HTMLElement {
         const where = libs.size === 3 ? "shared across <b>all three</b> libraries"
           : libs.size === 2 ? `shared across <b>two</b> (${[...libs].join(", ")})`
           : `<b>only</b> in ${[...libs][0]}`;
-        return `<span class="sw" style="background:hsl(${digestHue(c.dataset.eq.slice(3))} 70% 55%)"></span>`
+        return `<span class="sw" style="background:${chipColor(c.dataset.eq.slice(3))}"></span>`
           + `${c.dataset.name} · <span style="color:var(--warm)">${c.dataset.fp}</span> · ${where}`
           + dimStrip(c, lit);
       });
@@ -443,9 +456,9 @@ customElements.define("facet-primer", class extends HTMLElement {
       seen.get(d).push(f.name);
     }
     const cards = this.fns.map((f) => {
-      const d = this.byName[f.name].facets[this.facet], hue = digestHue(d);
-      return `<div class="fcard ${feq(d)}" data-eq="${feq(d)}" style="--hue:${hue}">`
-        + `<div class="fcard-h"><span class="sw" style="background:hsl(${hue} 70% 55%)"></span>${f.name}</div>`
+      const d = this.byName[f.name].facets[this.facet], col = chipColor(d);
+      return `<div class="fcard ${feq(d)}" data-eq="${feq(d)}" style="--chip:${col}">`
+        + `<div class="fcard-h"><span class="sw" style="background:${col}"></span>${f.name}</div>`
         + `<pre class="fcode">${solHi(f.src)}</pre></div>`;
     }).join("");
     const ladder = FACETS.map((f) =>
@@ -500,7 +513,7 @@ customElements.define("recog-scan", class extends HTMLElement {
       const rec = c.fns.filter((f) => f.lib).length;
       const chips = c.fns.map((f, fi) => {
         const cls = f.lib ? "chip rec" : "chip novel";
-        const hue = f.lib && LIB[f.lib] ? `style="--hue:${LIB[f.lib].h}"` : "";
+        const hue = f.lib && LIB[f.lib] ? `style="--chip:oklch(72% 0.15 ${LIB[f.lib].h})"` : "";
         const label = f.fn === "constructor" ? "constructor" : f.fn;
         return `<span class="${cls} eq-${f.nb}" data-eq="eq-${f.nb}" data-ci="${ci}" data-fi="${fi}"`
           + ` data-anchor="${encodeURIComponent(c.name + "." + f.fn)}" ${hue} title="${c.name}.${f.fn}">${label}</span>`;
