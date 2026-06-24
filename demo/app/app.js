@@ -220,6 +220,13 @@ const CH = [
     lede: "Exact match catches verbatim copies. Real forks edit the function: a dropped modifier, a hand-rolled forwarder. Sourcify, a text search, and exact match all miss them. Matching the shape's subtrees does not.",
     body: `<fuzzy-scan></fuzzy-scan>`,
   },
+  {
+    nav: "structure vs meaning",
+    kicker: "framing the verifier",
+    title: "Syntactic to semantic is a lattice, not a line.",
+    lede: "Where structure ends and meaning begins, and why riffcat hands that boundary to a verifier.",
+    body: `<facet-lattice></facet-lattice>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -1007,5 +1014,61 @@ customElements.define("chord-fp", class extends HTMLElement {
       s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
     this.querySelectorAll(".playbtn").forEach((btn) =>
       btn.addEventListener("click", () => playChord(this.data[+btn.dataset.i].fp.pitch_classes)));
+  }
+});
+
+// Framing the verifier: the syntactic-to-semantic picture, corrected. The
+// structural side is a LATTICE of facets (forget names, or constants, or types,
+// independently; finer agreement implies coarser), not a point on a line.
+// Semantic equivalence is an ORTHOGONAL axis (undecidable in general), the
+// verifier's job. riffcat localizes on the lattice and hands FV a scoped
+// obligation. Hand-laid SVG; hover a node for what it forgets.
+const LATTICE_NODES = {
+  full: { x: 250, y: 58, t: "full", s: "keep every dimension: exact identity" },
+  namesblind: { x: 118, y: 168, t: "names-blind", s: "forget names: same code modulo identifiers" },
+  constblind: { x: 382, y: 168, t: "constants-blind", s: "forget constants: same shape modulo literals" },
+  structure: { x: 250, y: 278, t: "structure", s: "forget names, constants, and types: pure shape" },
+  semantic: { x: 600, y: 168, t: "semantic", s: "same behavior on all inputs: undecidable in general, and the verifier's axis, not riffcat's", sem: true },
+};
+const LATTICE_EDGES = [["full", "namesblind"], ["full", "constblind"], ["namesblind", "structure"], ["constblind", "structure"]];
+customElements.define("facet-lattice", class extends HTMLElement {
+  connectedCallback() {
+    const N = LATTICE_NODES;
+    const edges = LATTICE_EDGES.map(([a, b]) =>
+      `<line x1="${N[a].x}" y1="${N[a].y + 15}" x2="${N[b].x}" y2="${N[b].y - 15}" class="latedge"/>`).join("");
+    const node = (k) => {
+      const n = N[k];
+      return `<g class="latnode ${n.sem ? "sem" : ""}" data-k="${k}" transform="translate(${n.x},${n.y})">`
+        + `<rect x="-68" y="-15" width="136" height="30" rx="5"/>`
+        + `<text x="0" y="4" text-anchor="middle">${n.t}</text></g>`;
+    };
+    const idle = "Hover a facet. Downward edges forget one more dimension; equal at a finer facet implies equal at every coarser one.";
+    this.innerHTML = `
+      <svg viewBox="0 0 720 320" class="lattice" role="img" aria-label="facet lattice and the orthogonal semantic axis">
+        <defs><marker id="latarr" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 z" class="latarrhead"/></marker></defs>
+        <text x="250" y="24" text-anchor="middle" class="latcap">structural facets (a lattice)</text>
+        <text x="600" y="24" text-anchor="middle" class="latcap sem">meaning (the verifier's axis)</text>
+        <line x1="478" y1="42" x2="478" y2="292" class="latdivide"/>
+        ${edges}
+        <path d="M 322 232 C 452 256, 506 200, 548 176" class="lathandoff" marker-end="url(#latarr)"/>
+        <text x="430" y="270" text-anchor="middle" class="latflow">localize, then hand off a scoped obligation</text>
+        ${Object.keys(N).map(node).join("")}
+        <text x="600" y="202" text-anchor="middle" class="latfv">hevm · SMTChecker · Lean · Certora</text>
+      </svg>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">The usual picture is a line from syntactic to semantic. With riffcat the structural side is a <b>lattice</b>: you forget names, or constants, or types, independently, and a finer agreement always implies a coarser one. <b>Semantic equivalence is a different axis</b> (two structurally different programs can compute the same thing, which is what an optimizer does daily), undecidable in general. riffcat lives entirely on the structural lattice; it <b>localizes</b> a candidate at a chosen facet and hands a verifier a tight, scoped proof obligation. The facet it anchors at is exactly the scope that obligation stays sound in.</p>`;
+    const read = this.querySelector(".eqread");
+    this.querySelectorAll(".latnode").forEach((g) =>
+      g.addEventListener("mouseenter", () => {
+        this.querySelectorAll(".latnode").forEach((x) => x.classList.remove("on"));
+        g.classList.add("on");
+        const n = LATTICE_NODES[g.dataset.k];
+        read.innerHTML = `<b>${n.t}</b> · ${n.s}`;
+      }));
+    this.addEventListener("mouseleave", () => {
+      this.querySelectorAll(".latnode").forEach((x) => x.classList.remove("on"));
+      read.innerHTML = read.dataset.idle;
+    });
   }
 });
