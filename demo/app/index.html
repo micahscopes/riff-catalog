@@ -654,6 +654,26 @@
   .ctstart { margin: 8px 0 4px; padding-left: 18px; }
   .ctstart li { color: var(--ink); font-size: 13px; margin: 7px 0; }
   .ctstart li::marker { color: var(--ink-faint); }
+
+  /* what-we-sampled */
+/* what-we-sampled: reuses .vledger / .lxrow / .lx-* / .vhead / .vrole / .eqread idioms.
+     New rules only for the measured-vs-pending split and the deliberately-blank pending rows. */
+  .sampled-cap { color: var(--ink-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .12em; margin: 14px 0 2px; }
+  .sampled-cap::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: hsl(145 58% 46%); margin-right: 7px; vertical-align: middle; }
+  .sampled-cap-pend { margin-top: 22px; }
+  .sampled-cap-pend::before { background: var(--bg-chip); border: 1px solid var(--ink-faint); }
+  .sampled-table th:nth-child(2), .sampled-table td:nth-child(2) { text-align: left; }
+  .sampled-table th:nth-child(3), .sampled-table td:nth-child(3),
+  .sampled-table th:nth-child(4), .sampled-table td:nth-child(4) { text-align: right; }
+  .sampled-unit { color: var(--ink-faint); font-size: 11px; }
+  /* the pending ledger reads as a wired-but-empty socket: dashed, dimmed, no invented value */
+  .sampled-pending { opacity: .9; }
+  .sampled-pending td { border-bottom-style: dashed; }
+  .sampled-prow td:first-child { border-left: 3px dashed hsl(215 50% 50%); }
+  .sampled-prow:hover td { color: var(--ink-dim); }
+  .sampled-pend { color: var(--ink-dim); font-weight: 400; font-style: italic; }
+  .sampled-pendn { color: var(--ink-faint); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+  .sampled-how { padding-bottom: 10px; }
 </style>
 </head>
 <body>
