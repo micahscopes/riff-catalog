@@ -176,7 +176,7 @@ const CH = [
     kicker: "the same dial, on music",
     title: "Why “riff”? Transpose it and it is still the riff.",
     lede: "A short motif and a few variants, fingerprinted live by the same engine. Turn the dial and see which count as the same: transpose-proof intervals, rhythm alone, or the set of notes. Press play to hear each one.",
-    body: `<riff-dial></riff-dial>`,
+    body: `<riff-dial></riff-dial><div class="kicker" style="margin-top:24px">now on chords, parsed from real notation</div><chord-fp></chord-fp>`,
   },
   {
     nav: "recognized",
@@ -920,5 +920,92 @@ customElements.define("riff-dial", class extends HTMLElement {
       s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
     this.querySelectorAll(".playbtn").forEach((btn) =>
       btn.addEventListener("click", () => playRiff(this.fp[+btn.dataset.i].notes)));
+  }
+});
+
+// Play a chord: its pitch classes sounded together, soft flute-ish (shares the
+// reverb with the riff voice). A simpler voice than playRiff (no breath layer).
+function playChord(pcs) {
+  const ac = fluteCtx();
+  if (!ac) return;
+  if (ac.state === "suspended") ac.resume();
+  const t = ac.currentTime + 0.05, d = 1.7, gain = 0.13 / Math.max(2, pcs.length);
+  pcs.forEach((pc, i) => {
+    const freq = 440 * Math.pow(2, (60 + pc - 69) / 12);
+    const o = ac.createOscillator();
+    o.type = "sine";
+    o.frequency.value = freq;
+    const lfo = ac.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 5.2 + i * 0.2;
+    const lg = ac.createGain();
+    lg.gain.setValueAtTime(0, t);
+    lg.gain.linearRampToValueAtTime(freq * 0.006, t + 0.3);
+    lfo.connect(lg);
+    lg.connect(o.frequency);
+    const env = ac.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(gain, t + 0.08);
+    env.gain.setValueAtTime(gain, t + d - 0.4);
+    env.gain.exponentialRampToValueAtTime(0.0005, t + d);
+    o.connect(env);
+    env.connect(ac.destination);
+    env.connect(ac._verb);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + d + 0.05);
+    lfo.stop(t + d + 0.05);
+  });
+}
+
+// Chords parsed from real notation, fingerprinted at two facets: the literal
+// note set (two spellings of the same notes collapse) and the Forte set class
+// (major, minor, and other inversions of one class collapse to a single anchor).
+const CHORD_FACETS = [["note_set", "note set"], ["set_class", "set class"]];
+const CHORDS = ["C", "Cdo", "Am", "F", "Caug", "Bdim"];
+customElements.define("chord-fp", class extends HTMLElement {
+  async connectedCallback() {
+    this.facet = "set_class";
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      this.data = CHORDS
+        .map((c) => { try { return { c, fp: JSON.parse(b.fingerprint_chord(c)) }; } catch { return null; } })
+        .filter(Boolean);
+      this.render();
+    } catch (e) { this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`; }
+  }
+  render() {
+    const ladder = CHORD_FACETS.map(([k, label]) =>
+      `<span class="stop ${k === this.facet ? "on" : ""}" data-facet="${k}">${label}</span>`).join("");
+    const groups = new Map();
+    for (const d of this.data) {
+      const a = d.fp[this.facet];
+      if (!groups.has(a)) groups.set(a, []);
+      groups.get(a).push(d.c);
+    }
+    const rows = this.data.map((d, i) => {
+      const a = d.fp[this.facet];
+      const notes = d.fp.pitch_classes.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
+      const pf = this.facet === "set_class" ? ` <span class="vsub">prime [${d.fp.prime_form.join(" ")}]</span>` : "";
+      return `<div class="riffrow"><button class="playbtn" data-i="${i}">▶ play</button>`
+        + `<span class="riffname">${d.c}</span><span class="nchips">${notes}</span>${pf}`
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${this.facet} ${a.slice(0, 10)}"></span></div>`;
+    }).join("");
+    const n = groups.size;
+    const gtxt = [...groups.values()]
+      .map((cs) => cs.length > 1 ? `<b>${cs.join(" = ")}</b>` : cs[0]).join(" · ");
+    const note = this.facet === "set_class"
+      ? `At the <b>set-class</b> facet, riffcat lands on Allen Forte's catalog: C, Cdo, Am and F collapse to one class (major and minor triads are the same set class, 3-11), while the augmented and diminished triads are their own. The engine rediscovers set theory from the structure alone.`
+      : `At the <b>note-set</b> facet, two spellings of the same notes share an anchor (C and its solfege spelling Cdo); every other chord is its own set of notes.`;
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
+      <div class="riffs">${rows}</div>
+      <div class="eqread"><b>${n}</b> shape${n === 1 ? "" : "s"} at this facet · ${gtxt}</div>
+      <p class="twnote">${note}</p>`;
+    this.querySelectorAll("[data-facet]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
+    this.querySelectorAll(".playbtn").forEach((btn) =>
+      btn.addEventListener("click", () => playChord(this.data[+btn.dataset.i].fp.pitch_classes)));
   }
 });
