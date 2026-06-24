@@ -570,6 +570,31 @@
   .eqread .mha-w-flip { color: var(--rose); font-weight: 700; }
   .eqread .mha-w-hold { color: var(--a); font-weight: 700; }
   .twnote.mha-honest { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
+
+  /* main-vs-meta */
+/* main vs meta: the bytecode wall. Reuses .say, .latcap, .latdivide,
+     .lathandoff, .latarrhead, .twnote, .eqread; adds only the figure, the
+     interleaved cells, and the source-dimension boxes. */
+  .bw-say { margin: 2px 0 16px; }
+  .bw-say .bw-cite { display: block; color: var(--ink-faint); font-size: 11px; margin-top: 6px; font-style: normal; }
+  .bw-fig { width: 100%; height: auto; max-width: 720px; margin: 6px auto 4px; display: block; }
+  /* the onchain strip: Main is calm ink, Meta reasons are warm and distinct, so
+     the eye sees the interleaving the moment the figure loads. */
+  .bw-cell { stroke: var(--bg); stroke-width: 1; transition: opacity .14s ease, filter .14s ease; }
+  .bw-main { fill: color-mix(in oklch, var(--cool) 30%, var(--bg)); }
+  .bw-meta { fill: color-mix(in oklch, var(--warm) 42%, var(--bg)); }
+  .bw-immutable { fill: color-mix(in oklch, var(--warm) 50%, var(--bg)); }
+  .bw-library { fill: color-mix(in oklch, var(--rose) 44%, var(--bg)); }
+  .bw-auxdata { fill: color-mix(in oklch, var(--warm) 64%, var(--bg)); }
+  .bw-constructor { fill: color-mix(in oklch, var(--rose) 32%, var(--bg)); }
+  .bw-fig:hover .bw-cell { opacity: .3; }
+  .bw-fig .bw-cell.bw-lit { opacity: 1; filter: drop-shadow(0 0 4px color-mix(in oklch, var(--warm) 60%, transparent)); }
+  .bw-flow { fill: var(--ink-faint); font-family: var(--mono); font-size: 10.5px; }
+  /* the source side: clean separate bands, each one its own dimension. */
+  .bw-dimbox { fill: var(--bg-chip); stroke: var(--cool); stroke-width: 1; transition: fill .14s ease, stroke-width .14s ease; }
+  .bw-dim.on .bw-dimbox { fill: color-mix(in oklch, var(--cool) 22%, var(--bg)); stroke-width: 2; }
+  .bw-dimt { fill: var(--ink); font-family: var(--mono); font-size: 12px; pointer-events: none; }
+  .bw-ride { fill: var(--warm); font-family: var(--mono); font-size: 11px; letter-spacing: .03em; }
 </style>
 </head>
 <body>
