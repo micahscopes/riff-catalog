@@ -7,8 +7,17 @@
 //! Prime form is the canonical representative of a set under transposition AND
 //! inversion (Tn/TnI). It is decidable finite combinatorics: no hash, no engine.
 
-/// The prime form of a pitch-class set: the lexicographically least
-/// transposed-to-zero rotation of the set or its inversion (Rahn). Decidable.
+/// The prime form of a pitch-class set: the canonical representative under
+/// transposition AND inversion (Tn/TnI), following Rahn. Take the most compact
+/// normal order of the set and of its inversion, transpose each to begin on
+/// zero, and keep the more left-packed of the two. Decidable finite
+/// combinatorics: no hash, no engine.
+///
+/// Note this is NOT the lexicographically least rotation over all rotations of
+/// the set and its inversion: that shortcut disagrees with the published
+/// catalog for sets where the most compact rotation is not the lex-least one.
+/// The minor seventh 4-26 {0,4,7,9} is the canonical example: its prime form is
+/// [0,3,5,8] (span 8), while the lex-least rotation is the looser [0,2,5,9].
 pub fn prime_form(pcs: &[i32]) -> Vec<i32> {
     let mut set: Vec<i32> = pcs.iter().map(|p| p.rem_euclid(12)).collect();
     set.sort_unstable();
@@ -20,22 +29,46 @@ pub fn prime_form(pcs: &[i32]) -> Vec<i32> {
     inv.sort_unstable();
     inv.dedup();
 
+    let nf_set = normal_order_zeroed(&set);
+    let nf_inv = normal_order_zeroed(&inv);
+    // The prime form is the more left-packed of the two normal orders. They
+    // always share the same span, so this lexicographic pick is the standard
+    // "most packed to the left" rule.
+    if nf_inv < nf_set { nf_inv } else { nf_set }
+}
+
+/// The most compact normal order of a set, transposed to begin on zero (Rahn):
+/// among the rotations, minimize the span (the last element), then break ties by
+/// comparing the remaining elements inward from the right, preferring the form
+/// packed most tightly to the left.
+fn normal_order_zeroed(set: &[i32]) -> Vec<i32> {
+    let n = set.len();
     let mut best: Option<Vec<i32>> = None;
-    for form in [&set, &inv] {
-        let n = form.len();
-        for i in 0..n {
-            let base = form[i];
-            let cand: Vec<i32> = (0..n)
-                .map(|k| (form[(i + k) % n] - base).rem_euclid(12))
-                .collect();
-            best = Some(match best {
-                None => cand,
-                Some(b) if cand < b => cand,
-                Some(b) => b,
-            });
-        }
+    for i in 0..n {
+        let base = set[i];
+        let cand: Vec<i32> = (0..n)
+            .map(|k| (set[(i + k) % n] - base).rem_euclid(12))
+            .collect();
+        best = Some(match best {
+            None => cand,
+            Some(b) => {
+                if more_compact(&cand, &b) { cand } else { b }
+            }
+        });
     }
     best.unwrap()
+}
+
+/// True if `a` is strictly more compact than `b` (both transposed to start on
+/// zero, equal length). Compare the span (last element) first, then inward from
+/// the right, preferring the smaller value at the first difference.
+fn more_compact(a: &[i32], b: &[i32]) -> bool {
+    for k in (1..a.len()).rev() {
+        if a[k] != b[k] {
+            return a[k] < b[k];
+        }
+    }
+    false
 }
 
 /// The interval vector: counts of each interval class (1..=6) among all pairs.
@@ -98,6 +131,28 @@ mod tests {
         assert_eq!(prime_form(&[0, 3, 6]), vec![0, 3, 6], "diminished = 3-10");
         assert_eq!(prime_form(&[0, 4, 7, 10]), vec![0, 2, 5, 8], "dominant 7th = 4-27");
         assert_eq!(prime_form(&[0, 4, 7, 11]), vec![0, 1, 5, 8], "major 7th = 4-20");
+        // 4-26, the minor seventh, is the case the lex-least shortcut got wrong:
+        // the published prime form is the compact [0,3,5,8], not [0,2,5,9].
+        assert_eq!(prime_form(&[0, 4, 7, 9]), vec![0, 3, 5, 8], "minor 7th = 4-26 (compact)");
+        // half-diminished and dominant sevenths are the two faces of 4-27, so
+        // they fold to the same prime form (the half-diminished side, [0,2,5,8]).
+        assert_eq!(prime_form(&[0, 3, 6, 8]), vec![0, 2, 5, 8], "dominant 7th Tn-type folds to 4-27");
+        assert_eq!(prime_form(&[0, 2, 5, 8]), vec![0, 2, 5, 8], "half-diminished is the 4-27 prime");
+    }
+
+    /// A set and its inversion always share one prime form (the defining
+    /// property of TnI canonicalization), including the 4-26 case.
+    #[test]
+    fn prime_form_is_inversion_invariant() {
+        let invert = |pcs: &[i32]| -> Vec<i32> { pcs.iter().map(|x| (12 - x).rem_euclid(12)).collect() };
+        for set in [
+            vec![0, 4, 7],
+            vec![0, 4, 7, 9],
+            vec![0, 4, 7, 10],
+            vec![0, 1, 4, 6, 9],
+        ] {
+            assert_eq!(prime_form(&set), prime_form(&invert(&set)), "prime form survives inversion: {set:?}");
+        }
     }
 
     #[test]
