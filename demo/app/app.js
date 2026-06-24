@@ -3567,6 +3567,11 @@ customElements.define("locality-limit", class extends HTMLElement {
         <g class="loclim-comp" data-hov="condense">
           <rect class="loclim-scc" x="446" y="66" width="204" height="118" rx="12"/>
           <text x="548" y="58" text-anchor="middle" class="loclim-scclab">one SCC = one address</text>
+          <g class="loclim-icyc">
+            <path class="loclim-iedge" d="M 486 113 C 474 121, 474 129, 486 137" marker-end="url(#loclim-arr)"/>
+            <path class="loclim-iedge" d="M 501 149 C 536 156, 562 140, 591 128" marker-end="url(#loclim-arr)"/>
+            <path class="loclim-iedge" d="M 591 122 C 562 110, 536 95, 501 101" marker-end="url(#loclim-arr)"/>
+          </g>
           <g class="loclim-mem" data-hov="wl" transform="translate(486,98)"><circle r="15" style="fill:var(--cool)"/><text y="4">A</text></g>
           <g class="loclim-mem" data-hov="wl" transform="translate(486,152)"><circle r="15" style="fill:var(--warm)"/><text y="4">B</text></g>
           <g class="loclim-mem" data-hov="wl" transform="translate(606,125)"><circle r="15" style="fill:var(--a)"/><text y="4">C</text></g>
