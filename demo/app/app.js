@@ -277,6 +277,7 @@ const CH = [
   { nav: "what we sampled", kicker: "the honest numbers, and the ones we owe you", title: "What we sampled, and what we have not measured yet.", lede: "Every number in this storybook is a Sourcify-floor count over distinct source files, plus one null calibration. None of it is precision or recall against a baseline. Here is exactly what each number is, and the measurement we still owe you.", body: "<sampled-ledger></sampled-ledger>" },
   { nav: "the cheap yes", kicker: "generalizing a fast-path hevm already ships", title: "When structure is enough to skip the solver.", lede: "hevm opens its equivalence check with a syntactic cheap yes: if two bytecodes are byte-identical it returns equivalent and never calls a solver. riffcat generalizes that exact-equality check to a facet, so the yes fires on more pairs. Turn the dial and watch where the yes stays sound, where it becomes only a candidate, and the one place it must not fire at all.", body: `<cy-cheap-yes></cy-cheap-yes>` },
   { nav: "seat filled", kicker: "the seat, filled: a Lean proof takes it", title: "The verdict seat, filled: this bytecode is this spec.", lede: "The previous chapter left the seat empty on purpose. Here is one occupant, cited statically: a Lean proof from EquiVM (argotorg/EquiVM, pinned) that a solc-produced ERC20 runtime bytecode is observationally equivalent to a hand-written Solm spec, with a four-way case split and a named trust boundary. The riffcat tie: that proof is a fact anchored to a facet address, so it transports to every behavior-complete twin (prove once, recognize everywhere), and the Solm spec is itself a forgetting, so it is a facet too. Step the panels; nothing here runs Lean.", body: `<seat-filled></seat-filled>` },
+  { nav: "two instantiations", kicker: "the edge of the method: one generic, two ways", title: "Same source, two instantiations: where the address agrees, and where it parts.", lede: "One generic shape, instantiated two ways. At the structure facet the two share an address: it is one skeleton. Keep the type spelling and the addresses part. Hover a dimension to see exactly where they agree and where they diverge, and read the honest gap underneath: this divergence is the syntactic shadow of the instantiation, not the monomorphized form.", body: `<two-instantiations></two-instantiations>` },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -297,6 +298,7 @@ const SECTIONS = [
   ["on real code", ["recognized", "twins", "dedup"]],
   ["in the compiler", ["the compiler too", "sniff it out", "modified", "two fingerprints", "main vs meta"]],
   ["structure and meaning", ["structure vs meaning", "prove it", "seat filled", "anchors", "the cheap yes", "prior art", "the proofs check"]],
+  ["the address up close", ["two instantiations"]],
   ["a building block", ["a shared block", "what we need"]],
   ["in honesty", ["what we sampled"]],
 ];
@@ -2858,3 +2860,129 @@ function sfEsc(s) {
 function sfAttr(s) {
   return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
+
+// Same source, two instantiations (merklization chapter B). A static, hand-built
+// illustration: one generic source (RPow<Pair, N>, a perfect binary tree of
+// depth N) instantiated two ways (N=4, N=8). It shows, per dimension, where the
+// two facet addresses AGREE (one generic skeleton) and where they DIVERGE
+// (the kept type spelling). No engine call: the per-dimension agreement is
+// hand-asserted from the source spellings, and the honest gap is labelled on
+// screen. The chips are colored from short hand-picked digests so agree=one
+// color, diverge=two colors, matching the chip idiom used live elsewhere.
+//
+// All top-level names are prefixed `ti` to avoid collision with app.js. Reuses
+// engineReady-free (synchronous render), chipColor, and the .eqread .twnote
+// .vledger .lxrow .lx-shape .lx-fp .vsub .vlead .vbug classes plus theme vars.
+
+// The two instantiations of one generic source. `spell` is the source type
+// spelling the Types dimension would record (syntactic, per the spike: the
+// engine keeps the spelling, not a resolved monomorphization).
+const TI_INSTANCES = [
+  { key: "n4", arg: "N = 4", spell: "RPow<Pair, 4>", note: "a depth-4 perfect binary tree" },
+  { key: "n8", arg: "N = 8", spell: "RPow<Pair, 8>", note: "a depth-8 perfect binary tree" },
+];
+
+// One row per dimension riffcat addresses on the syntactic side. `agree` is the
+// hand-asserted fact for THIS pair: do the two instantiations land on the same
+// per-dimension digest. structure/names/constants agree (one generic skeleton,
+// same identifiers, same literals in the source); types diverges because the
+// kept type spelling differs (RPow<Pair,4> vs RPow<Pair,8>). The digests are
+// short illustrative stand-ins (clearly labelled as such in the footer), chosen
+// so a shared digest renders one color and a split renders two.
+const TI_DIMS = [
+  { key: "structure", lab: "structure", agree: true, why: "the same generic skeleton: same nodes, same child edges, same shape", d4: "5d3a91c0", d8: "5d3a91c0" },
+  { key: "names", lab: "names", agree: true, why: "the same identifiers in the source (RPow, Pair); the instantiation changed neither", d4: "7adf2b14", d8: "7adf2b14" },
+  { key: "constants", lab: "constants", agree: true, why: "no literal in the generic body changed between the two instantiations", d4: "ffb45408", d8: "ffb45408" },
+  { key: "types", lab: "types", agree: false, why: "the kept type SPELLING differs (RPow<Pair, 4> vs RPow<Pair, 8>), so the per-node type field differs", d4: "c81f6d22", d8: "3a0e77b9" },
+];
+
+// The two facets the chapter contrasts, drawn straight from the spike's beat:
+// structure-only AGREES (the family shares one address); a facet that keeps the
+// type spelling DIVERGES (the two part). Each names the dimensions it keeps.
+const TI_FACETS = [
+  { key: "structure", lab: "structure", keeps: ["structure"], verdict: "agree" },
+  { key: "keepstypes", lab: "keeps types", keeps: ["structure", "names", "constants", "types"], verdict: "diverge" },
+];
+
+const tiShort = (h) => (h || "").slice(0, 8);
+// One chip for a (dimension, instance) cell, colored from its short digest so
+// agreement renders one shared color across the two instances and divergence
+// renders two.
+function tiChip(digest, label) {
+  const col = (window.wasmBindings && window.wasmBindings.chip_color)
+    ? (() => { try { return window.wasmBindings.chip_color(digest); } catch (_) { return null; } })()
+    : null;
+  const fall = (() => { let a = 0; for (let i = 0; i < 8; i++) a = (a * 131 + digest.charCodeAt(i)) >>> 0; return `oklch(72% 0.13 ${((a * 137.508) % 360).toFixed(1)})`; })();
+  const c = (typeof chipColor === "function") ? chipColor(digest) : (col || fall);
+  return `<span class="chip ti-chip" style="--chip:${c}" title="${label}">${tiShort(digest)}</span>`;
+}
+
+customElements.define("two-instantiations", class extends HTMLElement {
+  connectedCallback() {
+    // facet the reader has selected; default to the structure facet (the agree
+    // beat) so the page opens on "it is one skeleton".
+    this.facet = "structure";
+    this.render();
+  }
+  // does this dimension survive (get kept by) the current facet?
+  kept(dimKey) { return TI_FACETS.find((f) => f.key === this.facet).keeps.includes(dimKey); }
+  render() {
+    const facet = TI_FACETS.find((f) => f.key === this.facet);
+    // facet selector (two stops), mirroring the .ladder idiom
+    const ladder = TI_FACETS.map((f) =>
+      `<span class="stop ti-stop ${f.key === this.facet ? "on" : ""}" data-facet="${f.key}">${f.lab}</span>`).join("");
+    // the two instantiation header cards
+    const heads = TI_INSTANCES.map((u) =>
+      `<div class="ti-inst"><div class="ti-inst-arg">${u.arg}</div>`
+      + `<code class="ti-spell">${u.spell}</code>`
+      + `<div class="ti-inst-note">${u.note}</div></div>`).join("");
+    // per-dimension comparison rows. A dimension dropped by the current facet is
+    // greyed (not part of this address). A kept dimension shows the two chips and
+    // an agree/diverge tag computed only over the kept dimensions.
+    const rows = TI_DIMS.map((d) => {
+      const on = this.kept(d.key);
+      const tag = !on ? `<span class="ti-tag ti-off">dropped at this facet</span>`
+        : d.agree ? `<span class="ti-tag ti-agree">agree</span>`
+        : `<span class="ti-tag ti-diverge">diverge</span>`;
+      return `<tr class="ti-row ${on ? "" : "ti-rowoff"}" data-dim="${d.key}">`
+        + `<td class="ti-dimname">${d.lab}</td>`
+        + `<td class="ti-cell">${on ? tiChip(d.d4, "N=4 " + d.lab) : `<span class="ti-dash">-</span>`}</td>`
+        + `<td class="ti-cell">${on ? tiChip(d.d8, "N=8 " + d.lab) : `<span class="ti-dash">-</span>`}</td>`
+        + `<td class="ti-verdict">${tag}</td></tr>`;
+    }).join("");
+    // the address line: at this facet, fold the kept dimensions. They agree iff
+    // every kept dimension agrees; that is the whole beat.
+    const keptDims = TI_DIMS.filter((d) => this.kept(d.key));
+    const allAgree = keptDims.every((d) => d.agree);
+    const addrLine = allAgree
+      ? `the two instantiations share <b>one address</b> at the ${facet.lab} facet: it is one generic skeleton`
+      : `the two instantiations land on <b>two addresses</b> at the ${facet.lab} facet: the kept type spelling parts them`;
+    const idle = `${facet.lab} facet keeps ${facet.keeps.length} dimension${facet.keeps.length === 1 ? "" : "s"} (${facet.keeps.join(", ")}). Hover a dimension to read why it agrees or diverges.`;
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div>
+        <div class="ti-addr ${allAgree ? "ti-addr-agree" : "ti-addr-diverge"}">${addrLine}</div></div>
+      <div class="ti-source">
+        <div class="ti-generic"><span class="ti-glabel">one generic source</span><code class="ti-gspell">RPow&lt;Pair, N&gt;</code>
+          <span class="ti-gnote">instantiated two ways, below; same generic code, different N</span></div>
+        <div class="ti-insts">${heads}</div>
+      </div>
+      <table class="vledger ti-table">
+        <thead><tr><th>dimension</th><th>N = 4</th><th>N = 8</th><th>at this facet</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="eqread ti-read" data-idle="${idle}">${idle}</div>
+      <p class="twnote ti-gap"><b>The honest gap, on screen.</b> riffcat's Types dimension keeps the syntactic type <em>spelling</em> at each node, not a resolved monomorphization. So the divergence you see at the types facet is the <b>syntactic shadow</b> of the instantiation (the spelling <code>RPow&lt;Pair, 4&gt;</code> vs <code>RPow&lt;Pair, 8&gt;</code>), not the monomorphized residue (the flat combinator nests the two unroll to, which a local Merkle address would see as two unrelated shapes). A local content address sees either the one generic form or the N concrete forms, never the indexed <b>family</b> that relates them. Showing a genuine pre- versus post-monomorphization pair would need new producer output (a lowering that emits the monomorphized graph); this illustration uses the source spelling the engine keeps today. The digests shown are short illustrative stand-ins, not live engine output: this chapter is hand-built to name the edge of the method, in the spirit of <em>what we sampled</em>.</p>`;
+    this.querySelectorAll("[data-facet]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
+    const read = this.querySelector(".ti-read");
+    this.querySelectorAll(".ti-row").forEach((row) =>
+      row.addEventListener("mouseenter", () => {
+        const d = TI_DIMS.find((x) => x.key === row.dataset.dim);
+        const on = this.kept(d.key);
+        read.innerHTML = on
+          ? `<b>${d.lab}</b> · ${d.agree ? "agree" : "diverge"}: ${d.why}`
+          : `<b>${d.lab}</b> · dropped at the ${facet.lab} facet, so it is not part of this address: ${d.why}`;
+      }));
+    this.addEventListener("mouseleave", () => { read.innerHTML = read.dataset.idle; });
+  }
+});

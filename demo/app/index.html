@@ -752,6 +752,41 @@
 .sf-caveats .sf-caveats-h { display: block; color: var(--warm); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px; }
 .sf-caveats ul { margin: 0; padding-left: 18px; }
 .sf-caveats li { color: var(--ink-dim); font-size: 11.5px; line-height: 1.5; margin: 4px 0; }
+
+  /* two-instantiations */
+/* same source, two instantiations: one generic, two ways; per-dimension agree
+     vs diverge. Reuses .vledger/.lxrow-style table, .chip, .eqread, .twnote,
+     .ladder/.stop, and the theme vars; new rules are scoped ti-*. */
+  .ti-source { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; margin: 6px 0 14px; }
+  .ti-generic { flex: 1 1 200px; border: 1px solid var(--a-dim); background: color-mix(in oklch, var(--a) 8%, var(--bg)); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+  .ti-glabel { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+  .ti-gspell { color: var(--a); background: transparent; border: none; padding: 0; font-size: 14px; font-weight: 700; }
+  .ti-gnote { font-size: 11px; color: var(--ink-dim); }
+  .ti-insts { flex: 2 1 320px; display: flex; gap: 10px; }
+  .ti-inst { flex: 1 1 0; border: 1px solid var(--line-bright); background: var(--bg-chip); border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+  .ti-inst-arg { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--cool); }
+  .ti-spell { color: var(--ink); background: transparent; border: none; padding: 0; font-size: 13px; font-weight: 700; }
+  .ti-inst-note { font-size: 11px; color: var(--ink-faint); }
+  .ti-addr { font-size: 12px; color: var(--ink-dim); margin-left: auto; }
+  .ti-addr b { color: var(--ink); }
+  .ti-addr-agree b { color: var(--a); }
+  .ti-addr-diverge b { color: var(--warm); }
+  .ti-stop { user-select: none; }
+  .ti-table { margin-top: 2px; }
+  .ti-table th:nth-child(2), .ti-table th:nth-child(3), .ti-table td:nth-child(2), .ti-table td:nth-child(3) { text-align: left; }
+  .ti-row td { transition: color .14s ease, opacity .14s ease; }
+  .ti-row:hover td { color: var(--ink); }
+  .ti-rowoff td { opacity: .42; }
+  .ti-dimname { color: var(--ink); font-weight: 700; }
+  .ti-cell { font-variant-numeric: tabular-nums; }
+  .ti-chip { cursor: default; font-size: 11px; }
+  .ti-dash { color: var(--ink-faint); }
+  .ti-tag { font-size: 11px; padding: 2px 8px; border-radius: 3px; border: 1px solid var(--line); }
+  .ti-agree { color: var(--a); border-color: var(--a-dim); background: rgba(93,242,166,.07); }
+  .ti-diverge { color: var(--warm); border-color: #5a4628; background: rgba(255,180,84,.08); }
+  .ti-off { color: var(--ink-faint); font-style: italic; border-color: var(--line); }
+  .ti-read .ti-gap { margin: 0; }
+  .ti-gap code { font-size: 11.5px; }
 </style>
 </head>
 <body>
