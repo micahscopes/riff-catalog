@@ -260,6 +260,13 @@ const CH = [
   lede: "Raw onchain bytecode is one run-on strip: the code (Main) and the metadata, immutables, libraries, and constructor arguments (Meta) sit interleaved, with no clean line between them. So a byte match has to guess. riffcat works one level up, on the source, where structure, names, constants, and types are already separate by construction.",
   body: `<byte-wall></byte-wall>`,
 },
+  {
+    nav: "a shared block",
+    kicker: "offered for co-design, not handed over",
+    title: "A working core, brought here to react to.",
+    lede: "riffcat is a small library with a thin CLI, the same engine that ran live in the chapters before this one. It could plausibly help several of the projects in this room. We are not asking you to adopt it; we are asking what it should become for the work you do.",
+    body: `<shared-block></shared-block>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -2236,6 +2243,94 @@ customElements.define("byte-wall", class extends HTMLElement {
     this.addEventListener("mouseleave", () => {
       this.querySelectorAll(".bw-cell").forEach((x) => x.classList.remove("bw-lit"));
       this.querySelectorAll(".bw-dim").forEach((x) => x.classList.remove("on"));
+      read.innerHTML = read.dataset.idle;
+    });
+  }
+});
+
+// "A shared building block" chapter. Static, synchronous, no engine: this is
+// mostly copy. It places riffcat as a library-plus-thin-CLI offered for
+// co-design, with the fe lineage as a background existence-proof ("we wanted X,
+// so Y mattered"), and the collaboration triangle (localize / provenance /
+// adjudicate) as a hand-laid SVG in the spirit of facet-lattice: hover a leg for
+// who owns it. Solidity-facing throughout; fe stays brief and demystifying.
+// Unique tag + SB_-prefixed module names so nothing collides with app.js.
+
+// The triangle: one problem, three contributors, none can solve it alone. Each
+// leg names what it does, who owns it, and (honestly) whether riffcat fills it
+// today. Coordinates are hand-laid to sit in the same 720x320 frame the lattice
+// uses, so the two diagrams read as siblings.
+const SB_LEGS = {
+  localize: {
+    x: 360, y: 70, role: "riffcat",
+    t: "localize",
+    s: "Point at the exact subtree that matches or changed. Explainable, content-addressed. This is the leg riffcat does, and it stops there.",
+    owns: "riffcat (this)", state: "built",
+  },
+  provenance: {
+    x: 150, y: 250, role: "the compiler",
+    t: "provenance",
+    s: "Which source, and which Yul, became which bytecode. Only the compiler team can emit it. riffcat has a slot wired for it (trace_events) and today nothing fills it.",
+    owns: "solc / a compiler", state: "empty slot",
+  },
+  adjudicate: {
+    x: 570, y: 250, role: "a verifier",
+    t: "adjudicate",
+    s: "Prove the two really compute the same thing, or return a counterexample. A verifier consumes a localized candidate as a scoped proof obligation. The verdict is theirs, not riffcat's.",
+    owns: "hevm / SMTChecker / Certora", state: "builds on top",
+  },
+};
+const SB_EDGES = [["localize", "provenance"], ["provenance", "adjudicate"], ["adjudicate", "localize"]];
+
+// The library surface, plainly: what is a stable library boundary today, and
+// what is the thin CLI shell over it. Honest about which calls are real.
+const SB_SURFACE = [
+  { k: "fingerprint", d: "digest a graph at a chosen facet (full, names-blind, structure). The same call the live chapters made in your browser.", lib: true },
+  { k: "recognize", d: "look a shape up against a catalog and get back what it is, with the subtrees that matched.", lib: true },
+  { k: "similar", d: "weighted containment over a shape's subtrees, for the forks that edited the function. Direction stated, leaf floor reported.", lib: true },
+  { k: "the CLI", d: "a thin shell over the library: ingest, query by shape, diff. The library is the building block; the CLI is one way to hold it.", lib: false },
+];
+
+customElements.define("shared-block", class extends HTMLElement {
+  connectedCallback() {
+    this.render();
+  }
+  render() {
+    const N = SB_LEGS;
+    const edges = SB_EDGES.map(([a, b]) =>
+      `<line x1="${N[a].x}" y1="${N[a].y}" x2="${N[b].x}" y2="${N[b].y}" class="sbedge"/>`).join("");
+    const node = (k) => {
+      const n = N[k];
+      return `<g class="sbnode sb-${k}" data-k="${k}" transform="translate(${n.x},${n.y})">`
+        + `<rect x="-78" y="-20" width="156" height="40" rx="6"/>`
+        + `<text class="sb-t" x="0" y="-1" text-anchor="middle">${n.t}</text>`
+        + `<text class="sb-r" x="0" y="13" text-anchor="middle">${n.role}</text></g>`;
+    };
+    const surface = SB_SURFACE.map((s) =>
+      `<div class="sbrow"><span class="sb-k">riffcat ${s.k}</span>`
+      + `<span class="sb-tag ${s.lib ? "lib" : "cli"}">${s.lib ? "library" : "thin CLI"}</span>`
+      + `<span class="sb-d">${s.d}</span></div>`).join("");
+    const idle = "Hover a leg. One problem, three contributors, none of them closes the loop alone.";
+    this.innerHTML = `
+      <svg viewBox="0 0 720 320" class="sbtri" role="img" aria-label="the collaboration triangle: localize, provenance, adjudicate">
+        <text x="360" y="26" text-anchor="middle" class="sbcap">one problem, three legs</text>
+        ${edges}
+        ${Object.keys(N).map(node).join("")}
+      </svg>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <div class="sbsurface">${surface}</div>
+      <p class="twnote">On the fe team we wanted to know exactly where each piece of compiled output came from, so the provenance tracking mattered, and riffcat grew out of that. fe is young, which helped: we could build that producer side from the start, the slot a mature compiler would have to retrofit. So fe is not the thing we are asking you to adopt. It is the proof that the producer side can be built, which is why the schema here is real and not a sketch.</p>
+      <p class="twnote sbclose">It rides the corpus, it does not rebuild it. This is a draft passed around the table, not a contract handed across it. The honest question is the close: it could plausibly help several of these projects, so what fields and shapes does <b>your</b> data model actually need.</p>`;
+    const read = this.querySelector(".eqread");
+    this.querySelectorAll(".sbnode").forEach((g) =>
+      g.addEventListener("mouseenter", () => {
+        this.querySelectorAll(".sbnode").forEach((x) => x.classList.remove("on"));
+        g.classList.add("on");
+        const n = SB_LEGS[g.dataset.k];
+        read.innerHTML = `<b>${n.t}</b> · owned by ${n.owns} · <span class="sb-state">${n.state}</span><br>${n.s}`;
+      }));
+    this.addEventListener("mouseleave", () => {
+      this.querySelectorAll(".sbnode").forEach((x) => x.classList.remove("on"));
       read.innerHTML = read.dataset.idle;
     });
   }
