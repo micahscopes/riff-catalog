@@ -311,6 +311,168 @@
   .pager button:disabled { opacity: 0.3; cursor: default; }
   .pager .count { flex: 1; text-align: center; color: var(--ink-faint); font-size: 12px; }
   .note { color: var(--ink-faint); font-size: 11.5px; margin-top: 22px; border-top: 1px solid var(--line); padding-top: 12px; }
+
+  /* empty-verdict-seat */
+/* the empty verdict seat: a claim-ledger whose verdict + attested-by columns
+     are a seat only a named verifier fills. Reuses .vledger / .lxrow / .codepanel
+     / .twnote; the new rules are the empty-seat cell, the obligation block, the
+     adjudicator chips, and the disclaimer. */
+  .seat-ledger .seat-asserts { color: var(--ink-dim); font-size: 11.5px; }
+  .seat-ledger .seat-cell { text-align: left; }
+  .seat-empty {
+    display: inline-block; color: var(--ink-faint); font-size: 10.5px; font-style: italic;
+    border: 1px dashed var(--line-bright); border-radius: 3px; padding: 2px 8px;
+    background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255,255,255,.018) 6px 12px);
+  }
+  .seat-pending { color: var(--cool); font-size: 11px; }
+  /* the handoff panel: the obligation riffcat emits, then the seat line */
+  .seat-handoff { margin-top: 14px; }
+  .cphead.seat-head .vsub { color: var(--ink-faint); margin-left: 6px; }
+  .seat-ob { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .seat-ob-row { display: flex; gap: 12px; align-items: baseline; }
+  .seat-ob-row .seat-tag {
+    flex: 0 0 116px; text-align: right; color: var(--ink-faint); font-size: 10px;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .seat-ob-row .seat-val { flex: 1; color: var(--ink-dim); font-size: 12px; }
+  .seat-ob-row .seat-val .vsub { color: var(--ink-faint); }
+  .seat-ob-row .seat-val.open { color: var(--warm); }
+  .seat-ob-row .seat-val.ob { color: var(--ink); border-left: 2px solid var(--a-dim); padding-left: 10px; }
+  .seat-resolve {
+    padding: 9px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-dim);
+  }
+  .seat-resolve .seat-open { color: var(--ink-faint); font-style: italic; }
+  .seat-resolve .seat-named { color: var(--cool); }
+  .seat-resolve .seat-named b { color: var(--cool); }
+  /* who could fill the seat: the named verifiers, none selected by default */
+  .seat-fill { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 16px 0 0; }
+  .seat-fill .seat-fill-label {
+    color: var(--ink-faint); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; margin-right: 6px;
+  }
+  .seat-tool {
+    font: inherit; font-size: 12px; color: var(--ink-dim); background: var(--bg-chip);
+    border: 1px solid var(--line); padding: 4px 10px; cursor: pointer; border-radius: 3px;
+  }
+  .seat-tool:hover { color: var(--ink); border-color: var(--line-bright); }
+  .seat-tool.on { color: var(--bg); background: var(--cool); border-color: var(--cool); font-weight: 700; }
+  .seat-clear.on { background: transparent; color: var(--ink-faint); border-color: var(--line-bright); font-weight: 400; font-style: italic; }
+  /* the disclaimer: said plainly, on screen, in riffcat's own voice */
+  .seat-disclaimer {
+    display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 4px;
+    border: 1px solid var(--line-bright); border-left: 3px solid var(--warm);
+    background: rgba(255,180,84,.05); padding: 9px 12px; color: var(--ink-dim); font-size: 12px;
+  }
+  .seat-disclaimer .seat-disc-mark {
+    flex: none; width: 16px; height: 16px; border-radius: 50%; text-align: center; line-height: 16px;
+    font-size: 11px; font-weight: 700; color: var(--bg); background: var(--warm);
+  }
+
+  /* anchors */
+/* addresses as anchors: a fact is pinned to a facet address and rides every
+     shape sharing it; the cover condition decides whether each landing is sound.
+     Reuses .dialbar/.ladder/.stop/.eqread/.twnote/.shapedot/.nchip/.riffname. */
+  .ancfacts { margin: 4px 0 14px; }
+  .anclabel { color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: .12em; margin-bottom: 6px; }
+  .ancfact { font: inherit; font-size: 12px; color: var(--ink-dim); background: var(--bg-chip);
+    border: 1px solid var(--line); border-radius: 3px; padding: 5px 10px; margin: 0 5px 5px 0; cursor: pointer;
+    display: inline-flex; align-items: baseline; gap: 8px; }
+  .ancfact:hover { color: var(--ink); border-color: var(--line-bright); }
+  .ancfact.on { color: var(--ink); border-color: var(--a-dim); background: var(--a-dim); }
+  .ancfoot { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; padding: 1px 6px; border-radius: 2px; border: 1px solid var(--line-bright); }
+  .ancfoot.foot-0 { color: var(--cool); border-color: color-mix(in oklch, var(--cool) 40%, var(--bg)); }
+  .ancfoot.foot-1 { color: var(--warm); border-color: color-mix(in oklch, var(--warm) 40%, var(--bg)); }
+  .ancsay { color: var(--ink-faint); font-size: 11.5px; margin: 6px 0 0; }
+  .ancsay b { color: var(--ink); }
+  .ancslidehint { color: var(--ink-faint); font-size: 10.5px; }
+
+  .ancrows { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+  .ancrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 5px 8px;
+    border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 3px;
+    transition: opacity .16s ease, border-color .16s ease, background .16s ease; }
+  .ancrow .shapedot { margin-left: 0; }
+  .ancrow .riffname { min-width: 96px; display: flex; align-items: baseline; gap: 7px; }
+  .ancrow .ancaddr { color: var(--ink-faint); font-size: 11px; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .ancrow .anctag { font-size: 10.5px; color: var(--ink-faint); flex: 0 0 188px; text-align: right; }
+  .ancpin { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--bg); background: var(--ink-dim); border-radius: 2px; padding: 1px 5px; }
+  /* sound landing: the fact rides here and it is true */
+  .ancrow.anc-sound { border-left-color: var(--a); background: rgba(93,242,166,.05); }
+  .ancrow.anc-sound .anctag { color: var(--a); }
+  .ancrow.anc-sound .ancpin { background: var(--a); }
+  /* wrong landing: shares the anchor but the fact is false there (cover failed) */
+  .ancrow.anc-wrong { border-left-color: var(--rose); background: rgba(255,138,160,.06); }
+  .ancrow.anc-wrong .anctag { color: var(--rose); font-weight: 700; }
+  /* out of scope: a different anchor, the fact simply does not reach it */
+  .ancrow.anc-out { opacity: .42; }
+
+  .anccover { font-size: 12.5px; margin: 6px 0 2px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 3px; }
+  .anccover.ok { border-color: var(--a-dim); background: rgba(93,242,166,.05); color: var(--ink-dim); }
+  .anccover.bad { border-color: #5a2d39; background: rgba(255,138,160,.06); color: var(--ink-dim); }
+  .anccover b { color: var(--ink); }
+  .anccover .anc-ok { color: var(--a); font-weight: 700; }
+  .anccover .anc-bad { color: var(--rose); font-weight: 700; }
+
+  .ancfv { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .ancfvrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .ancfvfact { color: var(--ink); font-size: 12.5px; flex: 1 1 230px; }
+  .ancfvhome { color: var(--ink-faint); font-size: 11px; flex: 0 0 auto; }
+  .ancfvhome b { color: var(--warm); }
+  .ancfvnote { color: var(--ink-faint); font-size: 11px; flex: 1 1 100%; }
+
+  /* prior-art */
+/* prior art: three independent arrivals at content-addressed structure on a
+     lineage timeline. Reuses .eqread (with data-idle) and .twnote; hover idiom
+     mirrors facet-lattice (light one, dim the rest, restore the idle line). */
+  .pagrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0 2px; position: relative; }
+  .paline { height: 1px; background: linear-gradient(90deg, var(--warm), var(--cool), var(--a)); opacity: .5; margin: 16px 2px 0; }
+  .pacard { --pa: var(--cool); border: 1px solid var(--line); border-top: 3px solid var(--pa); background: var(--bg-chip);
+    padding: 12px 13px 14px; transition: opacity .15s ease, border-color .15s ease, box-shadow .15s ease; }
+  .pacard.dim { opacity: .34; }
+  .pacard.on { border-color: var(--pa); box-shadow: 0 0 0 1px var(--pa), 0 0 16px -5px var(--pa); }
+  .pacard .pa-era { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+  .pacard .pa-who { font-size: 14px; font-weight: 700; color: var(--ink); margin-top: 3px; }
+  .pacard .pa-what { font-size: 11.5px; color: color-mix(in oklch, var(--pa) 60%, var(--ink)); margin-top: 1px; }
+  .pacard .pa-line { font-size: 12px; color: var(--ink-dim); margin: 9px 0 0; line-height: 1.5; }
+  .eqread .pa-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: middle; margin-right: 7px; border: 1px solid rgba(255,255,255,.25); }
+  @media (max-width: 620px) { .pagrid { grid-template-columns: 1fr; } .paline { display: none; } }
+
+  /* verified-attestation */
+/* verified attestation: a content-addressed badge for a kernel-checked proof.
+     Reuses .eqread, .twnote, code, .vsub idioms; new rules are scoped vattest-*. */
+  .vattest-badge { display: flex; gap: 14px; align-items: stretch; border: 1px solid var(--line-bright);
+    background: var(--bg); border-left: 3px solid var(--a); padding: 12px 14px; margin: 12px 0 14px; border-radius: 4px; }
+  .vattest-badge.static { border-left-color: var(--ink-faint); }
+  .vattest-seal { flex: none; width: 86px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; border: 1px solid var(--a-dim); border-radius: 4px; background: rgba(93,242,166,.06); padding: 8px 6px; cursor: default; }
+  .vattest-badge.static .vattest-seal { border-color: var(--line); background: var(--bg-chip); }
+  .vattest-glyph { font-size: 22px; line-height: 1; color: var(--a); }
+  .vattest-badge.static .vattest-glyph { color: var(--ink-dim); }
+  .vattest-hash { font-size: 10px; color: var(--warm); letter-spacing: .02em; }
+  .vattest-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .vattest-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+  .vattest-prop { font-size: 13px; font-weight: 700; color: var(--ink); }
+  .vattest-state { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; padding: 1px 7px; border-radius: 3px;
+    color: var(--bg); background: var(--a); font-weight: 700; }
+  .vattest-state.static { color: var(--ink-dim); background: var(--bg-chip); border: 1px solid var(--line); }
+  .vattest-tool { font-size: 11.5px; color: var(--ink-dim); }
+  .vattest-thms { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .vattest-thm { display: inline-flex; align-items: baseline; gap: 6px; font-size: 11.5px; color: var(--ink);
+    background: var(--bg-chip); border: 1px solid var(--line); border-radius: 3px; padding: 3px 8px; cursor: default; }
+  .vattest-thm:hover { border-color: var(--line-bright); }
+  .vattest-thm code { color: var(--cool); background: transparent; border: none; padding: 0; }
+  .vattest-tick { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--a); }
+  .vattest-claim { border: 1px solid var(--line); background: var(--bg-raise); border-radius: 4px; padding: 4px 0; margin: 0 0 12px; cursor: default; }
+  .vattest-crow { display: flex; gap: 12px; padding: 4px 14px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  .vattest-crow:last-child { border-bottom: none; }
+  .vattest-ck { flex: 0 0 120px; color: var(--ink-faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; }
+  .vattest-cv { flex: 1; min-width: 0; color: var(--ink); word-break: break-all; }
+  .vattest-cv .vattest-addr { color: var(--warm); font-size: 11px; margin-left: 6px; }
+  .vattest-cclaim { color: var(--warm); }
+  .vattest-tiers { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 4px; }
+  .vattest-tier { font-size: 11px; padding: 3px 9px; border-radius: 3px; border: 1px solid var(--line); cursor: default; color: var(--ink-dim); }
+  .vattest-tier:hover { color: var(--ink); }
+  .vattest-checked { border-color: var(--a-dim); color: var(--a); background: rgba(93,242,166,.07); }
+  .vattest-assumption { border-color: #5a4d2d; color: var(--warm); background: rgba(255,180,84,.06); }
+  .vattest-open { border-color: #5a2d39; color: var(--rose); background: rgba(255,138,160,.06); }
 </style>
 </head>
 <body>
