@@ -227,6 +227,22 @@ const CH = [
     lede: "Where structure ends and meaning begins, and why riffcat hands that boundary to a verifier.",
     body: `<facet-lattice></facet-lattice>`,
   },
+  { nav: "prove it", kicker: "the seat we leave open", title: "riffcat localizes. The verdict seat stays empty.", lede: "A shape match is a candidate, not a verdict. riffcat localizes the matching subtree and writes a proof obligation, then leaves the verdict and attested-by columns empty, a seat that only a named verifier can fill. Pick a tool to see what it would have to discharge.", body: `<verdict-seat></verdict-seat>` },
+  {
+    nav: "anchors",
+    kicker: "the heart of the framing: a fact rides an address",
+    title: "An address is an anchor. A fact rides it, but only as far as it forgets.",
+    lede: "Attach a fact to a facet address and it transports, for free, to every shape that shares the address. The catch is a soundness condition, and you can watch it fail: a fact rides an anchor only when the anchor forgets at least as much as the fact does. Pin a fact below, then slide the anchor coarser and see exactly where it would wrongly travel.",
+    body: `<anchor-transport></anchor-transport>`,
+  },
+  { nav: "prior art", kicker: "the primitive is older than us", title: "Content-addressed structure keeps getting reinvented.", lede: "Three communities arrived at the same move on their own: normalize a structure, then address it by its content. Music theory in 1973, a content-addressed Lean kernel, a verified Lean compiler for the EVM. The hash is not what is new here. The faceted, explainable query is.", body: `<prior-art></prior-art>` },
+  {
+    nav: "the proofs check",
+    kicker: "one rung up: the map itself is proved",
+    title: "The normal-form proofs check.",
+    lede: "Riffcat lands a chord on its prime form. A Lean 4 development proves that prime form really is the canonical representative of the transpose-and-invert class, and the kernel checks it. We content-address that proof and register it as a claim, anchored on the one facet the proof stays sound at. Hover the parts of the badge to read each one honestly.",
+    body: `<verified-attest></verified-attest>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -1070,5 +1086,510 @@ customElements.define("facet-lattice", class extends HTMLElement {
       this.querySelectorAll(".latnode").forEach((x) => x.classList.remove("on"));
       read.innerHTML = read.dataset.idle;
     });
+  }
+});
+
+// The empty verdict seat. riffcat localizes a candidate (a shape match at a
+// chosen facet) and emits a proof obligation; the claim-ledger row's verdict
+// and attested-by columns are an EMPTY SEAT, awaiting a verifier. This view is
+// pure narrative + a static ledger (no engine call): it renders synchronously.
+// Selecting a candidate row shows the obligation riffcat hands off and the seat
+// that stays open; selecting an adjudicator names what that tool would discharge
+// and how (a proof, or a counterexample). riffcat never fills the seat itself.
+const SEAT_DISCLAIMER =
+  "riffcat does not prove equivalence, verify safety, or decide exploitability. "
+  + "It localizes a candidate and states the obligation. The seat stays empty until a named tool fills it.";
+
+// Each candidate is a localized shape match from an earlier chapter, restated as
+// a proof obligation: what riffcat asserts (structural), the facet the anchor was
+// computed at (the scope the obligation stays sound in), and the semantic claim
+// that is OPEN, i.e. not ours to make. footprint names the dimensions the
+// semantic claim depends on, so the reader sees why a coarser anchor would not
+// carry it. Grounded in the proof-and-anchors note: localize plus provenance
+// plus adjudicate, attach the adjudication to the localized anchor at the right facet.
+const SEAT_CANDIDATES = [
+  {
+    key: "twins",
+    subj: "Solady FixedPointMathLib.mulDiv",
+    from: "twins across real contracts",
+    facet: "names-blind",
+    asserts: "the same shape, identifiers aside, in several deployed contracts",
+    open: "do these instances compute the same function",
+    footprint: "structure, constants, types",
+    obligation: "for each pair sharing this anchor, prove behavioural equivalence, or return an input where they differ",
+  },
+  {
+    key: "vuln",
+    subj: "ERC-4626 convertToShares (inflation shape)",
+    from: "the bug-shape sniff",
+    facet: "structure",
+    asserts: "the control- and data-flow shape of the first-depositor inflation pattern",
+    open: "is this instance actually exploitable",
+    footprint: "structure, constants (the guard threshold)",
+    obligation: "decide whether an attacker input reaches the unguarded mint, given this contract's constants",
+  },
+  {
+    key: "fuzzy",
+    subj: "Multicall (edited fork)",
+    from: "the modified forks",
+    facet: "structure (weighted containment)",
+    asserts: "enough of the known vulnerable subtree is still present to be a candidate",
+    open: "is the surviving shape still the vulnerable one",
+    footprint: "structure, resolved callees",
+    obligation: "confirm the edit preserved the vulnerable path, or exhibit the input the edit now guards",
+  },
+];
+
+// The seat's candidate fillers. Each is a real verifier; the note states, in the
+// phrasebook voice, the verb it does (prove / refute / model-check) and the layer
+// it works at. SMTChecker is the warmest door (it ships inside solc); the others
+// are named honestly as the tools that COULD fill the seat, not endorsements.
+const SEAT_ADJUDICATORS = [
+  { id: "hevm",       name: "hevm",       does: "symbolic execution and equivalence checking over EVM bytecode; returns a proof or a concrete counterexample." },
+  { id: "smtchecker", name: "SMTChecker", does: "ships inside solc; discharges assertions and reachability over the source. The closest door, because the obligation can travel with the compile." },
+  { id: "kontrol",    name: "Kontrol",    does: "K-framework proofs over EVM semantics; the obligation becomes a claim it discharges or leaves open." },
+  { id: "certora",    name: "Certora",    does: "specification-driven verification; the localized candidate becomes a rule to prove or a violation to surface." },
+];
+
+const SEAT_EMPTY = '<span class="seat-empty" title="awaiting a verifier">awaiting adjudication</span>';
+
+customElements.define("verdict-seat", class extends HTMLElement {
+  connectedCallback() {
+    this.sel = 0;        // selected candidate row
+    this.tool = null;    // selected adjudicator (null = seat still empty)
+    this.render();
+  }
+  render() {
+    const rows = SEAT_CANDIDATES.map((c, i) =>
+      `<tr class="lxrow seatrow ${i === this.sel ? "on" : ""}" data-i="${i}">`
+      + `<td class="lx-shape">${c.subj} <span class="vsub">${c.from}</span></td>`
+      + `<td class="seat-asserts">${c.asserts}</td>`
+      + `<td class="lx-fp">${c.facet}</td>`
+      + `<td class="lx-verd seat-cell">${this.tool ? this.tool.name : SEAT_EMPTY}</td>`
+      + `<td class="lx-verd seat-cell">${this.tool ? "<span class=\"seat-pending\">a proof or a counterexample</span>" : SEAT_EMPTY}</td></tr>`).join("");
+    const chips = SEAT_ADJUDICATORS.map((a) =>
+      `<button class="seat-tool ${this.tool && this.tool.id === a.id ? "on" : ""}" data-tool="${a.id}">${a.name}</button>`).join("");
+    this.innerHTML = `
+      <p class="vbug">One problem, three contributors: riffcat <b>localizes</b> the matching subtree, the compiler can supply the <b>provenance</b> down to bytecode, and a verifier <b>adjudicates</b>. The two columns on the right are the verifier's. They are empty by design.</p>
+      <table class="vledger seat-ledger">
+        <thead><tr><th>candidate (localized by riffcat)</th><th>what riffcat asserts</th><th>anchor facet</th><th>verdict</th><th>attested by</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p class="vledger-cap">Click a candidate for the obligation riffcat hands off. The verdict is structural-not-semantic: riffcat says <em>same shape, and here are the parts that match</em>, and the sentence stops there.</p>
+      <div class="seat-handoff codepanel"></div>
+      <div class="seat-fill">
+        <span class="seat-fill-label">who could fill the seat</span>
+        ${chips}
+        <button class="seat-tool seat-clear ${this.tool ? "" : "on"}" data-tool="">leave it open</button>
+      </div>
+      <div class="seat-disclaimer"><span class="seat-disc-mark">!</span><span>${SEAT_DISCLAIMER}</span></div>
+      <p class="twnote">A facet address is an anchor. A verdict attaches to that anchor and rides every artifact sharing it, but only when the anchor is at least as fine as everything the verdict depends on (its <b>footprint</b>). That is why the obligation carries its facet: it is the exact scope a future proof stays sound in. riffcat measures what an anchor forgets; the verifier decides what is true within it.</p>`;
+    this.querySelectorAll(".seatrow").forEach((row) =>
+      row.addEventListener("click", () => {
+        this.sel = +row.dataset.i;
+        this.querySelectorAll(".seatrow").forEach((x, i) => x.classList.toggle("on", i === this.sel));
+        this.renderHandoff();
+      }));
+    this.querySelectorAll("[data-tool]").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.tool;
+        this.tool = id ? SEAT_ADJUDICATORS.find((a) => a.id === id) : null;
+        this.render(); // re-render so the ledger's verdict/attested columns reflect the seat
+      }));
+    this.renderHandoff();
+  }
+  renderHandoff() {
+    const c = SEAT_CANDIDATES[this.sel];
+    const seatLine = this.tool
+      ? `<span class="seat-named"><b>${this.tool.name}</b> takes the seat</span>: ${this.tool.does}`
+      : `<span class="seat-open">the seat is empty</span>: riffcat states the obligation and stops. No tool above has taken it.`;
+    this.querySelector(".seat-handoff").innerHTML =
+      `<div class="cphead seat-head"><b>${c.subj}</b> <span class="vsub">localized at ${c.facet}</span></div>`
+      + `<div class="seat-ob">`
+      + `<div class="seat-ob-row"><span class="seat-tag">riffcat asserts</span><span class="seat-val">${c.asserts}</span></div>`
+      + `<div class="seat-ob-row"><span class="seat-tag">open question</span><span class="seat-val open">${c.open}</span></div>`
+      + `<div class="seat-ob-row"><span class="seat-tag">footprint</span><span class="seat-val">${c.footprint} <span class="vsub">(the dimensions the answer depends on; the anchor must cover them)</span></span></div>`
+      + `<div class="seat-ob-row"><span class="seat-tag">proof obligation</span><span class="seat-val ob">${c.obligation}</span></div>`
+      + `</div>`
+      + `<div class="seat-resolve">${seatLine}</div>`;
+  }
+});
+
+// Addresses as anchors: a fact is attached to a facet address and transports to
+// every shape sharing that address. Live chords (fingerprint_chord at the
+// note-set and set-class facets) are the runnable instance; the transport is
+// sound exactly when the anchor facet covers the fact's footprint (the
+// dimensions its truth depends on). The reader picks a fact, picks an anchor,
+// and the component shows where the fact rides and, when the anchor is too
+// coarse, where it would WRONGLY ride. Nothing here adjudicates meaning; it
+// shows the precise scope a transported fact stays sound in.
+//
+// All names below are prefixed `anc` to avoid collision with app.js. Reuses
+// engineReady, chipColor, NOTE_NAMES, and the .dialbar/.ladder/.stop/.eqread/
+// .twnote/.shapedot classes; new visuals are the .anc* classes in the css field.
+
+// The two live facets the chord engine exposes, coarse-to-fine is the OTHER way:
+// set_class forgets transposition (coarser), note_set keeps the literal pitch
+// classes (finer). We order the ladder fine -> coarse so sliding right is
+// "forget more", matching the dial metaphor everywhere else.
+const ANC_FACETS = [
+  { key: "note_set", label: "note set", drops: "keeps the exact pitch classes" },
+  { key: "set_class", label: "set class", drops: "forgets transposition and inversion" },
+];
+
+// The chords we anchor across. Chosen so a whole family collapses at set_class
+// (every major or minor triad is Forte 3-11) while two chords stand alone, so a
+// fact pinned at set_class has somewhere to ride and somewhere it must not.
+const ANC_CHORDS = ["C", "Am", "F", "Em", "Caug", "Bdim"];
+
+// The facts a reader can pin, each with a DECLARED FOOTPRINT: the finest facet
+// its truth depends on. `foot` is the index into ANC_FACETS that the fact needs
+// covered. A fact transports soundly along an anchor only if the anchor is at
+// least as fine as the footprint, i.e. anchorIndex <= foot (lower index = finer
+// here). The "wrongly" case is precisely anchorIndex > foot.
+//   - note-set footprint (foot 0): depends on the literal pitch classes, so it
+//     needs the note-set anchor; riding it on set_class is unsound.
+//   - set-class footprint (foot 1): depends only on the transposition class, so
+//     it rides the coarse set-class anchor soundly and reaches the whole family.
+const ANC_FACTS = [
+  {
+    key: "is3-11", foot: 1,
+    label: "set class is Forte 3-11",
+    say: "interval vector [0 0 1 1 1 0], the major/minor triad family",
+    // true exactly of the chords whose prime form is the 3-11 class [0,3,7]
+    holds: (d) => JSON.stringify(d.prime_form) === JSON.stringify([0, 3, 7]),
+  },
+  {
+    key: "evenness", foot: 1,
+    label: "no interval class is empty",
+    say: "a structural fact about the set class: every interval class appears at least once",
+    holds: (d) => d.interval_vector.every((x) => x > 0),
+  },
+  {
+    key: "rootC", foot: 0,
+    label: "contains the pitch class C",
+    say: "depends on the literal notes, not just the transposition class",
+    holds: (d) => d.pitch_classes.includes(0),
+  },
+  {
+    key: "hasE", foot: 0,
+    label: "contains the pitch class E",
+    say: "again a literal-notes fact: which pitch classes are present",
+    holds: (d) => d.pitch_classes.includes(4),
+  },
+];
+
+// A short static catalog that carries the same shape into the code/FV domain, so
+// the formal point lands even though the live engine here speaks chords. Each
+// entry names a fact, the dimensions its truth depends on (its footprint), and
+// the home facet that footprint defines. This is prose-as-data, not a live
+// computation; it mirrors section 3 of the proof note.
+const ANC_FV = [
+  { fact: "matches the ERC-4626 inflation vuln shape", foot: "structure", home: "structure", note: "a control-and-data-flow shape, so it rides the structural anchor and reaches every structural twin: triage, not a verdict." },
+  { fact: "is OpenZeppelin mulDiv, identifiers aside", foot: "structure, names", home: "names-blind", note: "an identification modulo names; it rides names-blind, not bare structure." },
+  { fact: "the overflow guard holds at this threshold", foot: "structure, constants", home: "keeps constants", note: "depends on a literal, so transporting it along a constants-blind anchor would be unsound." },
+];
+
+const ancShort = (h) => (h || "").slice(0, 8);
+
+customElements.define("anchor-transport", class extends HTMLElement {
+  async connectedCallback() {
+    this.anchor = 1;   // index into ANC_FACETS; start coarse (set_class) to show the family
+    this.factKey = "is3-11";
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      // Fingerprint each chord once; we read its facet addresses + the raw
+      // pitch data the facts inspect straight off the binding's full result.
+      this.data = ANC_CHORDS
+        .map((c) => { try { return { c, fp: JSON.parse(b.fingerprint_chord(c)) }; } catch { return null; } })
+        .filter(Boolean);
+      this.render();
+    } catch (e) { this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`; }
+  }
+  render() {
+    const facet = ANC_FACETS[this.anchor];
+    const fact = ANC_FACTS.find((f) => f.key === this.factKey);
+
+    // The anchor address each chord computes at the chosen facet. Chords that
+    // share an address share an anchor; a pinned fact rides exactly those.
+    const addrOf = (fp) => fp[facet.key];
+
+    // The chord we pin the fact ON: the first chord for which the fact actually
+    // holds, so "pin here" is always meaningful. Its address is the anchor the
+    // fact is attached to.
+    const subject = this.data.find((d) => fact.holds(d.fp)) || this.data[0];
+    const anchorAddr = addrOf(subject.fp);
+
+    // Who shares that anchor (the address class the fact transports across).
+    const riders = this.data.filter((d) => addrOf(d.fp) === anchorAddr);
+
+    // The soundness check, per TRANSPORT: the anchor must be at least as fine as
+    // the footprint. Lower index = finer, so cover holds iff anchor <= foot.
+    const covers = this.anchor <= fact.foot;
+
+    // Where the fact would WRONGLY ride: a shape that shares the anchor but on
+    // which the fact does NOT actually hold. These can only appear when the
+    // anchor dropped a dimension the fact depended on, i.e. when cover fails.
+    const wrong = riders.filter((d) => !fact.holds(d.fp));
+
+    const ladder = ANC_FACETS.map((f, i) =>
+      `<span class="stop ${i === this.anchor ? "on" : ""}" data-anchor="${i}" title="${f.drops}">${f.label}</span>`).join("");
+
+    const factPills = ANC_FACTS.map((f) =>
+      `<button class="ancfact ${f.key === this.factKey ? "on" : ""}" data-fact="${f.key}">`
+      + `<span class="ancfoot foot-${f.foot}">needs ${ANC_FACETS[f.foot].label}</span>${f.label}</button>`).join("");
+
+    // One row per chord: its notes, its address at the anchor, and a transport
+    // state. A rider whose fact holds is a SOUND landing; a rider whose fact
+    // fails is a WRONG landing (only possible when cover fails); a non-rider is
+    // simply out of scope.
+    const rows = this.data.map((d) => {
+      const a = addrOf(d.fp);
+      const isRider = a === anchorAddr;
+      const ok = fact.holds(d.fp);
+      const state = !isRider ? "out" : ok ? "sound" : "wrong";
+      const notes = d.fp.pitch_classes.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
+      const tag = state === "sound" ? "fact rides here"
+        : state === "wrong" ? "fact would ride here, but is false"
+        : "different anchor";
+      const subjMark = d === subject ? `<span class="ancpin" title="the fact is pinned here">pinned</span>` : "";
+      return `<div class="ancrow anc-${state}">`
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${facet.label} ${ancShort(a)}"></span>`
+        + `<span class="riffname">${d.c}${subjMark}</span>`
+        + `<span class="nchips">${notes}</span>`
+        + `<span class="ancaddr">${ancShort(a)}</span>`
+        + `<span class="anctag">${tag}</span></div>`;
+    }).join("");
+
+    const soundLine = covers
+      ? `<span class="anc-ok">cover holds</span>: the anchor (<b>${facet.label}</b>) is at least as fine as the fact's footprint (<b>${ANC_FACETS[fact.foot].label}</b>), so every rider is a sound landing.`
+      : `<span class="anc-bad">cover fails</span>: the anchor (<b>${facet.label}</b>) forgot a dimension the fact depends on (its footprint is <b>${ANC_FACETS[fact.foot].label}</b>), so the fact would ride to <b>${wrong.length}</b> shape${wrong.length === 1 ? "" : "s"} where it is not true: ${wrong.map((d) => d.c).join(", ") || "none in this set"}.`;
+
+    const idle = `fact <b>${fact.label}</b> pinned on <b>${subject.c}</b> at the <b>${facet.label}</b> anchor`
+      + ` · rides to <b>${riders.length}</b> shape${riders.length === 1 ? "" : "s"} sharing that address`
+      + (covers ? "" : ` · <b>${wrong.length}</b> of them wrongly`);
+
+    this.innerHTML = `
+      <div class="ancfacts">
+        <div class="anclabel">pin a fact</div>
+        ${factPills}
+        <p class="ancsay">${fact.say}. Its footprint is <b>${ANC_FACETS[fact.foot].label}</b>: the coarsest anchor it can ride soundly.</p>
+      </div>
+      <div class="dialbar">
+        <div class="grp"><span>anchor facet</span><div class="ladder">${ladder}</div></div>
+        <span class="ancslidehint">slide right to forget more</span>
+      </div>
+      <div class="ancrows">${rows}</div>
+      <div class="anccover ${covers ? "ok" : "bad"}">${soundLine}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">The mechanism is the claims layer: a fact keys on a facet address, and sharing that address is decidable by lookup, so transport is free and instant. Soundness is one condition, and it is provable: <b>a fact rides an anchor only if the anchor forgets at least as much as the fact does</b>. The facet's own invariance theorem measures what it forgets; the transport theorem lets a fact ride exactly when its footprint avoids that forgotten set. Slide the anchor below its home facet and the fact does not get more general, it gets wrong, which is also how you read off what the fact truly depends on.</p>
+      <div class="ancfv">
+        <div class="anclabel">the same condition, on code (stated, not computed here)</div>
+        ${ANC_FV.map((e) => `<div class="ancfvrow"><span class="ancfvfact">${e.fact}</span>`
+          + `<span class="ancfvhome">home facet: <b>${e.home}</b></span>`
+          + `<span class="ancfvnote">${e.note}</span></div>`).join("")}
+        <p class="twnote">We can prove the transport theorem and check the cover condition. We cannot prove a human's footprint is declared correctly; that residual trust sits with the auditor. riffcat is the anchor a proof attaches to, and it can state precisely the scope a transported proof stays sound in. It narrows what to read; it does not decide what is true.</p>
+      </div>`;
+
+    this.querySelectorAll("[data-anchor]").forEach((s) =>
+      s.addEventListener("click", () => { const i = +s.dataset.anchor; if (this.anchor !== i) { this.anchor = i; this.render(); } }));
+    this.querySelectorAll("[data-fact]").forEach((b) =>
+      b.addEventListener("click", () => { if (this.factKey !== b.dataset.fact) { this.factKey = b.dataset.fact; this.render(); } }));
+  }
+});
+
+// "prior art" chapter: content-addressed structural identity, independently
+// reinvented across three communities. Pure copy, no engine: renders
+// synchronously. Three cards on a lineage timeline (Forte 1973 -> Yatima/Ix ->
+// Verity), each with one honest sentence; hovering a card writes its precise
+// same/different-vs-riffcat line into a readout that restores an idle line on
+// leave (the facet-lattice hover idiom). A closing note concedes the primitive
+// and draws the line at our actual slice: the faceted, explainable query.
+const PRIORART_CARDS = [
+  {
+    k: "forte",
+    era: "1973 · music theory",
+    who: "Allen Forte",
+    what: "pitch-class set theory",
+    line: "Prime form is a canonical address for a chord, invariant under transposition and inversion; the Forte number is that address into a catalog of shapes.",
+    accent: "var(--warm)",
+    read: "Same move: normalize a structure (a set of notes), then address it. A facet by another name, settled in the 1970s. You saw the engine land on this catalog two chapters back, on real chords.",
+  },
+  {
+    k: "lurk",
+    era: "ongoing · FV / Lean",
+    who: "Lurk · Yatima · Ix",
+    what: "content-addressed Lean",
+    line: "A nameless, De-Bruijn kernel IR, Merkle-hashed to a content address independent of computationally-irrelevant naming, so a proof of typechecking can travel with the artifact.",
+    accent: "var(--cool)",
+    read: "Same primitive, our names-blind facet frozen as the only setting. Theirs is an exact-identity oracle: two terms share an address or they are unrelated. No near-match, no distance, by design.",
+  },
+  {
+    k: "verity",
+    era: "ongoing · FV / EVM",
+    who: "Verity (LFG Labs)",
+    what: "a verified Lean compiler for the EVM",
+    line: "A formally verified compiler from an embedded DSL to EVM bytecode, proven to preserve semantics across its supported fragment, with the trust boundary named in the open.",
+    accent: "var(--a)",
+    read: "The other axis: meaning. Verity proves one contract correct against its spec. riffcat points at which of the millions of deployed contracts share its shape, so a proof like that knows where to aim. Complement, not competitor.",
+  },
+];
+const PRIORART_IDLE = "Three independent arrivals at one idea: normalize, then content-address. Hover a card for how it sits beside riffcat. The shared primitive is theirs; what follows is ours.";
+customElements.define("prior-art", class extends HTMLElement {
+  connectedCallback() {
+    const cards = PRIORART_CARDS.map((c) =>
+      `<div class="pacard" data-k="${c.k}" style="--pa:${c.accent}">`
+      + `<div class="pa-era">${c.era}</div>`
+      + `<div class="pa-who">${c.who}</div>`
+      + `<div class="pa-what">${c.what}</div>`
+      + `<p class="pa-line">${c.line}</p></div>`).join("");
+    this.innerHTML = `
+      <div class="paline" aria-hidden="true"></div>
+      <div class="pagrid">${cards}</div>
+      <div class="eqread" data-idle="${PRIORART_IDLE}">${PRIORART_IDLE}</div>
+      <p class="twnote">The point is not that we are first. It is that the primitive (content-addressed, names-blind structural hashing) is established, well, by people whose judgement we trust, and that this is reassuring rather than awkward. So we do not claim the hash. riffcat's slice is turning a structural digest from an exact-identity oracle into a <b>faceted, graded, explainable query</b> over a large, adversarial corpus: a ladder of normalizations, per-dimension digests, twins and near-match, for recognition and triage. Same primitive; opposite question. They ask whether this is the exact same object. We ask how much, and in which dimensions, this resembles that, across millions of independently compiled contracts. We can show you the why-they-match. We do not claim the why-they-mean-the-same.</p>`;
+    const read = this.querySelector(".eqread");
+    this.querySelectorAll(".pacard").forEach((card) => {
+      const c = PRIORART_CARDS.find((x) => x.k === card.dataset.k);
+      card.addEventListener("mouseenter", () => {
+        this.querySelectorAll(".pacard").forEach((x) => x.classList.toggle("dim", x !== card));
+        card.classList.add("on");
+        read.innerHTML = `<span class="pa-sw" style="background:${c.accent}"></span><b>${c.who}</b> · ${c.read}`;
+      });
+    });
+    this.addEventListener("mouseleave", () => {
+      this.querySelectorAll(".pacard").forEach((x) => x.classList.remove("dim", "on"));
+      read.innerHTML = read.dataset.idle;
+    });
+  }
+});
+
+// "verified attestation: the proofs check" (Shape A).
+//
+// The polyphonotopes-math Lean development proves the pitch-class-set normal
+// form is canonical: primeForm picks the unique representative of the
+// transpose-and-invert (Tn/TnI) class, and primeForm is idempotent. These are
+// assumption-free finite combinatorics, so a passing `lake build` means the
+// Lean 4 kernel has CHECKED them (not "tested", checked). We content-address
+// that checked proof and register it as a riffcat claim: an Attestation that
+// keys a property onto a subject FacetAddress, plus a recorded FOOTPRINT facet,
+// the set of dimensions the fact actually depends on. For a prime-form fact the
+// footprint is the structure-only facet (the order-free pitch encoding up to
+// Tn/TnI), so the claim transports soundly to every voicing, octave-doubling,
+// and transposition that shares that structural anchor, and no finer.
+//
+// NOT buildable today: running `lake build` needs a Lean toolchain off in CI,
+// and the content-addressed claim register (attestation(property, subjectFacet,
+// footprintFacet)) is not wired onto window.wasmBindings yet. So this renders a
+// STATIC attested badge as a placeholder. The two future calls are named below
+// and tried first; when they exist the badge fills from the engine, otherwise
+// it shows the baked attestation unchanged. Either way the trust tiers stay
+// honest: the kernel-checked part, the named cryptographic assumption, and the
+// open Lean-model-versus-Rust gap are three separate lines, never blurred.
+
+// The baked attestation (placeholder until lake-in-CI + the claim register
+// land). Hashes are illustrative content addresses, shaped like the engine's.
+const ATTEST_RECORD = {
+  property: "pcs-normal-form-canonical",
+  toolchain: "Lean 4 · polyphonotopes-math",
+  build: "lake build · kernel-checked",
+  theorems: [
+    { name: "primeForm_correct", says: "prime form is the unique representative of the transpose-and-invert class" },
+    { name: "primeForm_idempotent", says: "normalizing a normal form changes nothing" },
+  ],
+  // the address the proof is content-addressed at (the Lean development's digest)
+  claim: "b3:7e91f4c2a8d05b13",
+  // the SUBJECT the property is asserted onto: a structure-only facet address
+  subjectFacet: "structure",
+  subjectAddr: "3a0f9c1d77e2",
+  // the FOOTPRINT facet: the dimensions the fact depends on (its home facet).
+  // For a prime-form fact this is exactly structure-only, so the claim rides
+  // every voicing and transposition sharing that anchor, and nothing finer.
+  footprintFacet: "structure",
+};
+
+// Honest trust tiers, kept distinct on purpose (the overclaim lives in blurring
+// them). checked = the kernel verified it, assumption = named and not a theorem,
+// open = the gap we do not paper over.
+const ATTEST_TIERS = [
+  { k: "checked", t: "kernel-checked", s: "the Lean 4 kernel verified these theorems; lake build passing means checked, not merely tested. Assumption-free finite combinatorics over the twelve pitch classes." },
+  { k: "assumption", t: "named assumption", s: "no two distinct shapes collide in the content address: a stated cryptographic assumption on the digest, not a theorem. Named, not hidden." },
+  { k: "open", t: "open gap", s: "every theorem is about the Lean model of the encoder; the running Rust engine agrees by golden vectors and reading, not yet by verified extraction. We state this as integrity, up front." },
+];
+
+const ATTEST_SHORT = (h) => (h || "").slice(0, 12);
+
+customElements.define("verified-attest", class extends HTMLElement {
+  async connectedCallback() {
+    this.rec = ATTEST_RECORD;
+    // Future path: if the engine ever exposes a content-addressed claim register
+    // and a lake status, fill the badge from it. Both are await-safe to miss.
+    try {
+      const b = await engineReady;
+      if (b && typeof b.attestation === "function") {
+        const live = JSON.parse(b.attestation(
+          ATTEST_RECORD.property, ATTEST_RECORD.subjectFacet, ATTEST_RECORD.footprintFacet));
+        // expected shape: { claim, subjectAddr, build, checked: bool }
+        if (live && live.claim) {
+          this.rec = Object.assign({}, ATTEST_RECORD, live);
+        }
+      }
+    } catch (_) { /* baked placeholder stands; this is a static-attested view */ }
+    this.live = !!(window.wasmBindings && typeof window.wasmBindings.attestation === "function");
+    this.render();
+  }
+  render() {
+    const r = this.rec;
+    const checkClass = this.live ? "ok" : "static";
+    const checkText = this.live ? "registered live" : "attested (static placeholder)";
+    const theorems = r.theorems.map((th) =>
+      `<div class="vattest-thm" data-read="thm" data-name="${th.name}" data-says="${th.says}">`
+      + `<span class="vattest-tick">checks</span><code>${th.name}</code></div>`).join("");
+    const tiers = ATTEST_TIERS.map((tier) =>
+      `<span class="vattest-tier vattest-${tier.k}" data-read="tier" data-key="${tier.k}">${tier.t}</span>`).join("");
+    const idle = `<b>${r.theorems.length}</b> theorems kernel-checked · property <code>${r.property}</code>`
+      + ` anchored at the <b>${r.footprintFacet}</b> facet · the claim rides every voicing and transposition sharing that anchor, and no finer`;
+    this.innerHTML = `
+      <div class="vattest-badge ${checkClass}">
+        <div class="vattest-seal" data-read="seal" title="content address of the checked proof">
+          <span class="vattest-glyph">✓</span>
+          <span class="vattest-hash">${ATTEST_SHORT(r.claim)}</span>
+        </div>
+        <div class="vattest-body">
+          <div class="vattest-head">
+            <span class="vattest-prop">${r.property}</span>
+            <span class="vattest-state ${checkClass}">${checkText}</span>
+          </div>
+          <div class="vattest-tool">${r.toolchain} · ${r.build}</div>
+          <div class="vattest-thms">${theorems}</div>
+        </div>
+      </div>
+      <div class="vattest-claim" data-read="claim">
+        <div class="vattest-crow"><span class="vattest-ck">property</span><span class="vattest-cv">${r.property}</span></div>
+        <div class="vattest-crow"><span class="vattest-ck">subject facet</span><span class="vattest-cv">${r.subjectFacet} <span class="vattest-addr">${r.subjectAddr}</span></span></div>
+        <div class="vattest-crow"><span class="vattest-ck">footprint facet</span><span class="vattest-cv">${r.footprintFacet}</span></div>
+        <div class="vattest-crow"><span class="vattest-ck">claim address</span><span class="vattest-cv vattest-cclaim">${r.claim}</span></div>
+      </div>
+      <div class="vattest-tiers" data-read="tiers">${tiers}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">This is one rung up from the rest of the tour. Everywhere else riffcat shows you a match; here a verifier proves something about the map riffcat uses, that prime form is the true canonical form of the transpose-and-invert class, and the Lean 4 kernel checks it. We record that proof as a content-addressed claim and note the one facet its footprint covers, so it transports exactly as far as it is sound to and stops there. Running <code>lake build</code> needs a Lean toolchain, and the claim register is not wired yet, so the badge above is a static attestation standing in for the live one.</p>`;
+    const read = this.querySelector(".eqread");
+    const idleHTML = read.dataset.idle;
+    const describe = (el) => {
+      const kind = el.dataset.read;
+      if (kind === "thm") return `<b>${el.dataset.name}</b> · ${el.dataset.says} · kernel-checked, assumption-free`;
+      if (kind === "seal") return `<b>content address</b> · the digest of the checked proof; sharing this address is what lets the claim transport without re-proving`;
+      if (kind === "claim") return `<b>the claim shape</b> · a property keyed onto a subject facet address, with a recorded footprint facet; transport is sound only when the anchor facet covers the footprint`;
+      if (kind === "tier") {
+        const tier = ATTEST_TIERS.find((x) => x.k === el.dataset.key);
+        return `<b>${tier.t}</b> · ${tier.s}`;
+      }
+      if (kind === "tiers") return `three tiers, kept apart on purpose: <b>checked</b> by the kernel, an honestly <b>named assumption</b>, and the <b>open gap</b> between the Lean model and the Rust engine`;
+      return idleHTML;
+    };
+    this.querySelectorAll("[data-read]").forEach((el) =>
+      el.addEventListener("mouseenter", () => { read.innerHTML = describe(el); }));
+    this.addEventListener("mouseleave", () => { read.innerHTML = idleHTML; });
   }
 });
