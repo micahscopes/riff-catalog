@@ -17,6 +17,8 @@
 //! canonicalize (mod 12, dedup, sort), encode the canonical sequence with pitch
 //! class -> Names, and the Names facet over that graph is the set's identity.
 
+pub mod chord;
+
 use riff_catalog_core::{
     CatalogError, CyclePolicy, Dimension, DigestRequest, EntityKey, Facet, Graph, GraphKey,
     HashPolicy, NodeKey, ViewMode, digest_graph,
