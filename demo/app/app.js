@@ -253,6 +253,13 @@ const CH = [
   { nav: "interval vector", kicker: "the harmonic signature underneath a chord", title: "Six numbers that survive transposing and flipping.", lede: "Every chord projects to six interval-class counts: how many minor seconds it contains, how many major seconds, and so on up to the tritone. Move the chord to any key, turn it upside down, and these six numbers do not change. Pick a chord and watch its signature; major and minor land on the same one.", body: "<ivf-fingerprint></ivf-fingerprint>" },
   { nav: "three rungs", kicker: "one chord, three rungs of forgetting", title: "A pitch-class set has a ladder, not a switch.", lede: "The set-class facet is the top of a short climb. Take one chord up the ladder a rung at a time: the literal notes, then the same set slid to its tightest packing (transposition forgotten), then the prime form (inversion forgotten too). Each rung forgets one more thing, and you can watch exactly what.", body: `<three-rungs></three-rungs>` },
   { nav: "two fingerprints", kicker: "two axes, not two rivals", title: "The compiler already emits a fingerprint. This is its complement.", lede: "Sourcify's metadata hash is the exact-identity fingerprint of a compilation: it answers \"is this the identical build,\" and a single whitespace flips it. A structural fingerprint answers the other question, \"is this the same code wearing different clothes,\" and is built to hold when the metadata hash moves. Edit the source below and watch the two axes part.", body: `<metadata-axes></metadata-axes>` },
+  {
+  nav: "main vs meta",
+  kicker: "the wall riffcat steps around",
+  title: "In the bytecode, you cannot tell Main from Meta.",
+  lede: "Raw onchain bytecode is one run-on strip: the code (Main) and the metadata, immutables, libraries, and constructor arguments (Meta) sit interleaved, with no clean line between them. So a byte match has to guess. riffcat works one level up, on the source, where structure, names, constants, and types are already separate by construction.",
+  body: `<byte-wall></byte-wall>`,
+},
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -2109,5 +2116,127 @@ customElements.define("metadata-axes", class extends HTMLElement {
         this.sel = i;
         this.render();
       }));
+  }
+});
+
+// "Main vs Meta": the bytecode wall, in Kaan's own words. From raw onchain
+// bytecode you cannot cleanly tell which bytes are code (Main) from which are
+// metadata / immutables / libraries / constructor arguments (Meta), so a
+// byte-level similarity match has to guess where the line is. riffcat sidesteps
+// the guess by reading the source AST, where the dimensions riffcat dials
+// (structure, names, constants, types) are separated by construction. No engine:
+// a hand-laid SVG that hovers like facet-lattice (a node lights, the .eqread
+// readout updates, mouseleave restores the idle line). Copy + diagram only.
+//
+// Vocabulary is held to Sourcify's SSOT on purpose: the Meta regions are named
+// with the VerA transformation reasons (auxdata, immutable, library, constructor),
+// "ride the recompilation" is their verb, and riffcat is the source-level
+// COMPLEMENT, never a rival byte scheme.
+
+// The interleaved bytecode strip: each cell is a span of onchain bytecode, tagged
+// Main (code, the part a similarity search wants) or one of the Meta reasons. The
+// point of the picture is that the Meta spans are scattered THROUGH the Main code,
+// not parked in one trailing block, so there is no single clean cut.
+const BW_STRIP = [
+  { w: 16, kind: "main" },
+  { w: 5, kind: "immutable", r: "immutable" },
+  { w: 13, kind: "main" },
+  { w: 6, kind: "library", r: "library" },
+  { w: 10, kind: "main" },
+  { w: 5, kind: "immutable", r: "immutable" },
+  { w: 18, kind: "main" },
+  { w: 7, kind: "auxdata", r: "auxdata" },
+  { w: 9, kind: "main" },
+  { w: 8, kind: "constructor", r: "constructor" },
+  { w: 6, kind: "auxdata", r: "auxdata" },
+];
+
+// What each region is, in the brief's vocabulary, plus the readout line a hover
+// writes. Meta entries name the VerA transformation reason so the picture reads
+// as their concept, not riffcat coinage.
+const BW_LEGEND = {
+  main: { t: "Main", s: "the code itself: the bytes a similarity search actually wants to compare." },
+  immutable: { t: "Meta · immutable", s: "immutable variable values, patched into the runtime bytecode at deploy. A transformation, not the code's shape." },
+  library: { t: "Meta · library", s: "library addresses linked at deploy. Same shape, different bytes, depending on where the library landed." },
+  auxdata: { t: "Meta · auxdata", s: "CBOR metadata hash appended by the compiler. It moves on a whitespace change, and it can sit more than once in the strip." },
+  constructor: { t: "Meta · constructor", s: "constructor arguments trailing the deployed bytes. Deploy-specific, not part of the code's shape." },
+};
+
+// The source side: the four dimensions riffcat reads off the AST, already
+// separate by construction. These are exactly the dimensions the dial turns
+// (the earlier chapters: full, names-blind, structure), shown here as columns so
+// the contrast with the run-on strip is literal.
+const BW_DIMS = [
+  { k: "structure", t: "structure", s: "the shape of the syntax tree: control flow, the calls, how it is built. This is what survives the dial all the way down." },
+  { k: "names", t: "names", s: "identifiers and labels. Read off the AST as their own dimension, so dropping them is one setting of the dial, not a guess." },
+  { k: "constants", t: "constants", s: "literal values. Their own dimension too, which is why a constant change can move identity without touching structure." },
+  { k: "types", t: "types", s: "declared types. Separated by construction at the source level, where a byte strip has long since flattened them away." },
+];
+
+customElements.define("byte-wall", class extends HTMLElement {
+  connectedCallback() {
+    // Geometry. Left column: the opaque onchain strip (Main/Meta interleaved).
+    // Right column: the source dimensions, each its own clean band.
+    const stripX = 36, stripY = 92, stripW = 300, stripH = 30;
+    const total = BW_STRIP.reduce((a, c) => a + c.w, 0);
+    let cx = stripX;
+    const cells = BW_STRIP.map((c, i) => {
+      const w = (c.w / total) * stripW;
+      const x = cx; cx += w;
+      const cls = c.kind === "main" ? "bw-main" : "bw-meta bw-" + c.kind;
+      return `<rect class="bw-cell ${cls}" data-k="${c.kind}" x="${x.toFixed(1)}" y="${stripY}"`
+        + ` width="${(w - 1).toFixed(1)}" height="${stripH}" rx="2"/>`;
+    }).join("");
+
+    const dimX = 432, dimW = 252, dimH = 30, dimGap = 12, dimY0 = 56;
+    const dims = BW_DIMS.map((d, i) => {
+      const y = dimY0 + i * (dimH + dimGap);
+      return `<g class="bw-dim" data-k="${d.k}" transform="translate(${dimX},${y})">`
+        + `<rect class="bw-dimbox" x="0" y="0" width="${dimW}" height="${dimH}" rx="4"/>`
+        + `<text class="bw-dimt" x="12" y="${dimH / 2 + 4}">${d.t}</text></g>`;
+    }).join("");
+
+    const idle = "Hover the strip or a source dimension. On the left, Main (code) and Meta (the transformations) interleave, with no clean line between them. On the right, the source already separates them.";
+
+    this.innerHTML = `
+      <blockquote class="say bw-say">we do not know which parts of the onchain bytecode is Main vs Meta &middot; find potential similar bytecodes, ignore the Meta parts
+        <span class="bw-cite">Kaan Uzdogan, Sourcify, on the similarity work (argotorg/sourcify #1643, 2024)</span>
+      </blockquote>
+      <svg viewBox="0 0 720 300" class="bw-fig" role="img" aria-label="interleaved onchain bytecode versus the separated source dimensions">
+        <text x="${stripX}" y="40" class="latcap">onchain bytecode (one strip)</text>
+        <text x="${dimX}" y="40" class="latcap sem">the source, by construction</text>
+        <line x1="384" y1="48" x2="384" y2="276" class="latdivide"/>
+        ${cells}
+        <text x="${stripX}" y="${stripY + stripH + 22}" class="bw-flow">Main and Meta interleave; a byte match guesses the cut</text>
+        ${dims}
+        <path class="lathandoff" d="M ${stripX + stripW + 6} ${stripY + 15} C 392 ${stripY + 15}, 392 150, ${dimX - 8} 150" marker-end="url(#bw-arr)"/>
+        <text x="384" y="246" text-anchor="middle" class="bw-ride">ride the recompilation, read the source</text>
+        <defs><marker id="bw-arr" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 z" class="latarrhead"/></marker></defs>
+      </svg>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">Sourcify's similarity search already strips the trailing auxdata before comparing bytecode, which is the right instinct. The wall is that the other Meta, immutables, libraries, and constructor arguments, does not sit in one clean trailing block: it is patched <b>through</b> the code as deploy-time transformations, so a byte match has to guess where Main ends and Meta begins. riffcat steps one level up. On the source AST the dimensions are separate by construction: <b>structure</b> is its own thing, and <b>names</b>, <b>constants</b>, and <b>types</b> are each their own dimension you can keep or drop. That is the same dial from the earlier chapters, and it is why dropping names is a setting here rather than a guess. It rides the recompilation Sourcify already does; it does not redo the byte split.</p>`;
+
+    const read = this.querySelector(".eqread");
+    const say = (t, s) => { read.innerHTML = `<b>${t}</b> &middot; ${s}`; };
+    this.querySelectorAll(".bw-cell").forEach((cell) =>
+      cell.addEventListener("mouseenter", () => {
+        const k = cell.dataset.k;
+        this.querySelectorAll(".bw-cell").forEach((x) => x.classList.toggle("bw-lit", x.dataset.k === k));
+        const L = BW_LEGEND[k];
+        say(L.t, L.s);
+      }));
+    this.querySelectorAll(".bw-dim").forEach((g) =>
+      g.addEventListener("mouseenter", () => {
+        this.querySelectorAll(".bw-dim").forEach((x) => x.classList.remove("on"));
+        g.classList.add("on");
+        const d = BW_DIMS.find((x) => x.k === g.dataset.k);
+        say(d.t, d.s);
+      }));
+    this.addEventListener("mouseleave", () => {
+      this.querySelectorAll(".bw-cell").forEach((x) => x.classList.remove("bw-lit"));
+      this.querySelectorAll(".bw-dim").forEach((x) => x.classList.remove("on"));
+      read.innerHTML = read.dataset.idle;
+    });
   }
 });
