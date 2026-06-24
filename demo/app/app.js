@@ -799,33 +799,82 @@ const RIFF_FACETS = [
   ["rhythm", "rhythm"],
   ["pitch_class_set", "note set"],
 ];
+// The riff is the opening of Schubert's "An die Musik" (D.547), "Du holde
+// Kunst...", in D major. (A by-ear reading; the exact pitches are easy to tune.)
+// The variants are built from it: a true transposition (up a fifth), a
+// re-voicing that keeps the same set of notes, and a line that keeps only the
+// rhythm. Each one collapses onto the riff at a different facet.
 const RIFFS = [
-  { name: "the riff", notes: [[60, 2], [62, 1], [64, 1], [67, 2], [64, 2]] },
-  { name: "up a fifth", notes: [[67, 2], [69, 1], [71, 1], [74, 2], [71, 2]] },
-  { name: "same notes, re-voiced", notes: [[64, 1], [72, 1], [62, 1], [67, 1], [60, 2]] },
-  { name: "same rhythm, new notes", notes: [[48, 2], [55, 1], [50, 1], [60, 2], [53, 2]] },
+  { name: "An die Musik", notes: [[69, 2], [69, 1], [71, 1], [69, 2], [66, 1], [64, 1], [66, 2], [62, 2]] },
+  { name: "up a fifth", notes: [[76, 2], [76, 1], [78, 1], [76, 2], [73, 1], [71, 1], [73, 2], [69, 2]] },
+  { name: "same notes, re-voiced", notes: [[62, 1], [78, 1], [66, 1], [81, 1], [64, 1], [71, 2]] },
+  { name: "same rhythm, new notes", notes: [[72, 2], [67, 1], [71, 1], [67, 2], [65, 1], [69, 1], [67, 2], [72, 2]] },
   { name: "a different riff", notes: [[60, 1], [60, 1], [67, 1], [67, 1], [69, 2]] },
 ];
-function playRiff(notes) {
+// A sweet, soft flute-ish voice in raw Web Audio: a near-sine tone (fundamental
+// plus a faint octave) with a gentle ~5.5 Hz vibrato that eases in, a whisper of
+// band-passed breath noise, a soft lowpass, and a short convolver reverb for
+// air. No samples, no deps; the button click is the gesture audio needs.
+let _ac = null;
+function fluteCtx() {
+  if (_ac) return _ac;
   const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return;
-  const ac = new Ctx();
-  const sec = 0.19;
-  let t = ac.currentTime + 0.03;
+  if (!Ctx) return null;
+  _ac = new Ctx();
+  const len = Math.floor(_ac.sampleRate * 1.5), ir = _ac.createBuffer(2, len, _ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = ir.getChannelData(ch);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.8);
+  }
+  const verb = _ac.createConvolver(); verb.buffer = ir;
+  const wet = _ac.createGain(); wet.gain.value = 0.25;
+  verb.connect(wet).connect(_ac.destination);
+  _ac._verb = verb;
+  return _ac;
+}
+function playRiff(notes) {
+  const ac = fluteCtx();
+  if (!ac) return;
+  if (ac.state === "suspended") ac.resume();
+  const sec = 0.34;
+  let t = ac.currentTime + 0.05;
   for (const [pitch, dur] of notes) {
     const d = dur * sec;
-    const osc = ac.createOscillator(), g = ac.createGain();
-    osc.type = "triangle";
-    osc.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.2, t + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d * 0.9);
-    osc.connect(g).connect(ac.destination);
-    osc.start(t);
-    osc.stop(t + d);
+    const freq = 440 * Math.pow(2, (pitch - 69) / 12);
+    const o1 = ac.createOscillator(); o1.type = "sine"; o1.frequency.value = freq;
+    const o2 = ac.createOscillator(); o2.type = "sine"; o2.frequency.value = freq * 2;
+    const o2g = ac.createGain(); o2g.gain.value = 0.1;
+    // vibrato: gentle, eased in over the note's first moments
+    const lfo = ac.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 5.5;
+    const lfoG = ac.createGain();
+    lfoG.gain.setValueAtTime(0, t);
+    lfoG.gain.linearRampToValueAtTime(freq * 0.007, t + Math.min(0.22, d * 0.6));
+    lfo.connect(lfoG); lfoG.connect(o1.frequency); lfoG.connect(o2.frequency);
+    // breath: a whisper of band-passed noise, gated with the note
+    const nlen = Math.ceil(d * ac.sampleRate) + 1, nb = ac.createBuffer(1, nlen, ac.sampleRate), nd = nb.getChannelData(0);
+    for (let i = 0; i < nlen; i++) nd[i] = Math.random() * 2 - 1;
+    const noise = ac.createBufferSource(); noise.buffer = nb;
+    const nbp = ac.createBiquadFilter(); nbp.type = "bandpass"; nbp.frequency.value = freq * 2.5; nbp.Q.value = 0.6;
+    const ng = ac.createGain();
+    const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2400;
+    const env = ac.createGain();
+    const A = 0.06, R = 0.16, peak = 0.16;
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.linearRampToValueAtTime(peak, t + A);
+    env.gain.setValueAtTime(peak, t + Math.max(A + 0.01, d - R));
+    env.gain.exponentialRampToValueAtTime(0.0006, t + d);
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(0.02, t + A);
+    ng.gain.linearRampToValueAtTime(0.0001, t + d);
+    o1.connect(lp); o2.connect(o2g).connect(lp);
+    noise.connect(nbp).connect(ng).connect(lp);
+    lp.connect(env);
+    env.connect(ac.destination); env.connect(ac._verb);
+    o1.start(t); o2.start(t); lfo.start(t); noise.start(t);
+    const end = t + d + 0.06;
+    o1.stop(end); o2.stop(end); lfo.stop(end); noise.stop(end);
     t += d;
   }
-  setTimeout(() => ac.close().catch(() => {}), (t - ac.currentTime + 0.3) * 1000);
 }
 customElements.define("riff-dial", class extends HTMLElement {
   async connectedCallback() {
