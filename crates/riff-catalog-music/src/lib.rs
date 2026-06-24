@@ -185,11 +185,13 @@ mod tests {
         // The five riffs in the storybook's riff-dial. Each facet must collapse a
         // different set, or the chapter would be lying about what the dial does.
         use std::collections::BTreeSet;
+        // The opening of Schubert's An die Musik and its variants, as in the
+        // storybook's riff-dial. Keep these in sync with RIFFS in app.js.
         let riffs: [(&str, &[(i32, u32)]); 5] = [
-            ("the riff", &[(60, 2), (62, 1), (64, 1), (67, 2), (64, 2)]),
-            ("up a fifth", &[(67, 2), (69, 1), (71, 1), (74, 2), (71, 2)]),
-            ("same notes, re-voiced", &[(64, 1), (72, 1), (62, 1), (67, 1), (60, 2)]),
-            ("same rhythm, new notes", &[(48, 2), (55, 1), (50, 1), (60, 2), (53, 2)]),
+            ("An die Musik", &[(69, 2), (69, 1), (71, 1), (69, 2), (66, 1), (64, 1), (66, 2), (62, 2)]),
+            ("up a fifth", &[(76, 2), (76, 1), (78, 1), (76, 2), (73, 1), (71, 1), (73, 2), (69, 2)]),
+            ("same notes, re-voiced", &[(62, 1), (78, 1), (66, 1), (81, 1), (64, 1), (71, 2)]),
+            ("same rhythm, new notes", &[(72, 2), (67, 1), (71, 1), (67, 2), (65, 1), (69, 1), (67, 2), (72, 2)]),
             ("a different riff", &[(60, 1), (60, 1), (67, 1), (67, 1), (69, 2)]),
         ];
         let shapes = |dims: &[Dimension], pcs: bool| {
@@ -210,8 +212,8 @@ mod tests {
         };
         let full = Dimension::ALL.to_vec();
         assert_eq!(shapes(&full, false), 5, "full: all five are distinct");
-        assert_eq!(shapes(&HARMONIC_RELATIONSHIPS, false), 4, "intervals: the riff = up a fifth");
-        assert_eq!(shapes(&RHYTHM, false), 2, "rhythm: two duration classes");
-        assert_eq!(shapes(&PITCH_CLASS_SET, true), 4, "note set: the riff = re-voiced");
+        assert_eq!(shapes(&HARMONIC_RELATIONSHIPS, false), 4, "intervals: An die Musik = up a fifth");
+        assert_eq!(shapes(&RHYTHM, false), 3, "rhythm: An die Musik = up a fifth = same rhythm");
+        assert_eq!(shapes(&PITCH_CLASS_SET, true), 4, "note set: An die Musik = re-voiced");
     }
 }
