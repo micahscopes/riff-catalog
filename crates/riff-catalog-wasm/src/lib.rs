@@ -349,40 +349,70 @@ pub fn chip_color(digest_hex: &str) -> String {
     oklch_chip(digest_hex)
 }
 
+/// The full fingerprint of a raw pitch-class set: the three facet rungs and the
+/// set-theory representations the engine derives from structure (no notation).
+/// Shared by `fingerprint_chord` (which parses notation first) and
+/// `fingerprint_pcs` (which is handed pitch classes directly), so the demo never
+/// has to reimplement the Tn-type, prime form, or inversion in JavaScript.
+fn pcs_fingerprint(pcs: &[i32]) -> Result<serde_json::Value, JsValue> {
+    use riff_catalog_core::Dimension;
+    use riff_catalog_music::{
+        PITCH_CLASS_SET, encode_pitch_class_set, facet_hex,
+        set_theory::{interval_vector, prime_form, transposition_normal_form},
+    };
+    let (key, graph) = encode_pitch_class_set("chord", pcs).map_err(js_err)?;
+    // Three rungs: note_set keys on the literal pitch-class set (two spellings
+    // of the same notes collapse); transposition_normal keys on the minimal
+    // rotation (all transpositions collapse, matching polyphonotopes-math's
+    // normalFormBits); set_class keys on the Forte prime form (transposition and
+    // inversion, so major, minor, and other inversions of one class collapse).
+    let tnf = transposition_normal_form(pcs);
+    let (tk, tg) = encode_pitch_class_set("tnf", &tnf).map_err(js_err)?;
+    let pf = prime_form(pcs);
+    let (ck, cg) = encode_pitch_class_set("class", &pf).map_err(js_err)?;
+    let full = Dimension::ALL.to_vec();
+    Ok(json!({
+        "pitch_classes": pcs,
+        "prime_form": pf,
+        "transposition_normal_form": tnf,
+        "interval_vector": interval_vector(pcs),
+        "note_set": facet_hex(&key, &graph, &PITCH_CLASS_SET).map_err(js_err)?,
+        "transposition_normal": facet_hex(&tk, &tg, &PITCH_CLASS_SET).map_err(js_err)?,
+        "set_class": facet_hex(&ck, &cg, &PITCH_CLASS_SET).map_err(js_err)?,
+        "full": facet_hex(&key, &graph, &full).map_err(js_err)?,
+    }))
+}
+
 /// Fingerprint a chord written as a real notation string. Parses it with the
 /// vibe-grammars pest parser, derives its pitch-class set, and returns the
 /// note-set facet address (plus full). A real string parsed to a structural
 /// fingerprint: the music analogue of parsing Solidity source.
 #[wasm_bindgen]
 pub fn fingerprint_chord(notation: &str) -> Result<String, JsValue> {
-    use riff_catalog_core::Dimension;
-    use riff_catalog_music::{
-        PITCH_CLASS_SET, chord::chord_to_pitch_classes, encode_pitch_class_set, facet_hex,
-        set_theory::{interval_vector, prime_form, transposition_normal_form},
-    };
+    use riff_catalog_music::chord::chord_to_pitch_classes;
     let pcs = chord_to_pitch_classes(notation).map_err(js_err)?;
-    let (key, graph) = encode_pitch_class_set("chord", &pcs).map_err(js_err)?;
-    // Three rungs: note_set keys on the literal pitch-class set (two spellings
-    // of the same notes collapse); transposition_normal keys on the minimal
-    // rotation (all transpositions collapse, matching polyphonotopes-math's
-    // normalFormBits); set_class keys on the Forte prime form (transposition and
-    // inversion, so major, minor, and other inversions of one class collapse).
-    let tnf = transposition_normal_form(&pcs);
-    let (tk, tg) = encode_pitch_class_set("tnf", &tnf).map_err(js_err)?;
-    let pf = prime_form(&pcs);
-    let (ck, cg) = encode_pitch_class_set("class", &pf).map_err(js_err)?;
-    let full = Dimension::ALL.to_vec();
-    let out = json!({
-        "notation": notation,
-        "pitch_classes": pcs,
-        "prime_form": pf,
-        "transposition_normal_form": tnf,
-        "interval_vector": interval_vector(&pcs),
-        "note_set": facet_hex(&key, &graph, &PITCH_CLASS_SET).map_err(js_err)?,
-        "transposition_normal": facet_hex(&tk, &tg, &PITCH_CLASS_SET).map_err(js_err)?,
-        "set_class": facet_hex(&ck, &cg, &PITCH_CLASS_SET).map_err(js_err)?,
-        "full": facet_hex(&key, &graph, &full).map_err(js_err)?,
-    });
+    let mut out = pcs_fingerprint(&pcs)?;
+    out.as_object_mut()
+        .unwrap()
+        .insert("notation".into(), json!(notation));
+    serde_json::to_string(&out).map_err(js_err)
+}
+
+/// Fingerprint a raw pitch-class set, optionally inverting it first by the I
+/// generator (x -> (12 - x) mod 12). This lets the demo address a set it built
+/// itself (an inverted chord) through the same engine that handled the parsed
+/// chord, so the Tn-type, prime form, and interval vector on screen are always
+/// computed, never reimplemented in JavaScript. `pcs_json` is a JSON array of
+/// integers.
+#[wasm_bindgen]
+pub fn fingerprint_pcs(pcs_json: &str, invert: bool) -> Result<String, JsValue> {
+    let mut pcs: Vec<i32> = serde_json::from_str(pcs_json).map_err(js_err)?;
+    if invert {
+        pcs = pcs.iter().map(|x| (12 - x).rem_euclid(12)).collect();
+    }
+    pcs.sort_unstable();
+    pcs.dedup();
+    let out = pcs_fingerprint(&pcs)?;
     serde_json::to_string(&out).map_err(js_err)
 }
 
