@@ -193,6 +193,13 @@ const CH = [
     lede: "A known ERC-4626 inflation shape, matched across Sourcify's verified vaults. The patch is a different shape, so you see who fixed it, and the shape reaches forks an exact-source match misses.",
     body: `<vuln-sniff></vuln-sniff>`,
   },
+  {
+    nav: "modified",
+    kicker: "fuzzy: the forks that edited it",
+    title: "And the ones that changed the code.",
+    lede: "Exact match catches verbatim copies. Real forks edit the function: a dropped modifier, a hand-rolled forwarder. Sourcify, a text search, and exact match all miss them. Matching the shape's subtrees does not.",
+    body: `<fuzzy-scan></fuzzy-scan>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -713,5 +720,48 @@ customElements.define("vuln-sniff", class extends HTMLElement {
       + `<p class="vrole">${VULN_ROLE[s.status]}</p>`
       + `<pre class="code">${solHi(s.src)}</pre>`
       + `<div class="vwits"><span class="vwlabel">${match}</span>${chips}</div>`;
+  }
+});
+
+// Modified-variant detection (fuzzy). Real deployed forks that EDITED the
+// vulnerable Multicall body, so exact whole-function matching, Sourcify's
+// byte-identical match, and a text search all miss them, but weighted
+// containment over the per-node Merkle digests still recognizes the shape.
+// Precomputed in fuzzydata.js (the proposed `riffcat similar`); Sourcify floor.
+customElements.define("fuzzy-scan", class extends HTMLElement {
+  connectedCallback() {
+    const d = window.RIFFCAT_FUZZY;
+    if (!d || !d.variants) { this.innerHTML = `<p class="live-note bad">fuzzy data not loaded</p>`; return; }
+    this.data = d;
+    this.variants = d.variants;
+    this.sel = 0;
+    this.render();
+  }
+  render() {
+    const d = this.data;
+    const rows = this.variants.map((v, i) =>
+      `<tr class="lxrow ${i === this.sel ? "on" : ""}" data-i="${i}">`
+      + `<td class="lx-shape">${v.name} <span class="vsub">${v.chainName}</span></td>`
+      + `<td class="lx-verd bad">no class</td>`
+      + `<td class="lx-n lx-reach">${v.cwVuln.toFixed(2)}</td></tr>`).join("");
+    this.innerHTML = `
+      <p class="vbug">${d.bug}</p>
+      <p class="vlead">Each fork below <b>edited</b> the <code>multicall</code> body, so its shape is neither the vulnerable class nor the patch: exact match, Sourcify's byte-identical match, and a text search all return <b>nothing</b>. Weighted containment of the vulnerable shape still finds them. Click a row.</p>
+      <div class="codepanel fref"><div class="cphead">the vulnerable shape being matched <span class="vfp">structure ${d.vuln.fp}</span> <span class="vsub">${d.vuln.nodes} nodes</span></div><pre class="code">${solHi(d.vuln.src)}</pre></div>
+      <table class="vledger"><thead><tr><th>fork (edited the body)</th><th>exact match</th><th>fuzzy</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="vbody codepanel"></div>
+      <p class="vledger-cap">The coincidence floor for this shape is ~<b>${d.nullCeiling}</b> and the OZ patch scores ~<b>${d.patchedScore}</b>; both catches clear it. Sourcify-verified, a floor. Two further customized vulnerable bodies (${d.marginal.map((m) => m.name).join(", ")}) land near the floor and the score alone cannot certify them.</p>`;
+    this.querySelectorAll(".lxrow").forEach((row) =>
+      row.addEventListener("click", () => { this.sel = +row.dataset.i; this.querySelectorAll(".lxrow").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
+    this.renderBody();
+  }
+  renderBody() {
+    const v = this.variants[this.sel];
+    this.querySelector(".vbody").innerHTML =
+      `<div class="vhead" style="--hue:2"><span class="vbadge">caught, modified</span> <b>${v.name}</b> <span class="vsub">${v.chainName}, ${v.nodes} nodes</span>`
+      + `<span class="vfp">fuzzy ${v.cwVuln.toFixed(2)} vs vuln, ${v.cwPatch.toFixed(2)} vs patch</span>`
+      + `<a class="vsrcfy" href="https://sourcify.dev/#/lookup/${v.address}" target="_blank" rel="noopener">on sourcify ↗</a></div>`
+      + `<p class="vrole">${v.edit}</p>`
+      + `<pre class="code">${solHi(v.src)}</pre>`;
   }
 });
