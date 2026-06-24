@@ -49,14 +49,40 @@ Run `lake exe check` (see below). As of this writing it reports
 The build itself typechecks cleanly (one informational linter note aside) under
 Lean 4.29.0 with only Lean core (no Mathlib, no Batteries).
 
+## The correctness laws (Phase 2)
+
+Phase 2 turns the spike's "engine checks too / to prove" list into stated Lean
+theorems over the port's own types, in `Riffcat/Laws.lean` (with the sorting
+kernel in `Riffcat/Laws/Sorting.lean`). The tractable laws are PROVED with no
+`sorry`; the harder ones are stated as clearly-marked TARGETs (a named `axiom`
+with a `TODO(phase2)` comment, so they typecheck, are greppable, and never
+masquerade as proofs). The facet quotient is modeled with Lean's `Quot`: the
+congruence `~_F` is `FacetRel`, the address is `Quot.mk`, and the recursion
+principle is `Quot.lift`.
+
+| Law | Status | Note |
+| --- | --- | --- |
+| 1. Determinism / order-independence | **proved** (+ stated at the encoder boundary) | Kernel "sorting canonicalizes" (`isort_perm_invariant`) fully proved: any permutation of the input sorts to the unique sorted list, for any total/antisymmetric comparator. Packaged as `determinism_records` / `determinism_fields` / `determinism_nodes`. |
+| 2. Facet refinement lattice | **proved** | `facet_refinement`: equality of the per-dimension digest map at a finer facet forces equality at every coarser (subset) facet; `facet_refinement_projection` carries it to the exact list `addressDigest` folds. |
+| 3. Anchor / transport (Quot universal property) | **proved** (both directions) | `transport_factors` (a `~_F`-respecting fact factors through the quotient, by `Quot.lift` / `rfl`) and `transport_respects` (the converse, via `Quot.sound`): "rides facet F" iff `~_F ⊆ ker(fact)`. |
+| 4. AnonymousShape (names blind) | **stated target** (`axiom anonymousShape_name_blind`) | Injective key renaming leaves every AnonymousShape `graph.full` digest unchanged. The deepest law: needs the whole pipeline shown key-free in anonymous mode, then renumbering invariance (Law 1) absorbed. |
+| 5a. WL termination | **stated target** (`axiom wl_refine_terminates`) | Monotone partition refinement: the class count is non-decreasing and bounded by `\|members\|`, so refinement reaches a fixpoint within the round cap. |
+| 5b. WL soundness (honest, non-iso) | **stated target** (`axiom wl_coloring_sound`) | `componentDigest` depends only on the color multiset (it sorts), so WL-equivalent members are interchangeable. Stated as WL-equivalence, NOT isomorphism: 1-WL is sound but iso-incomplete, so distinct non-isomorphic SCCs may share a digest. |
+| 6. Encoding injectivity (mod hash) | **stated target** (`axiom encoding_injective`) | Length prefixes + domain-separating tags make the encoding self-delimiting, so distinct shapes give distinct pre-image bytes, hence distinct digests unless BLAKE3 collides. |
+| BLAKE3 collision-resistance | **axiom** (`blake3_collision_free`) | The one named cryptographic assumption, isolated so it is auditable and never proved. |
+
+The proved laws depend only on Lean's standard axioms (`propext`, `Quot.sound`);
+`#print axioms` confirms none of them touch `sorryAx` or any of the Law 4/5/6
+target axioms. The targets are honest statements of what remains, not stubs that
+pretend to be done.
+
 ## What is deferred (and why)
 
-- **The property proofs (Phase 2).** This deliverable is the *executable* spec
-  and the lockstep. The theorems the spike scopes (facet refinement lattice,
-  anonymity / key-renaming invariance, dimension transport, WL termination,
-  encoding injectivity with BLAKE3 as an axiom) are a later, research-grade
-  phase. The Lean here is written in a functional, structural-recursion style
-  that those proofs can be layered onto, but no theorems are stated yet.
+- **The remaining property proofs.** Laws 4, 5, and 6 are stated as targets
+  above (key-renaming invariance, WL termination + the honest non-iso soundness,
+  encoding injectivity with BLAKE3 as a separate axiom). They are research-grade
+  and left for a later pass. The Lean is written in a functional,
+  structural-recursion style that those proofs can be layered onto.
 - **BLAKE3 collision-resistance is an assumption, not a theorem.** As the spike
   states plainly: everything above is "the construction matches, *given* the
   hash." BLAKE3's collision-resistance is taken on faith. What the pure-Lean
@@ -88,6 +114,8 @@ Lean 4.29.0 with only Lean core (no Mathlib, no Batteries).
 | `Riffcat/Reference.lean` | `reference.rs` (facets, facet addresses) |
 | `Riffcat/Hash/Blake3.lean` | the `blake3` crate, reimplemented in pure Lean |
 | `Riffcat/Hash/Blake3Test.lean` | BLAKE3 known-answer tests |
+| `Riffcat/Laws/Sorting.lean` | Phase 2: the "sorting canonicalizes" kernel (Law 1) |
+| `Riffcat/Laws.lean` | Phase 2: the correctness laws (stated + the proved subset) |
 | `Main.lean` | the lockstep comparator (`lake exe check`) |
 
 A note on faithfulness: the Rust hashing walks (Tarjan, the tree fold, the

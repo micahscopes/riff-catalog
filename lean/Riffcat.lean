@@ -20,3 +20,5 @@ import Riffcat.Hash
 import Riffcat.Reference
 import Riffcat.Hash.Blake3
 import Riffcat.Hash.Blake3Test
+import Riffcat.Laws.Sorting
+import Riffcat.Laws
