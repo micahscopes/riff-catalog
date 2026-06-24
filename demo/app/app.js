@@ -3555,9 +3555,9 @@ customElements.define("locality-limit", class extends HTMLElement {
         <line x1="360" y1="40" x2="360" y2="296" class="latdivide"/>
 
         <g class="loclim-cyc" data-hov="noleaf">
-          <path class="loclim-cedge" d="M 120 96 C 96 130, 96 170, 120 204" marker-end="url(#loclim-arr)"/>
-          <path class="loclim-cedge" d="M 150 214 C 192 234, 232 234, 268 214" marker-end="url(#loclim-arr)"/>
-          <path class="loclim-cedge" d="M 268 116 C 226 92, 178 92, 150 110" marker-end="url(#loclim-arr)"/>
+          <path class="loclim-cedge" d="M 120 112 C 95 145, 95 159, 120 192" marker-end="url(#loclim-arr)"/>
+          <path class="loclim-cedge" d="M 141 206 C 188 226, 235 188, 269 158" marker-end="url(#loclim-arr)"/>
+          <path class="loclim-cedge" d="M 269 143 C 232 110, 185 104, 141 97" marker-end="url(#loclim-arr)"/>
           <g class="loclim-node" transform="translate(120,90)"><circle r="22"/><text y="5">A</text></g>
           <g class="loclim-node" transform="translate(120,214)"><circle r="22"/><text y="5">B</text></g>
           <g class="loclim-node" transform="translate(290,150)"><circle r="22"/><text y="5">C</text></g>
@@ -3573,7 +3573,7 @@ customElements.define("locality-limit", class extends HTMLElement {
           <text x="548" y="176" text-anchor="middle" class="loclim-wllab">members keyed by WL color, not by node order</text>
         </g>
         <g class="loclim-out" data-hov="content">
-          <path class="loclim-cedge content" d="M 640 150 C 678 150, 678 226, 640 240" marker-end="url(#loclim-arr)"/>
+          <path class="loclim-cedge content" d="M 606 140 C 678 156, 678 218, 606 232" marker-end="url(#loclim-arr)"/>
           <g class="loclim-ext" transform="translate(606,248)"><circle r="16"/><text y="4">D</text></g>
           <text x="548" y="232" text-anchor="middle" class="loclim-edgelab content">outgoing cross edge: folded in as content</text>
         </g>
