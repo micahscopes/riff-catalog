@@ -275,6 +275,7 @@ const CH = [
     body: `<collab-triangle></collab-triangle>`,
   },
   { nav: "what we sampled", kicker: "the honest numbers, and the ones we owe you", title: "What we sampled, and what we have not measured yet.", lede: "Every number in this storybook is a Sourcify-floor count over distinct source files, plus one null calibration. None of it is precision or recall against a baseline. Here is exactly what each number is, and the measurement we still owe you.", body: "<sampled-ledger></sampled-ledger>" },
+  { nav: "the cheap yes", kicker: "generalizing a fast-path hevm already ships", title: "When structure is enough to skip the solver.", lede: "hevm opens its equivalence check with a syntactic cheap yes: if two bytecodes are byte-identical it returns equivalent and never calls a solver. riffcat generalizes that exact-equality check to a facet, so the yes fires on more pairs. Turn the dial and watch where the yes stays sound, where it becomes only a candidate, and the one place it must not fire at all.", body: `<cy-cheap-yes></cy-cheap-yes>` },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -294,7 +295,7 @@ const SECTIONS = [
   ["on music", ["the riff", "forte catalog", "interval vector", "three rungs"]],
   ["on real code", ["recognized", "twins", "dedup"]],
   ["in the compiler", ["the compiler too", "sniff it out", "modified", "two fingerprints", "main vs meta"]],
-  ["structure and meaning", ["structure vs meaning", "prove it", "anchors", "prior art", "the proofs check"]],
+  ["structure and meaning", ["structure vs meaning", "prove it", "anchors", "the cheap yes", "prior art", "the proofs check"]],
   ["a building block", ["a shared block", "what we need"]],
   ["in honesty", ["what we sampled"]],
 ];
@@ -2604,5 +2605,139 @@ customElements.define("sampled-ledger", class extends HTMLElement {
       `<div class="vhead" style="--hue:${hue}"><span class="vbadge">${badge}</span> <b>${r.what}</b>`
       + `<span class="vsub">${r.unit}</span><span class="vfp">${r.n}</span></div>`
       + `<p class="vrole sampled-how">${r.how}</p>`;
+  }
+});
+
+// The cheap yes. hevm ships a syntactic fast-path in EVM/SymExec.hs:
+// equivalenceCheck opens with `case bytecodeA == bytecodeB of True -> pure
+// mempty`, returning equivalent with no solver call. That is EXACT byte-equality
+// only: the trailing solc metadata tail counts, there is no facet and no
+// normalization. This chapter generalizes that one check to a facet dial and is
+// explicit about the soundness condition: a cheap yes is a discharge only at a
+// facet that forgets nothing hevm observes (return value, storage, success).
+// Coarser facets (forget constants) only PARTITION and PRIORITIZE; they do not
+// discharge. The chapter is fully STATIC: no engine call, no hevm run. The hex
+// is schematic and labelled as such, never presented as live hevm output. All
+// top-level names are CY_-prefixed to avoid collision with app.js.
+//
+// Attribution is at the work level: argotorg/hevm (= ethereum/hevm), AGPL-3.0.
+// We did not invent the fast-path; we generalize hevm's existing one.
+
+// The four dial stops, fine to coarse: each forgets one more thing than the last.
+// `forgets` names what the facet drops; `sound` records whether agreement at
+// this facet is a sound discharge (forgets nothing behavioral) or only triage.
+const CY_FACETS = [
+  { key: "exact", label: "exact", forgets: "nothing: raw byte-equality, hevm's own check", kind: "discharge", note: "This is hevm's shipped fast-path: byte-identical bytecode is surely equivalent, no solver. It is narrow: the trailing solc metadata tail counts, so two builds of the same code can miss." },
+  { key: "meta", label: "forget metadata", forgets: "the trailing solc CBOR/auxdata tail", kind: "discharge", note: "The honest win: the metadata tail is bytes hevm also ignores, so forgetting it forgets nothing behavioral. This widens hevm's exact yes to pairs that differ only in the tail, which its own == misses." },
+  { key: "names", label: "forget names", forgets: "symbol and label naming (non-behavioral renaming)", kind: "candidate", note: "Forgetting names is sound ONLY if the renaming touches nothing behavioral, and riffcat does not yet certify that. So a match here is a candidate to check, not a discharge." },
+  { key: "const", label: "forget constants", forgets: "literal constant values", kind: "triage", note: "Forgetting constants is generally NOT behavior-complete: hevm observes the exact returned and stored values. A match here only partitions and prioritizes the work. It never discharges. See the PUSH1 3 vs PUSH1 4 pair below." },
+];
+
+// Schematic illustrative bytecode-ish pairs. The hex is hand-written to make the
+// facet behavior legible; it is NOT compiler output and NOT hevm output. `addr`
+// gives, per facet, the content address each side computes at that facet: two
+// sides sharing an address are "same at the facet". `truth` is the actual
+// behavioral relation (what a verifier would decide), used only to mark the one
+// case where a facet match is a FALSE collision (the counterexample).
+const CY_PAIRS = [
+  {
+    key: "identical",
+    title: "byte-for-byte identical",
+    blurb: "The floor hevm already discharges for free: the two bytecodes are the same bytes.",
+    a: { hex: "6080604052348015...600436106100...a264697066", tail: "" },
+    b: { hex: "6080604052348015...600436106100...a264697066", tail: "" },
+    addr: { exact: ["x91", "x91"], meta: ["x91", "x91"], names: ["x91", "x91"], const: ["x91", "x91"] },
+    truth: "equivalent",
+  },
+  {
+    key: "metatail",
+    title: "same code, different metadata tail",
+    blurb: "Identical Main bytecode; only the trailing solc metadata (CBOR/swarm hash) differs. Two builds of the same source.",
+    a: { hex: "6080604052348015...600436106100...", tail: "a2646970667358221220aa11" },
+    b: { hex: "6080604052348015...600436106100...", tail: "a2646970667358221220bb22" },
+    addr: { exact: ["x4e", "x7c"], meta: ["x4e", "x4e"], names: ["x4e", "x4e"], const: ["x4e", "x4e"] },
+    truth: "equivalent",
+  },
+  {
+    key: "relabel",
+    title: "same shape, non-behavioral relabeling",
+    blurb: "Same control and data flow and the same constants; the two differ only in naming that, here, carries no behavior.",
+    a: { hex: "6080...PUSH4 1a2b...JUMPDEST...PUSH1 03 RETURN", tail: "" },
+    b: { hex: "6080...PUSH4 9f0e...JUMPDEST...PUSH1 03 RETURN", tail: "" },
+    addr: { exact: ["xd1", "xa8"], meta: ["xd1", "xa8"], names: ["x33", "x33"], const: ["x33", "x33"] },
+    truth: "equivalent (here), but unverified by riffcat",
+  },
+  {
+    key: "push3v4",
+    title: "same shape, one constant changed",
+    blurb: "hevm's own counterexample: one returns PUSH1 3, the other PUSH1 4. Same shape, different behavior.",
+    a: { hex: "6080...600360005260206000F3  (returns 3)", tail: "" },
+    b: { hex: "6080...600460005260206000F3  (returns 4)", tail: "" },
+    addr: { exact: ["x60", "x71"], meta: ["x60", "x71"], names: ["x60", "x71"], const: ["x05", "x05"] },
+    truth: "NOT equivalent: returns 3 vs returns 4",
+  },
+];
+
+customElements.define("cy-cheap-yes", class extends HTMLElement {
+  connectedCallback() {
+    this.facet = "meta"; // open on the honest win, one stop past hevm's exact ==
+    this.render();
+  }
+  // For one pair at the current facet: do the two sides share an address?
+  same(p) { const [u, v] = p.addr[this.facet]; return u === v; }
+  // The status of a pair at the current facet: how the facet relates the pair
+  // AND whether that relation is sound. The single hazard case is a coarse-facet
+  // collision of behaviorally-distinct programs (push3v4 at forget-constants).
+  status(p) {
+    const F = CY_FACETS.find((f) => f.key === this.facet);
+    if (!this.same(p)) return { cls: "cy-split", word: "different at this facet", line: "the dial does not relate these two; run the verifier as usual" };
+    if (F.kind === "discharge")
+      return { cls: "cy-yes", word: "sound yes", line: "same address at a facet that forgets nothing behavioral, so this is a discharge: no solver call" };
+    if (F.kind === "candidate")
+      return { cls: "cy-cand", word: "candidate, check it", line: "same address, but riffcat has not certified this facet forgets nothing behavioral, so it is a candidate for the verifier" };
+    // triage facet: a match only partitions/prioritizes. Flag the false collision.
+    if (p.truth.indexOf("NOT") === 0)
+      return { cls: "cy-hazard", word: "NOT a yes", line: "these share an address here but are not equivalent (" + p.truth.replace(/^NOT equivalent: /, "") + "): a coarse facet only partitions, it cannot discharge" };
+    return { cls: "cy-cand", word: "candidate, check it", line: "same address at a coarse facet: this only prioritizes the pair, the verifier still decides" };
+  }
+  render() {
+    const F = CY_FACETS.find((f) => f.key === this.facet);
+    const ladder = CY_FACETS.map((f) =>
+      `<span class="stop ${f.key === this.facet ? "on" : ""}" data-facet="${f.key}">${f.label}</span>`).join("");
+
+    const rows = CY_PAIRS.map((p) => {
+      const s = this.status(p);
+      const sideA = `<code class="cy-hex">${p.a.hex}${p.a.tail ? `<span class="cy-tail">${p.a.tail}</span>` : ""}</code>`;
+      const sideB = `<code class="cy-hex">${p.b.hex}${p.b.tail ? `<span class="cy-tail">${p.b.tail}</span>` : ""}</code>`;
+      return `<div class="cy-pair ${s.cls}" data-key="${p.key}">
+        <div class="cy-pair-h"><b>${p.title}</b><span class="cy-verd ${s.cls}">${s.word}</span></div>
+        <div class="cy-blurb">${p.blurb}</div>
+        <div class="cy-sides">
+          <div class="cy-side"><span class="cy-lab">A</span>${sideA}</div>
+          <div class="cy-rel ${this.same(p) ? "cy-eq" : "cy-ne"}">${this.same(p) ? "same address" : "different"}</div>
+          <div class="cy-side"><span class="cy-lab">B</span>${sideB}</div>
+        </div>
+        <div class="cy-line">${s.line}</div>
+      </div>`;
+    }).join("");
+
+    const condClass = F.kind === "discharge" ? "cy-cond-ok" : F.kind === "candidate" ? "cy-cond-cand" : "cy-cond-haz";
+    const condWord = F.kind === "discharge" ? "covers hevm's footprint: a match here is a sound yes"
+      : F.kind === "candidate" ? "not yet certified to cover hevm's footprint: a match here is a candidate"
+      : "does not cover hevm's footprint: a match here only partitions and prioritizes";
+
+    this.innerHTML = `
+      <blockquote class="say cy-say">case bytecodeA == bytecodeB of True -&gt; pure mempty
+        <span class="cy-cite">the a==b and similar checks are ONLY syntactic checks. If they are true, then they are surely equivalent.</span>
+        <span class="cy-cite cy-attr">paraphrased from argotorg/hevm, EVM/SymExec.hs (AGPL-3.0); read-only, not executed here</span>
+      </blockquote>
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder cy-ladder">${ladder}</div></div></div>
+      <div class="cy-cond ${condClass}"><span class="cy-cond-f">${F.label}</span> forgets ${F.forgets} &middot; ${condWord}</div>
+      <div class="cy-pairs">${rows}</div>
+      <div class="eqread cy-read">${F.note}</div>
+      <p class="twnote">hevm already proves the floor: byte-identical bytecode is surely equivalent, with no solver, in <b>EVM/SymExec.hs</b>. riffcat does not invent that fast-path; it generalizes the exact <b>==</b> to a facet, so the same cheap yes can fire on pairs that are not byte-identical. The win that is honest end to end is <b>forget metadata</b>: the trailing solc tail is bytes hevm also ignores, so two builds of one source share an address and the yes stays sound, where hevm's own == misses them because the tail differs. The condition is sharp and stated out loud: a cheap yes is a sound discharge <b>only at a facet that forgets nothing hevm observes</b> (return value, storage, success). Forget constants and that breaks: <b>PUSH1 3</b> and <b>PUSH1 4</b> share an address there but return different values, so a coarse facet can only <b>partition and prioritize</b> the verifier's work, never discharge it. The open ask to verification teams: riffcat does not yet <b>certify</b> that a given facet is footprint-covering. Until it does, every yes above the metadata case is a candidate, and the certificate is the thing worth building together.</p>`;
+
+    this.querySelectorAll("[data-facet]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
   }
 });

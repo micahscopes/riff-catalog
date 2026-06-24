@@ -694,6 +694,45 @@
   .sampled-pend { color: var(--ink-dim); font-weight: 400; font-style: italic; }
   .sampled-pendn { color: var(--ink-faint); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
   .sampled-how { padding-bottom: 10px; }
+
+  /* cheap-yes */
+/* the cheap yes: generalizing hevm's byte-equality fast-path to a facet.
+   Static, no engine. Reuses .say, .dialbar/.ladder/.stop, .eqread, .twnote,
+   code, and the theme vars; new rules are all cy-* scoped. */
+  .cy-say { font-family: var(--mono); font-size: 13px; }
+  .cy-say .cy-cite { display: block; color: var(--ink-dim); font-size: 11.5px; margin-top: 6px; font-family: inherit; font-style: italic; }
+  .cy-say .cy-cite.cy-attr { color: var(--ink-faint); font-size: 10.5px; margin-top: 3px; font-style: normal; }
+  .cy-ladder .stop { text-transform: none; }
+  .cy-cond { font-size: 11.5px; color: var(--ink-dim); border-left: 3px solid var(--line-bright); padding: 6px 12px; margin: 6px 0 14px; }
+  .cy-cond .cy-cond-f { font-family: var(--mono); color: var(--ink); margin-right: 4px; }
+  .cy-cond.cy-cond-ok { border-left-color: var(--a); background: rgba(93,242,166,.05); }
+  .cy-cond.cy-cond-cand { border-left-color: var(--warm); background: rgba(255,180,84,.05); }
+  .cy-cond.cy-cond-haz { border-left-color: var(--rose); background: rgba(255,138,160,.06); }
+  .cy-pairs { display: flex; flex-direction: column; gap: 10px; }
+  .cy-pair { border: 1px solid var(--line); border-left-width: 3px; padding: 10px 12px; background: var(--bg); }
+  .cy-pair.cy-yes { border-left-color: var(--a); }
+  .cy-pair.cy-cand { border-left-color: var(--warm); }
+  .cy-pair.cy-hazard { border-left-color: var(--rose); }
+  .cy-pair.cy-split { border-left-color: var(--line-bright); }
+  .cy-pair-h { display: flex; align-items: baseline; gap: 10px; }
+  .cy-pair-h b { color: var(--ink); font-size: 13px; }
+  .cy-verd { margin-left: auto; font-size: 11px; font-weight: 700; letter-spacing: .03em; }
+  .cy-verd.cy-yes { color: var(--a); }
+  .cy-verd.cy-cand { color: var(--warm); }
+  .cy-verd.cy-hazard { color: var(--rose); }
+  .cy-verd.cy-split { color: var(--ink-dim); font-weight: 400; }
+  .cy-blurb { color: var(--ink-dim); font-size: 11.5px; margin: 4px 0 8px; }
+  .cy-sides { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cy-side { display: flex; align-items: center; gap: 7px; flex: 1 1 240px; min-width: 0; }
+  .cy-lab { color: var(--ink-faint); font-family: var(--mono); font-size: 10px; border: 1px solid var(--line); border-radius: 2px; padding: 0 5px; flex: none; }
+  .cy-hex { font-family: var(--mono); font-size: 11px; color: var(--ink-dim); background: var(--bg-chip); border: 1px solid var(--line); padding: 2px 7px; overflow-x: auto; white-space: nowrap; min-width: 0; }
+  .cy-hex .cy-tail { color: var(--warm); }
+  .cy-rel { font-family: var(--mono); font-size: 10px; flex: none; text-align: center; letter-spacing: .03em; }
+  .cy-rel.cy-eq { color: var(--a); }
+  .cy-rel.cy-ne { color: var(--ink-faint); }
+  .cy-line { color: var(--ink-faint); font-size: 11px; margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .cy-pair.cy-hazard .cy-line { color: var(--rose); }
+  .eqread.cy-read { min-height: 40px; }
 </style>
 </head>
 <body>
