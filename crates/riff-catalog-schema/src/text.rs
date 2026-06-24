@@ -41,7 +41,7 @@ impl fmt::Display for Name {
 pub struct Digest([u8; 32]);
 
 impl Digest {
-    pub(crate) fn from_bytes(bytes: [u8; 32]) -> Self {
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }
 

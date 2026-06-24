@@ -10,6 +10,7 @@ repository.workspace = true
 doctest = false
 
 [dependencies]
+riff-catalog-schema.workspace = true
 blake3.workspace = true
 serde.workspace = true
 thiserror.workspace = true

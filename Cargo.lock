@@ -524,6 +524,7 @@ name = "riff-catalog-core"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "riff-catalog-schema",
  "serde",
  "serde_json",
  "thiserror",
@@ -542,6 +543,15 @@ name = "riff-catalog-music"
 version = "0.1.0"
 dependencies = [
  "riff-catalog-core",
+]
+
+[[package]]
+name = "riff-catalog-schema"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

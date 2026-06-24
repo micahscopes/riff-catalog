@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Closed on purpose: open dimension strings would be encoding-drift bait
 /// ("literal" vs "constants" between two producers). Adding a dimension is
-/// deliberately a [`crate::SCHEMA_VERSION`] bump.
+/// deliberately a the schema version bump.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Dimension {
