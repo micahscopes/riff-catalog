@@ -276,6 +276,7 @@ const CH = [
   },
   { nav: "what we sampled", kicker: "the honest numbers, and the ones we owe you", title: "What we sampled, and what we have not measured yet.", lede: "Every number in this storybook is a Sourcify-floor count over distinct source files, plus one null calibration. None of it is precision or recall against a baseline. Here is exactly what each number is, and the measurement we still owe you.", body: "<sampled-ledger></sampled-ledger>" },
   { nav: "the cheap yes", kicker: "generalizing a fast-path hevm already ships", title: "When structure is enough to skip the solver.", lede: "hevm opens its equivalence check with a syntactic cheap yes: if two bytecodes are byte-identical it returns equivalent and never calls a solver. riffcat generalizes that exact-equality check to a facet, so the yes fires on more pairs. Turn the dial and watch where the yes stays sound, where it becomes only a candidate, and the one place it must not fire at all.", body: `<cy-cheap-yes></cy-cheap-yes>` },
+  { nav: "seat filled", kicker: "the seat, filled: a Lean proof takes it", title: "The verdict seat, filled: this bytecode is this spec.", lede: "The previous chapter left the seat empty on purpose. Here is one occupant, cited statically: a Lean proof from EquiVM (argotorg/EquiVM, pinned) that a solc-produced ERC20 runtime bytecode is observationally equivalent to a hand-written Solm spec, with a four-way case split and a named trust boundary. The riffcat tie: that proof is a fact anchored to a facet address, so it transports to every behavior-complete twin (prove once, recognize everywhere), and the Solm spec is itself a forgetting, so it is a facet too. Step the panels; nothing here runs Lean.", body: `<seat-filled></seat-filled>` },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -295,7 +296,7 @@ const SECTIONS = [
   ["on music", ["the riff", "forte catalog", "interval vector", "three rungs"]],
   ["on real code", ["recognized", "twins", "dedup"]],
   ["in the compiler", ["the compiler too", "sniff it out", "modified", "two fingerprints", "main vs meta"]],
-  ["structure and meaning", ["structure vs meaning", "prove it", "anchors", "the cheap yes", "prior art", "the proofs check"]],
+  ["structure and meaning", ["structure vs meaning", "prove it", "seat filled", "anchors", "the cheap yes", "prior art", "the proofs check"]],
   ["a building block", ["a shared block", "what we need"]],
   ["in honesty", ["what we sampled"]],
 ];
@@ -2741,3 +2742,119 @@ customElements.define("cy-cheap-yes", class extends HTMLElement {
       s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
   }
 });
+
+// "the seat, filled": a concrete occupant for the empty verdict seat.
+//
+// Static, buildable now. Renders synchronously: every snippet below is real,
+// short text read off argotorg/EquiVM at the pinned commit
+// 723d612a797fb4cf1dbe4c5ebf82a7124011ec87 (Examples/ERC20/ERC20.sol,
+// Examples/ERC20/Spec.lean, Solm/Equiv.lean, Examples/ERC20/Correct.lean,
+// Reasoning/MISSPEC.md). No Lean, no lake, no wasm call. The #print axioms line
+// quoted is the one MISSPEC.md documents verbatim for the Truth example (the
+// ERC20 boundary has the same named shape); the panel says so in the readout.
+//
+// Idiom: the facet-lattice / prior-art hover-and-read pattern. A column of
+// cited code panels; hover (or focus) one and the .eqread explains the riffcat
+// connection for that panel. Reuses .codepanel/.cphead/.eqread/.twnote/.vbug/
+// .vsub and the theme vars. All top-level names are prefixed `sf` to avoid
+// collision with app.js.
+
+const SF_PIN = "argotorg/EquiVM @ 723d612a";
+
+// Each panel: a short, real, cited snippet plus the framing read on hover. The
+// `read` strings stay in Register A: structural, content-address, facet, shape,
+// localize, anchor. `code` is verbatim-short from the pinned files.
+const SF_PANELS = [
+  {
+    k: "sol",
+    head: "ERC20.sol",
+    src: "Examples/ERC20/ERC20.sol",
+    accent: "var(--ink-dim)",
+    code: "// Runtime bytecode is generated with:\n//   solc --bin-runtime --evm-version shanghai ERC20.sol\n// optimizer OFF.\nfunction transfer(address to, uint256 value) external returns (bool) {\n    require(balanceOf[msg.sender] >= value, \"ERC20: insufficient balance\");\n    balanceOf[msg.sender] -= value;\n    balanceOf[to] += value;\n    emit Transfer(msg.sender, to, value);\n    return true;\n}",
+    read: "The artifact under the proof. The bytecode side is solc output, pinned to the exact invocation (solc shanghai, optimizer OFF). This is the provenance leg: which source became which bytecode. riffcat would localize this transfer subtree across the corpus; the proof is what fills the seat for one such candidate.",
+  },
+  {
+    k: "spec",
+    head: "the Solm spec (a forgetting, so a facet)",
+    src: "Examples/ERC20/Spec.lean",
+    accent: "var(--a)",
+    code: "-- The Solidity contract emits the standard events, but the current Solm\n-- statement tracks storage and return values only.\ndef transferTransition : TransitionDecl :=\n  { name := \"transfer\"\n    params := [{ name := \"to\", ty := addr }, { name := \"value\", ty := uint256 }]\n    returnType := some (.elem .bool)\n    body :=\n      [ .require (.binary .eq (.env .callvalue) (.intLit 0)),\n        .letDecl \"fromBalance\" (some uint256) (.storage (balanceOfRef sender)),\n        .require (.binary .ge (.var \"fromBalance\") (.var \"value\")),\n        ... .return (.boolLit true) ] }",
+    read: "The elegant point. The spec keeps storage, control, and return; it drops events, gas, and revert strings (the header says so: storage and return values only). That is exactly a facet: a forgetting that defines a syntactic equivalence class. The spec is a hand-authored facet projection of the contract, the same move riffcat makes by content-addressing at a chosen dimension subset.",
+  },
+  {
+    k: "split",
+    head: "the case-split equivalence statement",
+    src: "Solm/Equiv.lean",
+    accent: "var(--cool)",
+    code: "inductive runtimeEquivalenceFor (cfg : Config) (contract : ContractDecl) ... : Prop where\n  | execution      : -- both return: accountMapEquiv storage + ABI return match\n  | noDispatch     : -- spec selector miss, EVM reverts\n  | decodingFailed : -- spec ABI decode fails, EVM reverts\n  | outOfGas       : -- EVM runs out of gas\n\n-- (Equiv.lean) There is intentionally no case for `evmRes = .error e`:\n-- a real EVM exception leaves the equivalence unmatchable, so the proof\n-- fails rather than silently equating a crash with a revert.",
+    read: "The verdict's shape: for all initial states, calldata, and gas, the two executions land in one of four cases. execution means equal storage at every slot (accountMapEquiv) and the return bytes are the ABI encoding of the spec's return. This is what a filled seat looks like: not a hand-wave, a total case split with the unmatched-crash case left deliberately open.",
+  },
+  {
+    k: "thm",
+    head: "the theorem, per contract",
+    src: "Examples/ERC20/Correct.lean",
+    accent: "var(--cool)",
+    code: "/-- The deployed ERC20 runtime bytecode refines the Solm specification,\n    for every initial state. -/\ntheorem erc20Correct :\n    runtimeEquivalence!?! erc20Config erc20Bytecode erc20Contract := by\n  refine ...\n  -- dispatch on the selector, route each of the six function bodies\n  -- to its own correctness obligation; else revert.",
+    read: "The fact that anchors. erc20Correct is a kernel-checked theorem about one bytecode against one spec. Because the spec is a facet, the fact rides that facet address: it transports to every artifact that is behavior-complete at the spec's footprint (storage, control, return). Prove once on the representative, recognize the class. riffcat localizes the class; this is the fact that anchors to it.",
+  },
+  {
+    k: "ax",
+    head: "the #print axioms trust boundary",
+    src: "Reasoning/MISSPEC.md",
+    accent: "var(--warm)",
+    code: "#print axioms truthCorrect  -- documented verbatim in MISSPEC.md\n[propext, Classical.choice, Quot.sound,\n ByteArray_zeroes_size, byteArray_zeroes_toList,\n truthSelectorBytes, truthValidJumps]\n-- no sorryAx, no native_decide. The ERC20 proof names the same\n-- per-contract facts (its keccak selector bytes + valid-jump set).",
+    read: "What it trusts, named in the open. Not 'verified': this bytecode equals this TRUSTED hand-written spec, under a trusted Lean EVM (evmlean), over a bounded fragment, with per-contract keccak-selector and jumpdest axioms (and a zero-content axiom). The boundary is the message: a facet address is the scope a fact stays sound in, and here the proof states its scope rather than hiding it.",
+  },
+];
+
+const SF_FOOTPRINT =
+  "Footprint the proof stays sound in: storage layout, control flow, return shape. The Solm spec forgets at least this much, so the obligation and the anchor agree.";
+
+const SF_CAVEATS = [
+  "Not 'verified' past: this bytecode equals this trusted, hand-written Solm spec, under a trusted Lean EVM (evmlean), over a bounded Solidity fragment (no events, dynamic arrays, revert strings, transient storage), with per-contract keccak-selector and jumpdest axioms.",
+  "The outOfGas case means a non-terminating EVM run is currently equivalent to any spec (a known one-sided caveat in EquiVM's TODO). So the equivalence is not yet total in that direction.",
+  "No automated riffcat to EquiVM pipeline exists. riffcat localizes a candidate and a facet; turning that into a Solm spec and a hand proof is unbuilt engineering. This panel cites a real proof statically; it does not run Lean.",
+];
+
+const SF_IDLE =
+  "The previous chapter left two columns empty. This one fills them with a single, cited occupant: a Lean proof. Hover a panel to read how it sits against riffcat. Source: " + SF_PIN + ", read-only at the pin.";
+
+customElements.define("seat-filled", class extends HTMLElement {
+  connectedCallback() {
+    const panels = SF_PANELS.map((p) =>
+      `<div class="sf-panel codepanel" data-k="${p.k}" tabindex="0" style="--sf:${p.accent}">`
+      + `<div class="cphead sf-head"><b>${p.head}</b>`
+      + `<span class="vsub sf-src">${p.src}</span></div>`
+      + `<pre class="sf-code">${sfEsc(p.code)}</pre></div>`).join("");
+    const caveats = SF_CAVEATS.map((c) => `<li>${c}</li>`).join("");
+    this.innerHTML = `
+      <p class="vbug sf-bug">The seat from <b>prove it</b>, now occupied. riffcat <b>localizes</b> a candidate at a facet and states the obligation; a verifier <b>adjudicates</b>. Below is one verifier's filled verdict, cited statically from <span class="sf-pin">${SF_PIN}</span>.</p>
+      <div class="sf-foot"><span class="sf-foot-mark">anchor</span><span>${SF_FOOTPRINT}</span></div>
+      <div class="sf-grid">${panels}</div>
+      <div class="eqread sf-read" data-idle="${sfAttr(SF_IDLE)}">${SF_IDLE}</div>
+      <div class="sf-caveats"><span class="sf-caveats-h">what this does not claim</span><ul>${caveats}</ul></div>
+      <p class="twnote">Two riffcat threads meet here. First, transport: the theorem is a fact anchored to the spec's facet address, so it rides every artifact that shares that address (same storage, control, and return up to the spec's forgetting), prove once and recognize the class. Second, the spec itself is a facet: it keeps storage, control, and return and drops events, gas, and revert strings, which is the same forgetting riffcat performs when it content-addresses at a dimension subset. riffcat localizes and addresses; EquiVM decides, and names exactly what it trusts. The seat is filled by a fact, not a feeling.</p>`;
+    const read = this.querySelector(".sf-read");
+    const show = (p) => {
+      this.querySelectorAll(".sf-panel").forEach((x) => x.classList.toggle("dim", x.dataset.k !== p.k));
+      read.innerHTML = `<span class="sf-sw" style="background:${p.accent}"></span><b>${p.head}</b> &middot; ${p.read}`;
+    };
+    this.querySelectorAll(".sf-panel").forEach((el) => {
+      const p = SF_PANELS.find((x) => x.k === el.dataset.k);
+      el.addEventListener("mouseenter", () => { el.classList.add("on"); show(p); });
+      el.addEventListener("focus", () => { el.classList.add("on"); show(p); });
+      el.addEventListener("blur", () => el.classList.remove("on"));
+    });
+    this.addEventListener("mouseleave", () => {
+      this.querySelectorAll(".sf-panel").forEach((x) => x.classList.remove("dim", "on"));
+      read.innerHTML = read.dataset.idle;
+    });
+  }
+});
+
+function sfEsc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function sfAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
