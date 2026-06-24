@@ -215,13 +215,17 @@ pub fn fingerprint_chord(notation: &str) -> Result<String, JsValue> {
     use riff_catalog_core::Dimension;
     use riff_catalog_music::{
         PITCH_CLASS_SET, chord::chord_to_pitch_classes, encode_pitch_class_set, facet_hex,
-        set_theory::{interval_vector, prime_form},
+        set_theory::{interval_vector, prime_form, transposition_normal_form},
     };
     let pcs = chord_to_pitch_classes(notation).map_err(js_err)?;
     let (key, graph) = encode_pitch_class_set("chord", &pcs).map_err(js_err)?;
-    // note_set keys on the literal pitch-class set (two spellings of the same
-    // notes collapse); set_class keys on the Forte prime form (major, minor,
-    // and other inversions of one set class collapse to a single anchor).
+    // Three rungs: note_set keys on the literal pitch-class set (two spellings
+    // of the same notes collapse); transposition_normal keys on the minimal
+    // rotation (all transpositions collapse, matching polyphonotopes-math's
+    // normalFormBits); set_class keys on the Forte prime form (transposition and
+    // inversion, so major, minor, and other inversions of one class collapse).
+    let tnf = transposition_normal_form(&pcs);
+    let (tk, tg) = encode_pitch_class_set("tnf", &tnf).map_err(js_err)?;
     let pf = prime_form(&pcs);
     let (ck, cg) = encode_pitch_class_set("class", &pf).map_err(js_err)?;
     let full = Dimension::ALL.to_vec();
@@ -231,6 +235,7 @@ pub fn fingerprint_chord(notation: &str) -> Result<String, JsValue> {
         "prime_form": pf,
         "interval_vector": interval_vector(&pcs),
         "note_set": facet_hex(&key, &graph, &PITCH_CLASS_SET).map_err(js_err)?,
+        "transposition_normal": facet_hex(&tk, &tg, &PITCH_CLASS_SET).map_err(js_err)?,
         "set_class": facet_hex(&ck, &cg, &PITCH_CLASS_SET).map_err(js_err)?,
         "full": facet_hex(&key, &graph, &full).map_err(js_err)?,
     });
