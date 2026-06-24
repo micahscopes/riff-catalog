@@ -215,7 +215,7 @@ const CH = [
   },
   {
     nav: "modified",
-    kicker: "fuzzy: the forks that edited it",
+    kicker: "similarity is a spectrum",
     title: "And the ones that changed the code.",
     lede: "Exact match catches verbatim copies. Real forks edit the function: a dropped modifier, a hand-rolled forwarder. Sourcify, a text search, and exact match all miss them. Matching the shape's subtrees does not.",
     body: `<fuzzy-scan></fuzzy-scan>`,
@@ -3072,7 +3072,7 @@ const LCK_TIERS = [
 
 // Honest scope line, always visible: what the substrate already is, and what the
 // chapter does NOT claim.
-const LCK_SCOPE = "The golden vectors are the actual lockstep; the existing golden.rs and dual-path conformance.rs already do the within-language version of this byte-for-byte check, and adding Lean is a third path that must agree. The proofs are mostly confidence and ecosystem fit. A live Lean run needs the deferred toolchain (Lean, lake, a blake3 binding, the CI job), so the bench below is a cited plan, not a run.";
+const LCK_SCOPE = "The golden vectors are the actual lockstep, and the existing golden.rs and dual-path conformance.rs already do the within-language version of this byte-for-byte check. The Lean third path now exists and passes: a Lean port reproduces this corpus byte for byte, 254 checks green, on a pure-Lean blake3 checked against the reference vectors. So the lockstep is real, not a plan. The proofs of the laws above are still to be written (mostly confidence and ecosystem fit), and a live Lean run needs the deferred toolchain, so the digests shown here are baked, not computed in your browser.";
 
 customElements.define("lockstep-bench", class extends HTMLElement {
   connectedCallback() {
@@ -3107,7 +3107,7 @@ customElements.define("lockstep-bench", class extends HTMLElement {
 
     this.innerHTML = `
       <div class="lck-bench codepanel">
-        <div class="cphead lck-head"><b>one corpus, two cores</b> <span class="lck-sub">the output bytes must match, exactly, in CI &middot; baked illustrative digests, no live run</span></div>
+        <div class="cphead lck-head"><b>one corpus, two cores</b> <span class="lck-sub">the output bytes must match, exactly, in CI &middot; baked here, checked green in the Lean port</span></div>
         <div class="lck-cores">${heads}</div>
         <table class="vledger lck-ledger">
           <thead><tr><th>canonical graph (corpus input)</th><th>Rust digest</th><th></th><th>Lean digest</th></tr></thead>
