@@ -473,6 +473,26 @@
   .vattest-checked { border-color: var(--a-dim); color: var(--a); background: rgba(93,242,166,.07); }
   .vattest-assumption { border-color: #5a4d2d; color: var(--warm); background: rgba(255,180,84,.06); }
   .vattest-open { border-color: #5a2d39; color: var(--rose); background: rgba(255,138,160,.06); }
+
+  /* set-classes */
+/* forte-catalog: a small catalog of named chords, grouped at the set-class
+     facet. Cards reuse the chip/shapedot/nchip vocabulary; lit/dim mirror the
+     facet-primer hover. New rules only; everything else reuses existing classes. */
+  .fcatgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 9px; margin: 4px 0 2px; }
+  .fcatcard { border: 1px solid var(--line); border-left: 3px solid var(--chip); background: var(--bg-chip); padding: 9px 11px; transition: opacity .14s ease, border-color .14s ease, box-shadow .14s ease; }
+  .fcatcard.dim { opacity: .2; }
+  .fcatcard.lit { box-shadow: 0 0 0 1px var(--chip), 0 0 14px -5px var(--chip); border-left-color: var(--chip); }
+  .fcatcard .fcat-h { display: flex; align-items: center; gap: 8px; }
+  .fcatcard .fcat-h .playbtn { padding: 1px 7px; line-height: 1.4; }
+  .fcatcard .fcat-h .shapedot { margin-left: 0; }
+  .fcatcard .fcat-name { font-size: 12px; color: var(--ink-dim); }
+  .fcatcard .fcat-name b { color: var(--ink); font-family: var(--mono); }
+  .fcat-num { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--a); background: var(--a-dim); border: 1px solid var(--a-dim); border-radius: 3px; padding: 1px 7px; letter-spacing: .03em; }
+  .fcat-notes { margin: 8px 0 6px; }
+  .fcat-meta { display: flex; flex-direction: column; gap: 3px; }
+  .fcat-pf { font-family: var(--mono); font-size: 11px; color: var(--cool); }
+  .fcat-iv { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+  .fcat-iv em { color: var(--ink-dim); font-style: normal; }
 </style>
 </head>
 <body>

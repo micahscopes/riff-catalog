@@ -243,6 +243,13 @@ const CH = [
     lede: "Riffcat lands a chord on its prime form. A Lean 4 development proves that prime form really is the canonical representative of the transpose-and-invert class, and the kernel checks it. We content-address that proof and register it as a claim, anchored on the one facet the proof stays sound at. Hover the parts of the badge to read each one honestly.",
     body: `<verified-attest></verified-attest>`,
   },
+  {
+    nav: "forte catalog",
+    kicker: "the dial lands on a published catalog",
+    title: "The same dial finds Forte's catalog on its own.",
+    lede: "Seven named chords, each parsed from notation and fingerprinted live in your browser. Turn the dial to the set-class facet and watch major and minor fall into one class while augmented and diminished stay apart. The class riffcat computes is Allen Forte's, arrived at from structure alone.",
+    body: `<forte-catalog></forte-catalog>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -1591,5 +1598,157 @@ customElements.define("verified-attest", class extends HTMLElement {
     this.querySelectorAll("[data-read]").forEach((el) =>
       el.addEventListener("mouseenter", () => { read.innerHTML = describe(el); }));
     this.addEventListener("mouseleave", () => { read.innerHTML = idleHTML; });
+  }
+});
+
+// The Forte-catalog chapter: a small catalog of named chords, each parsed from
+// real notation and fingerprinted live (fingerprint_chord), shown with its
+// prime form, interval vector, and Forte-style set-class label. At the
+// set_class facet the chords group exactly the way Allen Forte's catalog does:
+// major and minor triads collapse to 3-11, the dominant and minor sevenths
+// collapse to 4-27, while augmented (3-12) and diminished (3-10) stand alone.
+// The point of the page: riffcat lands on the published catalog from structure
+// alone, the same dial the code chapters use.
+//
+// Forte numbers are a fixed, published fact about each prime form (Forte 1973),
+// not something the engine emits, so they live here as a tiny lookup keyed by
+// the engine's own prime_form output, the same way the lattice chapter carries
+// its node copy in JS. Everything that moves (pitch classes, prime form,
+// interval vector, the set-class address that drives grouping and color) comes
+// straight from fingerprint_chord.
+
+// The catalog, in notation the vibe-grammars parser already reads. Each entry is
+// (notation, the name a musician would say). The engine does the rest.
+const FORTE_CHORDS = [
+  ["C", "major triad"],
+  ["Am", "minor triad"],
+  ["Caug", "augmented triad"],
+  ["Bdim", "diminished triad"],
+  ["Cmaj7", "major seventh"],
+  ["G7", "dominant seventh"],
+  ["Am7", "minor seventh"],
+];
+
+// Two facets, loosest last: the literal note set, then Forte's set class (the
+// prime form, invariant under transposition and inversion). The page opens on
+// set_class because that is where the catalog appears.
+const FORTE_FACETS = [["note_set", "note set"], ["set_class", "set class"]];
+
+// Published Forte numbers, keyed by prime form (the engine's prime_form joined
+// by spaces). Only the classes this catalog can produce; an unknown prime form
+// just shows no label rather than a wrong one. Each carries Forte's own
+// interval-vector spelling for a quiet cross-check against the live one.
+const FORTE_NUMBERS = {
+  "0 3 7": { id: "3-11", iv: "<001110>", gloss: "major and minor triads, one class" },
+  "0 4 8": { id: "3-12", iv: "<000300>", gloss: "augmented triad, all major thirds" },
+  "0 3 6": { id: "3-10", iv: "<002001>", gloss: "diminished triad, the symmetric one" },
+  "0 1 5 8": { id: "4-20", iv: "<101220>", gloss: "major seventh" },
+  "0 2 5 8": { id: "4-27", iv: "<012111>", gloss: "dominant and minor sevenths, one class" },
+};
+
+// Forte's angle-bracket spelling of an interval vector (the six interval-class
+// counts), so the live count and the catalog count sit side by side.
+const forteIvText = (iv) => "<" + iv.map((n) => (n > 9 ? "X" : String(n))).join("") + ">";
+
+customElements.define("forte-catalog", class extends HTMLElement {
+  async connectedCallback() {
+    this.facet = "set_class";
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      this.data = FORTE_CHORDS
+        .map(([notation, name]) => {
+          try { return { notation, name, fp: JSON.parse(b.fingerprint_chord(notation)) }; }
+          catch { return null; }
+        })
+        .filter(Boolean);
+      this.render();
+    } catch (e) {
+      this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
+    }
+  }
+  // The Forte label for a chord, looked up by the engine's prime form.
+  forteFor(d) { return FORTE_NUMBERS[d.fp.prime_form.join(" ")] || null; }
+  render() {
+    const ladder = FORTE_FACETS.map(([k, label]) =>
+      `<span class="stop ${k === this.facet ? "on" : ""}" data-facet="${k}">${label}</span>`).join("");
+
+    // Group by the live set-class (or note-set) address: this is the same
+    // grouping the engine computes, not a re-derivation in JS.
+    const groups = new Map(); // address -> [names]
+    for (const d of this.data) {
+      const a = d.fp[this.facet];
+      if (!groups.has(a)) groups.set(a, []);
+      groups.get(a).push(d.name);
+    }
+    const onClass = this.facet === "set_class";
+
+    const cards = this.data.map((d, i) => {
+      const a = d.fp[this.facet];
+      const col = chipColor(a);
+      const notes = d.fp.pitch_classes.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
+      const f = this.forteFor(d);
+      const forteTag = onClass && f
+        ? `<span class="fc-num">${f.id}</span>` : "";
+      const prime = onClass
+        ? `<span class="fc-pf">prime [${d.fp.prime_form.join(" ")}]</span>` : "";
+      // interval vector: the live count, with Forte's published spelling
+      // alongside it when on the set-class facet, so the two visibly agree.
+      const ivLive = forteIvText(d.fp.interval_vector);
+      const iv = onClass
+        ? `<span class="fc-iv">iv ${ivLive}${f ? ` <em>= Forte ${f.iv}</em>` : ""}</span>`
+        : `<span class="fc-iv">iv ${ivLive}</span>`;
+      return `<div class="fcatcard fcat-${a.slice(0, 12)}" data-eq="fcat-${a.slice(0, 12)}" style="--chip:${col}">`
+        + `<div class="fcat-h">`
+        + `<button class="playbtn" data-i="${i}">▶</button>`
+        + `<span class="shapedot" style="--chip:${col}" title="${this.facet} ${a.slice(0, 10)}"></span>`
+        + `<span class="fcat-name"><b>${d.notation}</b> <span class="vsub">${d.name}</span></span>`
+        + `${forteTag}</div>`
+        + `<div class="fcat-notes"><span class="nchips">${notes}</span></div>`
+        + `<div class="fcat-meta">${prime}${iv}</div></div>`;
+    }).join("");
+
+    const n = groups.size;
+    const gtxt = [...groups.values()]
+      .map((names) => names.length > 1 ? `<b>${names.join(" = ")}</b>` : names[0]).join(" · ");
+    const idle = onClass
+      ? `<b>${n}</b> set classes across ${this.data.length} chords · ${gtxt} · live, in your browser`
+      : `<b>${n}</b> note sets across ${this.data.length} chords · each chord its own notes`;
+
+    const note = onClass
+      ? `At the <b>set-class</b> facet the seven chords fall into the classes Allen Forte catalogued in 1973. Major and minor triads share one address (<b>3-11</b>), the dominant and minor sevenths share another (<b>4-27</b>, they are inversions of one set), while the augmented (<b>3-12</b>) and diminished (<b>3-10</b>) triads stand alone. riffcat is not given the catalog: the prime form is computed from the structure, then content-addressed by the same facet machinery the code chapters use (<code>fingerprint_chord</code>). The interval vectors it counts match Forte's published ones, line for line.`
+      : `At the <b>note-set</b> facet each chord is just its set of pitches, so every one of these seven is its own address. Loosen the dial to <b>set class</b> and structure starts to fold the catalog together.`;
+
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
+      <div class="fcatgrid">${cards}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">${note}</p>`;
+
+    this.querySelectorAll("[data-facet]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
+    this.querySelectorAll(".playbtn").forEach((btn) =>
+      btn.addEventListener("click", () => playChord(this.data[+btn.dataset.i].fp.pitch_classes)));
+
+    // Hover a card to light every chord in the same class and name them in the
+    // readout: the collapse made legible, exactly the facet-primer gesture.
+    this.querySelectorAll(".fcatcard").forEach((card) => {
+      card.addEventListener("mouseenter", () => {
+        const kin = this.querySelectorAll("." + card.dataset.eq);
+        this.querySelectorAll(".fcatcard").forEach((x) => x.classList.add("dim"));
+        kin.forEach((x) => { x.classList.remove("dim"); x.classList.add("lit"); });
+        const read = this.querySelector(".eqread");
+        if (!read) return;
+        const names = [...kin].map((x) => x.querySelector(".fcat-name b").textContent.trim());
+        read.innerHTML = kin.length > 1
+          ? `<b>${kin.length}</b> share this ${onClass ? "set class" : "note set"}: <b>${names.join(" = ")}</b>`
+          : `<b>${names[0]}</b> is alone at the ${onClass ? "set-class" : "note-set"} facet`;
+      });
+      card.addEventListener("mouseleave", () => {
+        this.querySelectorAll(".fcatcard").forEach((x) => x.classList.remove("dim", "lit"));
+        const read = this.querySelector(".eqread");
+        if (read) read.innerHTML = read.dataset.idle || "";
+      });
+    });
   }
 });
