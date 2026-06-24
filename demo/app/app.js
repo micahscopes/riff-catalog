@@ -3060,21 +3060,21 @@ const LCK_LAWS = [
   { k: "det", t: "determinism", status: "proved", says: "same (policy, graph) gives the same digest; insensitive to field and edge insertion order and to internal node-id choice. The Rust gets this from sorting; the spec shows the sorts canonicalize." },
   { k: "lattice", t: "facet refinement lattice", status: "proved", says: "equal at a finer facet implies equal at every coarser one. A facet address over a dimension set commits the sorted per-dimension digests, so equality at the larger set forces equality at every subset. This is the lattice the facet UI and the claims layer lean on." },
   { k: "anchor", t: "anchor / transport soundness", status: "proved", says: "a fact transports along a facet address exactly when the facet covers the fact's footprint. The per-dimension digest for dimension d is a function only of the d-tagged fields plus the skeleton: one-directional dimension purity." },
-  { k: "anon", t: "AnonymousShape correctness", status: "proved", says: "names never enter the digest. Renaming all node keys by any injection leaves every AnonymousShape digest unchanged. The deepest correctness law, touching the tree fold, the graph record, and the whole WL path. The prototype got this wrong before." },
-  { k: "term", t: "SCC / WL termination", status: "proved", says: "SCC condensation is well-defined (Tarjan gives a partition, emitted reverse-topologically) and WL refinement terminates (monotone partition refinement, capped at the member count). Honest caveat: 1-WL is incomplete on pathological regular graphs, so anonymous equality is WL-equivalence under policy, not isomorphism." },
-  { k: "inj", t: "encoding injectivity", status: "proved", says: "the canonical byte encoding is injective: distinct graphs at a facet produce distinct pre-image bytes, from length prefixes plus domain-separating tags. So distinct digests imply distinct shapes, unless blake3 collides." }
+  { k: "anon", t: "AnonymousShape correctness", status: "target", says: "names never enter the digest. Renaming all node keys by any injection leaves every AnonymousShape digest unchanged. The deepest correctness law, touching the tree fold, the graph record, and the whole WL path. The prototype got this wrong before." },
+  { k: "term", t: "SCC / WL termination", status: "target", says: "SCC condensation is well-defined (Tarjan gives a partition, emitted reverse-topologically) and WL refinement terminates (monotone partition refinement, capped at the member count). Honest caveat: 1-WL is incomplete on pathological regular graphs, so anonymous equality is WL-equivalence under policy, not isomorphism." },
+  { k: "inj", t: "encoding injectivity", status: "target", says: "the canonical byte encoding is injective: distinct graphs at a facet produce distinct pre-image bytes, from length prefixes plus domain-separating tags. So distinct digests imply distinct shapes, unless blake3 collides." }
 ];
 
 // The trust tiers, kept apart on purpose (the overclaim lives in blurring them).
 const LCK_TIERS = [
-  { k: "checked", t: "kernel-checked", s: "the six laws above are theorems about the abstract construction, verified by the Lean 4 kernel once the spec lands. Checked, not merely tested." },
+  { k: "checked", t: "kernel-checked", s: "three of the six laws above are now theorems verified by the Lean 4 kernel (determinism, the refinement lattice, anchor transport); the other three are stated targets. Checked, not merely tested." },
   { k: "axiom", t: "one named assumption", s: "blake3 collision-resistance is a Lean axiom, not a theorem. Everything is sound GIVEN a collision-free hash. The same blake3 C library runs on both sides, so it is never re-implemented and never drifts. Named in the open." },
   { k: "open", t: "the open gap", s: "the laws are about the Lean model of the encoder. The shipping Rust is held to it by the golden vectors and by reading, not yet by verified extraction (that is the research-grade Aeneas/Kani follow-on). Stated up front." }
 ];
 
 // Honest scope line, always visible: what the substrate already is, and what the
 // chapter does NOT claim.
-const LCK_SCOPE = "The golden vectors are the actual lockstep, and the existing golden.rs and dual-path conformance.rs already do the within-language version of this byte-for-byte check. The Lean third path now exists and passes: a Lean port reproduces this corpus byte for byte, 254 checks green, on a pure-Lean blake3 checked against the reference vectors. So the lockstep is real, not a plan. The proofs of the laws above are still to be written (mostly confidence and ecosystem fit), and a live Lean run needs the deferred toolchain, so the digests shown here are baked, not computed in your browser.";
+const LCK_SCOPE = "The golden vectors are the actual lockstep, and the existing golden.rs and dual-path conformance.rs already do the within-language version of this byte-for-byte check. The Lean third path now exists and passes: a Lean port reproduces this corpus byte for byte, 254 checks green, on a pure-Lean blake3 checked against the reference vectors. So the lockstep is real, not a plan. Three of the six laws above are now proved kernel-clean (determinism, the refinement lattice, anchor transport); the other three are stated targets, and blake3 collision-resistance is a named axiom. A live Lean run needs the deferred toolchain, so the digests shown here are baked, not computed in your browser.";
 
 customElements.define("lockstep-bench", class extends HTMLElement {
   connectedCallback() {
@@ -3101,7 +3101,7 @@ customElements.define("lockstep-bench", class extends HTMLElement {
 
     // (2) the laws ledger.
     const laws = LCK_LAWS.map((l) =>
-      `<button class="lck-law" data-law="${l.k}"><span class="lck-law-st lck-st-${l.status}">${l.status === "axiom" ? "axiom" : "to prove"}</span>${l.t}</button>`).join("");
+      `<button class="lck-law" data-law="${l.k}"><span class="lck-law-st lck-st-${l.status}">${l.status === "proved" ? "proved" : l.status === "axiom" ? "axiom" : "to prove"}</span>${l.t}</button>`).join("");
 
     // (3) the trust tiers.
     const tiers = LCK_TIERS.map((t) =>
