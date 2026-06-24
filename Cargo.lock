@@ -596,6 +596,7 @@ version = "0.1.0"
 dependencies = [
  "riff-catalog-core",
  "riff-catalog-evm",
+ "riff-catalog-music",
  "riff-catalog-solidity",
  "riff-catalog-yul",
  "serde",

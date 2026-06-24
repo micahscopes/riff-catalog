@@ -11,6 +11,7 @@ repository = "https://github.com/micahscopes/riff-catalog"
 [workspace.dependencies]
 riff-catalog-core = { path = "crates/riff-catalog-core" }
 riff-catalog-schema = { path = "crates/riff-catalog-schema" }
+riff-catalog-music = { path = "crates/riff-catalog-music" }
 riff-catalog-claims = { path = "crates/riff-catalog-claims" }
 riff-catalog-solc = { path = "crates/riff-catalog-solc" }
 riff-catalog-yul = { path = "crates/riff-catalog-yul" }
