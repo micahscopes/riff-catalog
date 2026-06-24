@@ -251,7 +251,7 @@ const CH = [
     body: `<forte-catalog></forte-catalog>`,
   },
   { nav: "interval vector", kicker: "the harmonic signature underneath a chord", title: "Six numbers that survive transposing and flipping.", lede: "Every chord projects to six interval-class counts: how many minor seconds it contains, how many major seconds, and so on up to the tritone. Move the chord to any key, turn it upside down, and these six numbers do not change. Pick a chord and watch its signature; major and minor land on the same one.", body: "<ivf-fingerprint></ivf-fingerprint>" },
-  { nav: "three rungs", kicker: "one chord, three rungs of forgetting", title: "A pitch-class set has a ladder, not a switch.", lede: "The set-class facet is the top of a short climb. Take one chord up the ladder a rung at a time: the literal notes, then the same set slid to its tightest packing (transposition forgotten), then the prime form (inversion forgotten too). Each rung forgets one more thing, and you can watch exactly what.", body: `<three-rungs></three-rungs>` },
+  { nav: "three rungs", kicker: "one chord, three rungs of forgetting", title: "A pitch-class set has a ladder, not a switch.", lede: "The set-class facet is the top of a short climb. Take one chord up the ladder a rung at a time: the literal notes, then the same set slid to its tightest packing (the Tn-type, transposition forgotten, still A/B-distinguished as 3-11B), then the prime form (fold inversion: 3-11B and 3-11A merge into 3-11). Each rung forgets one more thing, and the top rung is honest that it folds inversion.", body: `<three-rungs></three-rungs>` },
   { nav: "two fingerprints", kicker: "two axes, not two rivals", title: "The compiler already emits a fingerprint. This is its complement.", lede: "Sourcify's metadata hash is the exact-identity fingerprint of a compilation: it answers \"is this the identical build,\" and a single whitespace flips it. A structural fingerprint answers the other question, \"is this the same code wearing different clothes,\" and is built to hold when the metadata hash moves. Edit the source below and watch the two axes part.", body: `<metadata-axes></metadata-axes>` },
   {
   nav: "main vs meta",
@@ -1732,17 +1732,65 @@ const FORTE_CHORDS = [
 // set_class because that is where the catalog appears.
 const FORTE_FACETS = [["note_set", "note set"], ["set_class", "set class"]];
 
-// Published Forte numbers, keyed by prime form (the engine's prime_form joined
-// by spaces). Only the classes this catalog can produce; an unknown prime form
-// just shows no label rather than a wrong one. Each carries Forte's own
-// interval-vector spelling for a quiet cross-check against the live one.
+// Published Forte numbers in the STANDARD convention: inversionally related sets
+// stay DISTINCT and carry an A/B letter; inversionally symmetric sets get no
+// letter. (Verified against Wikipedia's List of set classes, 2026-06-24.)
+//
+// We key on the engine's transposition_normal_form (the Tn-type, transposition
+// only), because that is what the A/B distinction IS: the major triad's Tn-type
+// is [0,4,7] (3-11B), the minor triad's is [0,3,7] (3-11A), and these are two
+// different addresses. The TnI prime_form folds them: BOTH become [0,3,7], the
+// unlettered 3-11, which is the further "fold inversion" rung. So each entry
+// records its A/B number (keyed by Tn-type) and the folded number it merges to.
+//   id   = the A/B-distinguished Forte number (the letter where asymmetric)
+//   fold = the inversion-folded number (drops the letter for the A/B pairs)
+//   sym  = inversionally symmetric (A and B coincide; no letter)
+//   iv   = Forte's published interval-vector spelling, for a quiet cross-check
 const FORTE_NUMBERS = {
-  "0 3 7": { id: "3-11", iv: "<001110>", gloss: "major and minor triads, one class" },
-  "0 4 8": { id: "3-12", iv: "<000300>", gloss: "augmented triad, all major thirds" },
-  "0 3 6": { id: "3-10", iv: "<002001>", gloss: "diminished triad, the symmetric one" },
-  "0 1 5 8": { id: "4-20", iv: "<101220>", gloss: "major seventh" },
-  "0 2 5 8": { id: "4-27", iv: "<012111>", gloss: "dominant and minor sevenths, one class" },
+  // triads (verified: 3-11A=[0,3,7] minor, 3-11B=[0,4,7] major; 3-10/3-12 symmetric)
+  "0 4 7": { id: "3-11B", fold: "3-11", sym: false, iv: "<001110>", gloss: "major triad (3-11B)" },
+  "0 3 7": { id: "3-11A", fold: "3-11", sym: false, iv: "<001110>", gloss: "minor triad (3-11A)" },
+  "0 4 8": { id: "3-12", fold: "3-12", sym: true, iv: "<000300>", gloss: "augmented triad, inversionally symmetric" },
+  "0 3 6": { id: "3-10", fold: "3-10", sym: true, iv: "<002001>", gloss: "diminished triad, inversionally symmetric" },
+  // sevenths (verified: 4-20 maj7 symmetric; 4-26 min7 symmetric;
+  //  4-27A=[0,2,5,8] half-diminished, 4-27B=[0,3,6,8] dominant)
+  "0 1 5 8": { id: "4-20", fold: "4-20", sym: true, iv: "<101220>", gloss: "major seventh, inversionally symmetric" },
+  "0 3 5 8": { id: "4-26", fold: "4-26", sym: true, iv: "<012120>", gloss: "minor seventh, inversionally symmetric" },
+  "0 3 6 8": { id: "4-27B", fold: "4-27", sym: false, iv: "<012111>", gloss: "dominant seventh (4-27B)" },
+  "0 2 5 8": { id: "4-27A", fold: "4-27", sym: false, iv: "<012111>", gloss: "half-diminished seventh (4-27A)" },
 };
+
+// The transposition normal form (Tn-type) of a raw pitch-class set: the minimal
+// rotation of its 12-bit mask, as sorted pitch classes. This is the exact same
+// minimal-rotation algorithm the engine's transposition_normal_form uses, so we
+// can label a chord we built ourselves (an inverted set) with the same A/B form
+// the engine would assign. Two transposition-equivalent sets share it; major and
+// minor (an inversion pair) do NOT, which is what makes the A/B distinction.
+function tnfOf(pcs) {
+  let mask = 0;
+  for (const p of pcs) mask |= 1 << (((p % 12) + 12) % 12);
+  if (mask === 0) return [];
+  let best = mask;
+  for (let k = 1; k < 12; k++) {
+    let r = 0;
+    for (let i = 0; i < 12; i++) if (mask & (1 << i)) r |= 1 << ((i + k) % 12);
+    if (r < best) best = r;
+  }
+  const out = [];
+  for (let i = 0; i < 12; i++) if (best & (1 << i)) out.push(i);
+  return out;
+}
+
+// The Forte entry for a chord, by its Tn-type (A/B-distinguished). Pass the
+// engine's transposition_normal_form for a catalog chord, or tnfOf(invertedPcs)
+// for an inverted one; an unknown form just shows no label rather than a wrong one.
+const forteByTnf = (tnf) => FORTE_NUMBERS[tnf.join(" ")] || null;
+
+// Invert a pitch-class set about 0: x -> (12 - x) mod 12, then dedup and sort.
+// This is the I generator of the dihedral group, the move that takes a set class's
+// A form to its B form (major <-> minor type) and fixes the symmetric ones.
+const invertPcs = (pcs) =>
+  [...new Set(pcs.map((x) => ((12 - (x % 12)) % 12 + 12) % 12))].sort((a, b) => a - b);
 
 // Forte's angle-bracket spelling of an interval vector (the six interval-class
 // counts), so the live count and the catalog count sit side by side.
@@ -1751,6 +1799,7 @@ const forteIvText = (iv) => "<" + iv.map((n) => (n > 9 ? "X" : String(n))).join(
 customElements.define("forte-catalog", class extends HTMLElement {
   async connectedCallback() {
     this.facet = "set_class";
+    this.inverted = false; // the INVERT operation: flip each chord by the I generator
     this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
     try {
       const b = await engineReady;
@@ -1765,70 +1814,103 @@ customElements.define("forte-catalog", class extends HTMLElement {
       this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
     }
   }
-  // The Forte label for a chord, looked up by the engine's prime form.
-  forteFor(d) { return FORTE_NUMBERS[d.fp.prime_form.join(" ")] || null; }
+  // The pitch classes a card currently shows: the parsed chord, or its inversion
+  // when the INVERT operation is on. The I generator is x -> (12 - x) mod 12.
+  pcsFor(d) { return this.inverted ? invertPcs(d.fp.pitch_classes) : d.fp.pitch_classes; }
+  // The Tn-type (A/B-distinguished) form a card currently shows, computed by the
+  // same minimal-rotation rule the engine uses: the parsed chord's own
+  // transposition_normal_form, or the Tn-type of its inversion.
+  tnfFor(d) { return this.inverted ? tnfOf(invertPcs(d.fp.pitch_classes)) : d.fp.transposition_normal_form; }
+  // The Forte entry (A/B-distinguished) for a card, by its current Tn-type.
+  forteFor(d) { return forteByTnf(this.tnfFor(d)); }
   render() {
     const ladder = FORTE_FACETS.map(([k, label]) =>
       `<span class="stop ${k === this.facet ? "on" : ""}" data-facet="${k}">${label}</span>`).join("");
+    const onClass = this.facet === "set_class";
 
-    // Group by the live set-class (or note-set) address: this is the same
-    // grouping the engine computes, not a re-derivation in JS.
+    // The card's "address" for grouping/color: at set_class we key on the
+    // A/B-distinguished Tn-type (so major and minor get DIFFERENT colors, the
+    // whole point of A vs B); at note_set we key on the literal note-set hex.
+    // The prime form (the inversion fold) is shown per card as the further rung.
+    const addrFor = (d) => onClass ? this.tnfFor(d).join(",") : d.fp.note_set;
+
+    // Group by that address: at set_class this groups by Tn-type, so a 3-11A and
+    // a 3-11B are two groups, and folding inversion (the prime form) is the
+    // further step that would merge them, called out in the readout and caption.
     const groups = new Map(); // address -> [names]
     for (const d of this.data) {
-      const a = d.fp[this.facet];
+      const a = addrFor(d);
       if (!groups.has(a)) groups.set(a, []);
       groups.get(a).push(d.name);
     }
-    const onClass = this.facet === "set_class";
 
     const cards = this.data.map((d, i) => {
-      const a = d.fp[this.facet];
-      const col = chipColor(a);
-      const notes = d.fp.pitch_classes.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
+      const pcs = this.pcsFor(d);
+      const tnf = this.tnfFor(d);
+      const a = addrFor(d);
+      const cls = "fcat-" + a.replace(/[^a-zA-Z0-9]/g, "");
+      const col = chipColor(onClass ? tnf.join("-") : a);
+      const notes = pcs.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
       const f = this.forteFor(d);
+      const fold = onClass && f ? FORTE_NUMBERS[(this.inverted ? tnfOf(invertPcs(d.fp.pitch_classes)) : d.fp.transposition_normal_form).join(" ")] : null;
       const forteTag = onClass && f
-        ? `<span class="fc-num">${f.id}</span>` : "";
-      const prime = onClass
-        ? `<span class="fc-pf">prime [${d.fp.prime_form.join(" ")}]</span>` : "";
+        ? `<span class="fcat-num">${f.id}</span>` : "";
+      // The A/B form (the Tn-type) is the headline at set_class; the prime form
+      // is the further "fold inversion" rung where the A/B pair would merge.
+      const aform = onClass
+        ? `<span class="fcat-pf">${f && f.sym ? "form" : "Tn-type"} [${tnf.join(" ")}]`
+          + `${f && !f.sym ? ` <em>fold inversion → ${fold ? fold.fold : ""} prime [${d.fp.prime_form.join(" ")}]</em>` : ""}</span>`
+        : "";
       // interval vector: the live count, with Forte's published spelling
       // alongside it when on the set-class facet, so the two visibly agree.
       const ivLive = forteIvText(d.fp.interval_vector);
       const iv = onClass
-        ? `<span class="fc-iv">iv ${ivLive}${f ? ` <em>= Forte ${f.iv}</em>` : ""}</span>`
-        : `<span class="fc-iv">iv ${ivLive}</span>`;
-      return `<div class="fcatcard fcat-${a.slice(0, 12)}" data-eq="fcat-${a.slice(0, 12)}" style="--chip:${col}">`
+        ? `<span class="fcat-iv">iv ${ivLive}${f ? ` <em>= Forte ${f.iv}</em>` : ""}</span>`
+        : `<span class="fcat-iv">iv ${ivLive}</span>`;
+      const shownName = this.inverted ? `inv(${d.notation})` : d.notation;
+      return `<div class="fcatcard ${cls}" data-eq="${cls}" style="--chip:${col}">`
         + `<div class="fcat-h">`
         + `<button class="playbtn" data-i="${i}">▶</button>`
-        + `<span class="shapedot" style="--chip:${col}" title="${this.facet} ${a.slice(0, 10)}"></span>`
-        + `<span class="fcat-name"><b>${d.notation}</b> <span class="vsub">${d.name}</span></span>`
+        + `<span class="shapedot" style="--chip:${col}" title="${onClass ? "Tn-type " + tnf.join(",") : "note set " + a.slice(0, 10)}"></span>`
+        + `<span class="fcat-name"><b>${shownName}</b> <span class="vsub">${d.name}</span></span>`
         + `${forteTag}</div>`
         + `<div class="fcat-notes"><span class="nchips">${notes}</span></div>`
-        + `<div class="fcat-meta">${prime}${iv}</div></div>`;
+        + `<div class="fcat-meta">${aform}${iv}</div></div>`;
     }).join("");
 
     const n = groups.size;
     const gtxt = [...groups.values()]
       .map((names) => names.length > 1 ? `<b>${names.join(" = ")}</b>` : names[0]).join(" · ");
     const idle = onClass
-      ? `<b>${n}</b> set classes across ${this.data.length} chords · ${gtxt} · live, in your browser`
+      ? `<b>${n}</b> Tn-types (A/B-distinguished) across ${this.data.length} chords${this.inverted ? ", inverted" : ""}`
+        + ` · ${gtxt} · folding inversion would merge each A/B pair · live, in your browser`
       : `<b>${n}</b> note sets across ${this.data.length} chords · each chord its own notes`;
 
     const note = onClass
-      ? `At the <b>set-class</b> facet the seven chords fall into the classes Allen Forte catalogued in 1973. Major and minor triads share one address (<b>3-11</b>), the dominant and minor sevenths share another (<b>4-27</b>, they are inversions of one set), while the augmented (<b>3-12</b>) and diminished (<b>3-10</b>) triads stand alone. riffcat is not given the catalog: the prime form is computed from the structure, then content-addressed by the same facet machinery the code chapters use (<code>fingerprint_chord</code>). The interval vectors it counts match Forte's published ones, line for line.`
-      : `At the <b>note-set</b> facet each chord is just its set of pitches, so every one of these seven is its own address. Loosen the dial to <b>set class</b> and structure starts to fold the catalog together.`;
+      ? `In the <b>standard</b> set-class convention, inversionally related sets stay distinct and carry a letter: the <b>major</b> triad is <b>3-11B</b> (Tn-type [0,4,7]) and the <b>minor</b> triad is <b>3-11A</b> (Tn-type [0,3,7]). Inversion is the move between A and B. Hit <b>invert</b> above and watch C major (3-11B) land on a minor-type 3-11A, and the dominant seventh (4-27B) land on the half-diminished 4-27A; the inversionally symmetric ones (augmented <b>3-12</b>, diminished <b>3-10</b>, major seventh <b>4-20</b>, minor seventh <b>4-26</b>) carry no letter and invert to themselves. The further <b>fold inversion</b> rung is the TnI <b>prime form</b> shown on each card, where A and B merge: 3-11A and 3-11B both become the unlettered <b>3-11</b> [0,3,7]. riffcat is not given the catalog; the Tn-type and prime form are computed from the structure, then content-addressed by the same facet machinery the code chapters use (<code>fingerprint_chord</code>). The interval vectors it counts match Forte's published ones, line for line.`
+      : `At the <b>note-set</b> facet each chord is just its set of pitches, so every one of these seven is its own address. Loosen the dial to <b>set class</b> and the A/B-distinguished Forte numbers appear; the augmented and diminished triads (inversionally symmetric) carry no letter.`;
 
     this.innerHTML = `
-      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
+      <div class="dialbar">
+        <div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div>
+        <div class="grp"><span>operation</span>
+          <button data-op="invert" aria-pressed="${this.inverted}" ${onClass ? "" : "disabled"}>invert (I)</button>
+        </div>
+      </div>
       <div class="fcatgrid">${cards}</div>
       <div class="eqread" data-idle="${idle}">${idle}</div>
       <p class="twnote">${note}</p>`;
 
     this.querySelectorAll("[data-facet]").forEach((s) =>
       s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
+    this.querySelectorAll("[data-op='invert']").forEach((btn) =>
+      btn.addEventListener("click", () => { this.inverted = !this.inverted; this.render(); }));
+    // Play the chord as currently shown: inverted pitch classes when invert is on,
+    // so the operation is audible, not just labeled.
     this.querySelectorAll(".playbtn").forEach((btn) =>
-      btn.addEventListener("click", () => playChord(this.data[+btn.dataset.i].fp.pitch_classes)));
+      btn.addEventListener("click", () => playChord(this.pcsFor(this.data[+btn.dataset.i]))));
 
-    // Hover a card to light every chord in the same class and name them in the
+    // Hover a card to light every chord in the same Tn-type and name them in the
     // readout: the collapse made legible, exactly the facet-primer gesture.
     this.querySelectorAll(".fcatcard").forEach((card) => {
       card.addEventListener("mouseenter", () => {
@@ -1839,8 +1921,8 @@ customElements.define("forte-catalog", class extends HTMLElement {
         if (!read) return;
         const names = [...kin].map((x) => x.querySelector(".fcat-name b").textContent.trim());
         read.innerHTML = kin.length > 1
-          ? `<b>${kin.length}</b> share this ${onClass ? "set class" : "note set"}: <b>${names.join(" = ")}</b>`
-          : `<b>${names[0]}</b> is alone at the ${onClass ? "set-class" : "note-set"} facet`;
+          ? `<b>${kin.length}</b> share this ${onClass ? "Tn-type (same A/B form)" : "note set"}: <b>${names.join(" = ")}</b>`
+          : `<b>${names[0]}</b> is alone at the ${onClass ? "Tn-type (its own A/B form)" : "note-set"} facet`;
       });
       card.addEventListener("mouseleave", () => {
         this.querySelectorAll(".fcatcard").forEach((x) => x.classList.remove("dim", "lit"));
@@ -1982,19 +2064,25 @@ const TR_RUNGS = [
   {
     key: "note_set",
     rung: "the literal notes",
+    // a literal voicing, not a canonical set-class member, so no Forte label.
+    forte: "",
     forgets: "nothing yet: the actual pitch classes, exactly as written",
     keeps: "register folded to one octave; the bare set of pitch classes",
   },
   {
     key: "transposition_normal",
     rung: "transposition forgotten",
+    // the Tn-type [0,4,7]: the A/B-distinguished form, the MAJOR triad is 3-11B.
+    forte: "3-11B",
     forgets: "where the set sits: every transposition reads as one tightest-packed rotation",
-    keeps: "the inside spacing of the chord, still distinguishing a shape from its mirror",
+    keeps: "the inside spacing AND the handedness: this is the A/B-distinguished form, 3-11B (major), still apart from its mirror 3-11A (minor)",
   },
   {
     key: "set_class",
-    rung: "inversion forgotten too",
-    forgets: "the mirror as well: a shape and its inversion share one prime form",
+    rung: "fold inversion",
+    // the TnI prime form [0,3,7]: A and B merge, the letter drops, so 3-11.
+    forte: "3-11",
+    forgets: "the mirror as well: a shape and its inversion share one prime form, so 3-11B (major) and 3-11A (minor) merge into the unlettered 3-11",
     keeps: "only the interval content: Allen Forte's catalog address",
   },
 ];
@@ -2002,7 +2090,8 @@ const TR_RUNGS = [
 // climb and not a collapse. G major works: written as {D,G,B} the literal set is
 // not its own tightest rotation (rung 1 != rung 2), and a major triad is not
 // inversion-symmetric, so the prime form folds it further (rung 2 != rung 3). Its
-// prime form is [0,3,7], the 3-11 class the set-class chapters land on.
+// Tn-type is [0,4,7] (3-11B), and folding inversion lands it on the prime form
+// [0,3,7], the unlettered 3-11 class the set-class chapters land on.
 const TR_CHORD = "G";
 // Render the chosen rung's address as a small set of pitch-class chips, using the
 // engine's own field for that rung. The literal set always shows; the normal-form
@@ -2043,22 +2132,29 @@ customElements.define("three-rungs", class extends HTMLElement {
       const chips = reading.map((pc) => `<span class="nchip">${trPcLabel(pc)}</span>`).join("");
       const on = r.key === this.rung;
       const missing = r.key === "transposition_normal" && !this.hasNormal;
+      // the named step INTO this rung: the climb from rung 2 to rung 3 is "fold
+      // inversion", the move that merges the A/B pair, so we label it explicitly.
+      const stepTag = r.key === "set_class"
+        ? `<span class="fcat-num" title="the step that merges 3-11B and 3-11A">fold inversion ↑</span>` : "";
+      const forteTag = r.forte ? `<span class="fcat-num">${r.forte}</span>` : "";
       return `<div class="rungrow ${on ? "on" : ""} ${missing ? "pending" : ""}" data-rung="${r.key}">`
         + `<span class="rung-ix">${i + 1}</span>`
         + `<span class="rung-name">${r.rung}</span>`
         + `<span class="nchips">${chips}</span>`
+        + `${stepTag}${forteTag}`
         + `<button class="playbtn" data-i="${i}">▶ hear it</button>`
         + `<span class="shapedot" style="--chip:${chipColor(addr)}" title="${r.key} ${addr.slice(0, 10)}"></span></div>`;
     }).join("");
     const sel = TR_RUNGS.find((r) => r.key === this.rung);
     const pendNote = (this.rung === "transposition_normal" && !this.hasNormal)
       ? ` <span class="rung-pending">(this rung is awaiting an engine field; showing the literal set as a placeholder)</span>` : "";
-    const idle = `rung <b>${TR_RUNGS.indexOf(sel) + 1}</b> of 3 · forgets ${sel.forgets} · keeps ${sel.keeps}${pendNote}`;
+    const forteNote = sel.forte ? ` · Forte <b>${sel.forte}</b>` : "";
+    const idle = `rung <b>${TR_RUNGS.indexOf(sel) + 1}</b> of 3${forteNote} · forgets ${sel.forgets} · keeps ${sel.keeps}${pendNote}`;
     this.innerHTML = `
       <div class="dialbar"><div class="grp"><span>climb</span><div class="ladder">${ladder}</div></div></div>
       <div class="riffs rungs">${rows}</div>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">One chord (<b>${TR_CHORD}</b>), three readings of "the same." The first rung is the literal set of pitch classes. The second slides the set to its tightest-packed rotation, so every transposition reads alike: the same move a listener makes hearing a riff moved up a fifth as still the riff. The third folds in inversion as well and lands on the prime form, Forte's catalog address. Each step up forgets exactly one more thing, and never adds anything back: equal at a lower rung is always equal at every rung above it.</p>`;
+      <p class="twnote">One chord (<b>${TR_CHORD}</b> major), three readings of "the same." The first rung is the literal set of pitch classes. The second slides the set to its tightest-packed rotation, so every transposition reads alike: the same move a listener makes hearing a riff moved up a fifth as still the riff. This is the <b>Tn-type</b>, the A/B-distinguished form: G major's is [0,4,7], Forte's <b>3-11B</b>, and it is still apart from its mirror, the minor type <b>3-11A</b> [0,3,7]. The third rung is the explicit <b>fold inversion</b> step: it forgets the mirror too and lands on the TnI <b>prime form</b> [0,3,7], where 3-11B and 3-11A merge into the unlettered <b>3-11</b>, Forte's catalog address. Each step up forgets exactly one more thing, and the top rung is honest that it folds inversion: equal at a lower rung is always equal at every rung above it.</p>`;
     this.querySelectorAll("[data-rung]").forEach((el) =>
       el.addEventListener("click", () => {
         const k = el.dataset.rung;
