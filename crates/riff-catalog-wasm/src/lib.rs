@@ -164,3 +164,57 @@ pub fn fingerprint_riff(riff_json: &str) -> Result<String, JsValue> {
     });
     serde_json::to_string(&out).map_err(js_err)
 }
+
+// --- chip colors ---------------------------------------------------------
+// The storybook colors each function by its shape digest, so the same shape is
+// the same color everywhere. HSL made that look uneven: a yellow and a blue at
+// the same "lightness" number do not read as equally bright. OKLCH is
+// perceptually uniform, so every chip reads with the same weight. Lightness is
+// fixed; chroma is reduced (via palette) until the color lands inside sRGB, so
+// each hue stays as vivid as it can honestly carry without clipping.
+
+/// Core, host-testable: a stable, gamut-safe `oklch(...)` CSS color for a digest.
+fn oklch_chip(digest_hex: &str) -> String {
+    use palette::{FromColor, Oklch, Srgb};
+    // Spread the hash by the golden angle so digests that are close in hex still
+    // land on visibly different hues.
+    let mut acc: u64 = 0;
+    for b in digest_hex.bytes().take(12) {
+        acc = acc.wrapping_mul(131).wrapping_add(u64::from(b));
+    }
+    let hue = ((acc as f64) * 137.507_764).rem_euclid(360.0) as f32;
+    let lightness = 0.72_f32;
+    let mut chroma = 0.15_f32;
+    while chroma > 0.0 {
+        let rgb = Srgb::from_color(Oklch::new(lightness, chroma, hue));
+        if [rgb.red, rgb.green, rgb.blue]
+            .iter()
+            .all(|c| (0.0..=1.0).contains(c))
+        {
+            break;
+        }
+        chroma -= 0.005;
+    }
+    format!("oklch({:.0}% {:.3} {:.1})", lightness * 100.0, chroma, hue)
+}
+
+/// A perceptually-uniform chip color for a shape digest, as a CSS `oklch(...)`
+/// string: deterministic in the digest (same shape, same color in every
+/// chapter) and gamut-safe (always renders).
+#[wasm_bindgen]
+pub fn chip_color(digest_hex: &str) -> String {
+    oklch_chip(digest_hex)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::oklch_chip;
+
+    #[test]
+    fn chip_color_stable_distinct_and_formatted() {
+        let a = oklch_chip("c80e6c0c0bab");
+        assert_eq!(a, oklch_chip("c80e6c0c0bab"), "same digest, same color");
+        assert_ne!(a, oklch_chip("394376dc71f0"), "different digest, different color");
+        assert!(a.starts_with("oklch(") && a.ends_with(')'), "got {a}");
+    }
+}

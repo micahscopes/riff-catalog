@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
+palette = "0.7"
 riff-catalog-music.workspace = true
 riff-catalog-core.workspace = true
 riff-catalog-yul.workspace = true
