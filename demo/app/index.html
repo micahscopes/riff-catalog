@@ -170,6 +170,22 @@
   .nchip { font-size: 11px; color: var(--ink); background: var(--bg-chip); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; min-width: 22px; text-align: center; }
   .shapedot { width: 13px; height: 13px; border-radius: 50%; background: var(--chip); border: 1px solid color-mix(in oklch, var(--chip) 55%, var(--bg)); margin-left: auto; }
 
+  /* the facet lattice (structure vs meaning) */
+  .lattice { width: 100%; height: auto; max-width: 720px; margin: 10px auto 4px; display: block; }
+  .latnode rect { fill: var(--bg-chip); stroke: var(--cool); stroke-width: 1; transition: fill .14s ease, stroke-width .14s ease; }
+  .latnode text { fill: var(--ink); font-family: var(--mono); font-size: 12px; pointer-events: none; }
+  .latnode.sem rect { stroke: var(--warm); stroke-dasharray: 4 3; }
+  .latnode.on rect { fill: color-mix(in oklch, var(--cool) 22%, var(--bg)); stroke-width: 2; }
+  .latnode.sem.on rect { fill: color-mix(in oklch, var(--warm) 22%, var(--bg)); }
+  .latedge { stroke: var(--line-bright); stroke-width: 1.5; }
+  .lathandoff { stroke: var(--warm); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+  .latarrhead { fill: var(--warm); }
+  .latdivide { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 5; }
+  .latcap { fill: var(--ink-dim); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; }
+  .latcap.sem { fill: var(--warm); }
+  .latfv { fill: var(--ink-faint); font-family: var(--mono); font-size: 10.5px; }
+  .latflow { fill: var(--ink-faint); font-family: var(--mono); font-size: 10px; }
+
   /* recognition view: real contracts, functions colored by the std-lib they were
      recognized as (grey = novel app code), with a Solidity source panel on hover. */
   .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11.5px; color: var(--ink-dim); margin: 2px 0 14px; }
