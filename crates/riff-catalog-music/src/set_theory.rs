@@ -56,9 +56,37 @@ pub fn interval_vector(pcs: &[i32]) -> [u8; 6] {
     v
 }
 
+/// Transpose a 12-bit pitch-class mask up by k semitones (bit i -> bit (i+k)%12).
+fn transpose_mask(mask: u32, k: u32) -> u32 {
+    let mut r = 0u32;
+    for i in 0..12u32 {
+        if mask & (1u32 << i) != 0 {
+            r |= 1u32 << ((i + k) % 12);
+        }
+    }
+    r
+}
+
+/// Transposition normal form: the canonical transposition representative of a
+/// pitch-class set (the minimal-rotation bitmask), as sorted pitch classes. Two
+/// transposition-equivalent sets share it. This is the rung between the literal
+/// note set and the prime form. It induces the same partition as
+/// polyphonotopes-math's normalFormBits (cross-checked against its tonal catalog).
+pub fn transposition_normal_form(pcs: &[i32]) -> Vec<i32> {
+    let mut mask = 0u32;
+    for p in pcs {
+        mask |= 1u32 << (p.rem_euclid(12) as u32);
+    }
+    if mask == 0 {
+        return vec![];
+    }
+    let min = (0..12u32).map(|k| transpose_mask(mask, k)).min().unwrap();
+    (0..12i32).filter(|i| min & (1u32 << i) != 0).collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{interval_vector, prime_form};
+    use super::{interval_vector, prime_form, transposition_normal_form};
     use crate::{PITCH_CLASS_SET, encode_pitch_class_set, facet_hex};
 
     #[test]
@@ -97,5 +125,33 @@ mod tests {
         assert_ne!(c_major, augmented, "augmented (3-12) is its own class");
         assert_ne!(c_major, diminished, "diminished (3-10) is its own class");
         assert_ne!(augmented, diminished, "3-12 and 3-10 differ");
+    }
+
+    #[test]
+    fn transposition_normal_form_partitions_like_polyphonotopes_math() {
+        // (bits, normalFormBits) straight from polyphonotopes-math/data/tonal-pcs.json.
+        // normalFormBits is transposition-invariant, so our minimal-rotation normal
+        // form must induce the same partition: same normalFormBits iff same normal form.
+        let catalog: &[(u32, u32)] = &[
+            (661, 661),
+            (2741, 2774),
+            (1453, 2774),
+            (669, 2382),
+            (1257, 2382),
+            (2733, 2742),
+            (2477, 3436),
+            (129, 2112),
+            (161, 2128),
+            (1041, 2208),
+        ];
+        let pcs_of = |bits: u32| -> Vec<i32> { (0..12i32).filter(|i| bits & (1u32 << i) != 0).collect() };
+        for &(b1, nf1) in catalog {
+            for &(b2, nf2) in catalog {
+                let same_theirs = nf1 == nf2;
+                let same_ours =
+                    transposition_normal_form(&pcs_of(b1)) == transposition_normal_form(&pcs_of(b2));
+                assert_eq!(same_ours, same_theirs, "bits {b1} vs {b2}");
+            }
+        }
     }
 }
