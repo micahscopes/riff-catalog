@@ -119,8 +119,85 @@ pub fn transposition_normal_form(pcs: &[i32]) -> Vec<i32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{interval_vector, prime_form, transposition_normal_form};
+    use super::{interval_vector, normal_order_zeroed, prime_form, transposition_normal_form};
     use crate::{PITCH_CLASS_SET, encode_pitch_class_set, facet_hex};
+
+    fn pcs_of_mask(mask: u32) -> Vec<i32> {
+        (0..12i32).filter(|i| mask & (1u32 << i) != 0).collect()
+    }
+
+    fn mask_of_pcs(pcs: &[i32]) -> u32 {
+        pcs.iter().fold(0u32, |m, p| m | (1u32 << p.rem_euclid(12)))
+    }
+
+    /// The two normal-order rules in this module must be ONE rule. `prime_form`
+    /// leans on `normal_order_zeroed` (span first, then packed inward from the
+    /// right) while `transposition_normal_form` minimizes the 12-bit mask over
+    /// rotations. Minimizing the mask integer minimizes the highest pitch class
+    /// first, then the next, which is exactly the most-compact comparison, so
+    /// the two must agree on every one of the 4095 nonempty sets. If they ever
+    /// diverged, the demo's A/B letter (Tn-type == prime form?) would be
+    /// unsound.
+    #[test]
+    fn normal_order_and_min_bitmask_are_the_same_rule_exhaustively() {
+        for mask in 1u32..4096 {
+            let set = pcs_of_mask(mask);
+            assert_eq!(
+                normal_order_zeroed(&set),
+                transposition_normal_form(&set),
+                "most-compact normal order must equal the min-bitmask normal form for {set:?}"
+            );
+        }
+    }
+
+    /// `prime_form` against a definitionally-Rahn reference: the minimal 12-bit
+    /// mask over the whole TnI orbit (all 12 transpositions of the set and all
+    /// 12 of its inversion). Rahn's most-compact comparison IS the mask order
+    /// (see the test above), so the orbit minimum is his prime form. Exhaustive
+    /// over every nonempty pitch-class set.
+    #[test]
+    fn prime_form_is_the_min_bitmask_of_the_tni_orbit_exhaustively() {
+        let transpose = |mask: u32, k: u32| -> u32 {
+            let mut r = 0u32;
+            for i in 0..12u32 {
+                if mask & (1 << i) != 0 {
+                    r |= 1 << ((i + k) % 12);
+                }
+            }
+            r
+        };
+        for mask in 1u32..4096 {
+            let set = pcs_of_mask(mask);
+            let inv: Vec<i32> = set.iter().map(|&x| (12 - x).rem_euclid(12)).collect();
+            let inv_mask = mask_of_pcs(&inv);
+            let orbit_min = (0..12)
+                .flat_map(|k| [transpose(mask, k), transpose(inv_mask, k)])
+                .min()
+                .unwrap();
+            assert_eq!(
+                mask_of_pcs(&prime_form(&set)),
+                orbit_min,
+                "prime_form must be the Rahn orbit minimum for {set:?}"
+            );
+        }
+    }
+
+    /// The prime form is a genuine TnI canonical form: constant on each TnI
+    /// orbit, a member of the orbit, and a fixed point of itself. Exhaustive.
+    #[test]
+    fn prime_form_canonicalizes_the_tni_orbit_exhaustively() {
+        for mask in 1u32..4096 {
+            let set = pcs_of_mask(mask);
+            let pf = prime_form(&set);
+            assert_eq!(prime_form(&pf), pf, "prime form is idempotent for {set:?}");
+            for k in 0..12 {
+                let t: Vec<i32> = set.iter().map(|&x| (x + k).rem_euclid(12)).collect();
+                let ti: Vec<i32> = t.iter().map(|&x| (12 - x).rem_euclid(12)).collect();
+                assert_eq!(prime_form(&t), pf, "constant under T{k} for {set:?}");
+                assert_eq!(prime_form(&ti), pf, "constant under T{k}I for {set:?}");
+            }
+        }
+    }
 
     #[test]
     fn prime_forms_match_the_published_catalog() {
