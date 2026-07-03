@@ -1,0 +1,110 @@
+{
+  "graph_key": {
+    "owner": {
+      "kind": "mir.body",
+      "owner": "pkg:token",
+      "local": "transfer"
+    },
+    "local": "body"
+  },
+  "nodes": [
+    [
+      {
+        "entity": {
+          "kind": "hir.expr",
+          "owner": "pkg:token",
+          "local": "expr:7"
+        }
+      },
+      {
+        "key": {
+          "entity": {
+            "kind": "hir.expr",
+            "owner": "pkg:token",
+            "local": "expr:7"
+          }
+        },
+        "kind": "expr",
+        "fields": [
+          {
+            "dimension": "names",
+            "name": "ident",
+            "value": {
+              "kind": "text",
+              "value": "amount"
+            }
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "entity": {
+          "kind": "mir.stmt",
+          "owner": "pkg:token",
+          "local": "stmt:3"
+        }
+      },
+      {
+        "key": {
+          "entity": {
+            "kind": "mir.stmt",
+            "owner": "pkg:token",
+            "local": "stmt:3"
+          }
+        },
+        "kind": "stmt",
+        "fields": [
+          {
+            "dimension": "structure",
+            "name": "op",
+            "value": {
+              "kind": "text",
+              "value": "add"
+            }
+          }
+        ]
+      }
+    ]
+  ],
+  "children": [
+    {
+      "parent": {
+        "entity": {
+          "kind": "mir.stmt",
+          "owner": "pkg:token",
+          "local": "stmt:3"
+        }
+      },
+      "label": "operand",
+      "ordinal": 0,
+      "child": {
+        "entity": {
+          "kind": "hir.expr",
+          "owner": "pkg:token",
+          "local": "expr:7"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": {
+        "entity": {
+          "kind": "mir.stmt",
+          "owner": "pkg:token",
+          "local": "stmt:3"
+        }
+      },
+      "label": "lowered_from",
+      "target": {
+        "entity": {
+          "kind": "hir.expr",
+          "owner": "pkg:token",
+          "local": "expr:7"
+        }
+      },
+      "role": "origin"
+    }
+  ]
+}

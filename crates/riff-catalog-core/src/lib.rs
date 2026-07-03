@@ -27,7 +27,7 @@ mod encode;
 // modules at the crate root so existing `riff_catalog_core::{...}` item paths and
 // the internal `crate::<module>::Item` references in the hashing modules keep
 // resolving unchanged. Hashing (encode, hash, policy, reference, index) stays here.
-pub use riff_catalog_schema::{dimension, error, graph, key, text, value};
+pub use riff_catalog_schema::{dimension, error, graph, key, record, text, value};
 use riff_catalog_schema::serde_pairs;
 
 pub use dimension::Dimension;
@@ -42,6 +42,7 @@ pub use index::{
 };
 pub use key::{EntityKey, GraphKey, NodeKey};
 pub use policy::{Algorithm, CyclePolicy, HashPolicy, PolicyId, ViewMode};
+pub use record::FingerprintRecord;
 pub use reference::{ArtifactRef, Facet, FacetAddress};
 pub use root::set_root;
 pub use text::{Digest, Name};
