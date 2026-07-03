@@ -1,0 +1,10 @@
+{
+  "derived": {
+    "owner": {
+      "kind": "mir.body",
+      "owner": "pkg:token",
+      "local": "transfer"
+    },
+    "local": "tmp:2"
+  }
+}

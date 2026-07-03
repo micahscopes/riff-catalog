@@ -1,0 +1,8 @@
+{
+  "owner": {
+    "kind": "yul.object",
+    "owner": "pkg:token",
+    "local": "Token"
+  },
+  "local": "runtime"
+}

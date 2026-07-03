@@ -1,0 +1,19 @@
+{
+  "graph_key": {
+    "owner": {
+      "kind": "yul.object",
+      "owner": "pkg:token",
+      "local": "Token"
+    },
+    "local": "runtime"
+  },
+  "policy_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "schema_version": 2,
+  "digests": {
+    "structure": "1111111111111111111111111111111111111111111111111111111111111111",
+    "names": "2222222222222222222222222222222222222222222222222222222222222222",
+    "constants": "3333333333333333333333333333333333333333333333333333333333333333",
+    "types": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "node_count": 7
+}

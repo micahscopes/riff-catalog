@@ -1,0 +1,7 @@
+{
+  "entity": {
+    "kind": "hir.expr",
+    "owner": "pkg:token",
+    "local": "expr:7"
+  }
+}

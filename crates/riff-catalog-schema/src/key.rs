@@ -9,10 +9,17 @@ use crate::text::{Name, UNIT_SEP};
 /// `owner` identifies the containing artifact, `local` the entity inside it.
 /// Mirrors fe's `OriginExportKey` shape so fe can map 1:1 at its boundary,
 /// with zero dependencies on fe (invariant: no salsa here).
+///
+/// `owner` and `local` accept fe's `owner_key` / `local_key` field names on
+/// deserialize (serde aliases), so an fe-emitted origin key parses into this
+/// type unchanged while fe renames its fields over one release. The canonical
+/// serialized form is `owner` / `local`; drop the aliases once fe has renamed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct EntityKey {
     kind: Name,
+    #[serde(alias = "owner_key")]
     owner: Name,
+    #[serde(alias = "local_key")]
     local: Name,
 }
 
