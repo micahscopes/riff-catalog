@@ -53,11 +53,18 @@ BLAKE3 and would be huge). This is the capstone witness on the cubical-specific 
 - `Riffcat/Music.agda` (Deliverable 4): pitch-class sets as 12-bit characteristic
   vectors, transposition as cyclic rotation (the Z/12 action), inversion as the mirror
   (the dihedral action), the orbit relation as the congruence, `SetClass = Pcs / ~SC`,
-  and `primeForm` (least rotation under a left-packing lex order) as the normalization.
-  `major-minor-same-setclass : Cmajor ~SC Aminor` holds by `refl`; all of C major, A
-  minor, C minor, and G major compute their prime form to exactly `[0, 3, 7]`. The
-  non-collapse `major-augmented-different-setclass : ¬ (Cmajor ~SC Caug)` is a checked
-  inequality (the augmented triad's prime form is `[0, 4, 8]`).
+  and `primeForm` as the normalization, under the SAME rule as the Rust engine: the
+  most compact rotation, i.e. minimal as a 12-bit integer with pitch class 11 the most
+  significant bit (Rahn's rule, the published catalog's). `major-minor-same-setclass :
+  Cmajor ~SC Aminor` holds by `refl`; all of C major, A minor, C minor, and G major
+  compute their prime form to exactly `[0, 3, 7]`. The non-collapse
+  `major-augmented-different-setclass : ¬ (Cmajor ~SC Caug)` is a checked inequality
+  (the augmented triad's prime form is `[0, 4, 8]`), and `Aminor7-prime` pins the
+  packing rule on the case that separates the conventions: the minor seventh (Forte
+  4-26) computes the compact `[0, 3, 5, 8]`, not the lex-least `[0, 2, 5, 9]`, the
+  exact case the engine's `prime_form` fix pinned. The explicit inversion generator
+  `invertI` checks the demo's A/B story at the Tn level: major and minor are distinct
+  transposition classes (3-11B vs 3-11A) and `invertI` maps one onto the other.
 - `Riffcat.agda`: the top module. It re-exports the four pieces and gathers the
   headline checked results (`transport-computes`, `music-major-equals-minor`,
   `music-major-not-augmented`). Typechecking this module green is a single green light
@@ -81,7 +88,9 @@ PROVED (typechecked, many by `refl`, i.e. they hold by computation):
 - The transport-computes lemmas, abstract and concrete (`anchor-rides`, `addr-rides`,
   `Concrete.parity-rides`), all by `refl`.
 - The music instance: prime form computes to `[0, 3, 7]` for every major/minor triad,
-  major equals minor as set classes, and the major/augmented non-collapse.
+  major equals minor as set classes, the major/augmented non-collapse, the compact
+  4-26 prime form `[0, 3, 5, 8]` (the packing-rule case shared with the engine), and
+  the explicit-inversion A/B checks at the Tn level.
 
 POSTULATED (the abstract hash, and only that):
 

@@ -14,9 +14,13 @@
     dihedral action.
   - The orbit relation under transposition (and, separately, under transposition AND
     inversion) is the congruence; the set class is `Pcs / ~`.
-  - The PRIME FORM / minimal-rotation is the normalization picking a representative:
-    the lexicographically least vector over all transpositions (for T-classes) and over
-    all transpositions of the set and its inversion (for set classes, the Forte form).
+  - The PRIME FORM / most-compact normal order is the normalization picking a
+    representative: the vector whose 12-bit integer reading (pitch class 11 the most
+    significant bit) is minimal over all transpositions (for T-classes) and over all
+    transpositions of the set and its inversion (for set classes). This is Rahn's
+    most-compact rule and it is the SAME canonicalization the Rust engine computes
+    (riff-catalog-music::set_theory: the min-bitmask normal form and prime form), so
+    the two witnesses share one convention, the published catalog's.
 
   The demo's headline (memory: canonical "3-11"): major and minor triads land in the
   SAME set-class quotient. We check that as `refl`: C major and A minor (indeed any
@@ -106,27 +110,38 @@ invertI (b0 ∷ b1 ∷ b2 ∷ b3 ∷ b4 ∷ b5 ∷ b6 ∷ b7 ∷ b8 ∷ b9 ∷ b
 invertI p = p  -- non-12 vectors are left alone; we only ever build length-12 ones
 
 ------------------------------------------------------------------------
--- Lexicographic order on Bool vectors with `true < false`, so that a vector with a
--- pitch class present EARLIER is SMALLER. The least rotation under this order is the
--- conventional left-packed prime form (a pitch at class 0, intervals packed to the
--- front), which for the major/minor triad set class is [0, 3, 7].
+-- The Rahn packing order: read the characteristic vector as a 12-bit integer with
+-- pitch class 11 the MOST significant bit, and prefer the smaller integer. Minimizing
+-- that integer clears the highest pitch class first, then the next one down: exactly
+-- Rahn's "smallest span, then packed inward from the right" normal-order rule, and
+-- exactly the min-bitmask normal form the Rust engine computes, so the witnesses
+-- share ONE canonicalization. (Plain left-to-right lexicographic packing is NOT that
+-- rule: it disagrees with the published catalog on e.g. the minor seventh, Forte
+-- 4-26, whose compact prime form is checked below.)
 ------------------------------------------------------------------------
 
--- is xs lexicographically ≤ ys (assuming equal length), with true < false?
-lexLE : List Bool → List Bool → Bool
-lexLE [] _ = true
-lexLE (_ ∷ _) [] = false
-lexLE (x ∷ xs) (y ∷ ys) =
-  if x then (if y then lexLE xs ys else true)        -- x=true: x ≤ y always (true is least); tie if y=true
-       else (if y then false else lexLE xs ys)       -- x=false: ≤ only if y=false too, then compare tails
+-- is xs ≤ ys read most-significant-bit-first (heads are the high bits, false < true)?
+msbLE : List Bool → List Bool → Bool
+msbLE [] _ = true
+msbLE (_ ∷ _) [] = false
+msbLE (x ∷ xs) (y ∷ ys) =
+  if x then (if y then msbLE xs ys else false)   -- x has the high bit, y not: x > y
+       else (if y then true else msbLE xs ys)    -- y has the high bit, x not: x < y
 
--- the lexicographically smaller of two vectors.
-lexMin : List Bool → List Bool → List Bool
-lexMin xs ys = if lexLE xs ys then xs else ys
+-- is xs ≤ ys as 12-bit integers (index 11 most significant)? Reverse both so the
+-- high bit leads, then compare most-significant-first.
+rahnLE : List Bool → List Bool → Bool
+rahnLE xs ys = msbLE (rev xs) (rev ys)
+
+-- the more compact (smaller-integer) of two vectors.
+rahnMin : List Bool → List Bool → List Bool
+rahnMin xs ys = if rahnLE xs ys then xs else ys
 
 ------------------------------------------------------------------------
--- All twelve transpositions, and the minimal one = the transposition-class normal
--- form (the "tightest packing" / transposition prime form).
+-- All twelve transpositions, and the most compact one (minimal as a 12-bit integer)
+-- = the transposition-class normal form, the Tn-type. This is the demo's
+-- A/B-distinguished form: tNF of a major triad is [0,4,7] (3-11B), of a minor triad
+-- [0,3,7] (3-11A), matching the engine's transposition_normal_form on the nose.
 ------------------------------------------------------------------------
 
 -- the list of all twelve transpositions of p.
@@ -137,21 +152,22 @@ allTranspositions p = go 12 p
     go zero    _ = []
     go (suc n) q = q ∷ go n (rotate1 q)
 
--- fold lexMin over a nonempty list of candidates, seeded by the first.
+-- fold rahnMin over a nonempty list of candidates, seeded by the first.
 minOf : Pcs → List Pcs → Pcs
 minOf seed [] = seed
-minOf seed (c ∷ cs) = minOf (lexMin seed c) cs
+minOf seed (c ∷ cs) = minOf (rahnMin seed c) cs
 
--- transposition-only normal form: least over the twelve transpositions.
+-- transposition-only normal form: most compact over the twelve transpositions.
 transNormalForm : Pcs → Pcs
 transNormalForm p with allTranspositions p
 ... | []       = p
 ... | (c ∷ cs) = minOf c cs
 
--- set-class (transpose-AND-invert) prime form: least over transpositions of BOTH the
--- set and its inversion. This is the Forte prime form.
+-- set-class (transpose-AND-invert) prime form: most compact over transpositions of
+-- BOTH the set and its inversion. This is the published (Rahn) prime form, the same
+-- value the engine's set_theory::prime_form returns.
 primeForm : Pcs → Pcs
-primeForm p = lexMin (transNormalForm p) (transNormalForm (invert p))
+primeForm p = rahnMin (transNormalForm p) (transNormalForm (invert p))
 
 ------------------------------------------------------------------------
 -- The orbit relations as congruences, and the set class as a quotient.
@@ -261,6 +277,23 @@ major-augmented-different-setclass eq = true≢false (cong pos3 eq)
 --  Bool-vector apartness proof, to keep the module focused.)
 
 ------------------------------------------------------------------------
+-- THE PACKING-RULE WITNESS: the minor seventh (Forte 4-26). Its published prime form
+-- is the compact [0,3,5,8]; the left-to-right lexicographic shortcut instead lands on
+-- the looser [0,2,5,9]. This is the exact case the Rust engine's prime_form was fixed
+-- on (riff-catalog-music::set_theory); checking it here, by refl, locks the cubical
+-- witness and the engine to ONE convention.
+------------------------------------------------------------------------
+
+Aminor7 : Pcs
+Aminor7 = mkPcs T F F F T F F T F T F F   -- {A,C,E,G} = 0,4,7,9
+
+primeForm-4-26 : Pcs
+primeForm-4-26 = mkPcs T F F T F T F F T F F F   -- 0,3,5,8
+
+Aminor7-prime : primeForm Aminor7 ≡ primeForm-4-26
+Aminor7-prime = refl
+
+------------------------------------------------------------------------
 -- THE EXPLICIT INVERSION OPERATION (the demo's `invert` toggle, checked).
 --
 -- The set-class quotient FOLDS inversion: major and minor already share a prime form
@@ -274,16 +307,16 @@ major-augmented-different-setclass eq = true≢false (cong pos3 eq)
 
 -- (1) The A/B distinction: major and minor are NOT the same transposition class, so
 -- the Tn-type keeps them apart (3-11B vs 3-11A). Project a position where their
--- transposition normal forms differ. (Agda computes tNF Cmajor with a present class
--- at position 8 and tNF Aminor without one there, so position 8 is true for major and
--- false for minor; we project it and read off true ≢ false.)
+-- transposition normal forms differ. (Agda computes tNF Cmajor = [0,4,7], the 3-11B
+-- form on the nose, and tNF Aminor = [0,3,7], the 3-11A form; position 4 is true for
+-- major and false for minor, so we project it and read off true ≢ false.)
 private
-  pos8 : Pcs → Bool
-  pos8 (_ ∷ _ ∷ _ ∷ _ ∷ _ ∷ _ ∷ _ ∷ _ ∷ b ∷ _) = b
-  pos8 _ = false
+  pos4 : Pcs → Bool
+  pos4 (_ ∷ _ ∷ _ ∷ _ ∷ b ∷ _) = b
+  pos4 _ = false
 
 major-minor-different-transclass : ¬ (Cmajor ~T Aminor)
-major-minor-different-transclass eq = true≢false (cong pos8 eq)
+major-minor-different-transclass eq = true≢false (cong pos4 eq)
 
 -- (2) THE inversion headline: invert the C major triad with the explicit I generator
 -- and it lands on the MINOR type (3-11B inverts to 3-11A). Checked at the Tn level,
@@ -310,7 +343,7 @@ invert-augmented-fixed = refl
 
 -- ~T refines ~SC: if two sets share a transposition normal form, they share a prime
 -- form. (Same T-normal-form => same transNormalForm on the set; the prime form is
--- lexMin of that with the inversion's, and the inversion of T-equal sets need not be
+-- rahnMin of that with the inversion's, and the inversion of T-equal sets need not be
 -- T-equal in general, so we prove this for the engine via the normal forms directly.)
 --
 -- We prove the contained-in fact by: primeForm depends on p ONLY through
@@ -327,7 +360,7 @@ p ~T' q = (transNormalForm p ≡ transNormalForm q)
         × (transNormalForm (invert p) ≡ transNormalForm (invert q))
 
 ~T'⊆~SC : (p q : Pcs) → p ~T' q → p ~SC q
-~T'⊆~SC p q (eT , eInv) = cong₂ lexMin eT eInv
+~T'⊆~SC p q (eT , eInv) = cong₂ rahnMin eT eInv
 
 -- the refinement theorem, instantiated: the finer (transpose-data) quotient surjects
 -- onto the coarser set-class quotient.
