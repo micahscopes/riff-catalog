@@ -78,3 +78,9 @@ music-major-equals-minor = major-minor-same-setclass
 -- ... and the non-collapse: major and augmented are different set classes:
 music-major-not-augmented : ¬ (Cmajor ~SC Caug)
 music-major-not-augmented = major-augmented-different-setclass
+
+-- ... and the packing-rule witness shared with the engine: the minor seventh (Forte
+-- 4-26) normalizes to the compact published prime form [0,3,5,8], not the lex-least
+-- [0,2,5,9]. The exact case the Rust prime_form fix pinned, checked by refl:
+music-minor-seventh-compact : primeForm Aminor7 ≡ primeForm-4-26
+music-minor-seventh-compact = Aminor7-prime
