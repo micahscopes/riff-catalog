@@ -280,6 +280,7 @@ const CH = [
   { nav: "two instantiations", kicker: "the edge of the method: one generic, two ways", title: "Same source, two instantiations: where the address agrees, and where it parts.", lede: "One generic shape, instantiated two ways. At the structure facet the two share an address: it is one skeleton. Keep the type spelling and the addresses part. Hover a dimension to see exactly where they agree and where they diverge, and read the honest gap underneath: this divergence is the syntactic shadow of the instantiation, not the monomorphized form.", body: `<two-instantiations></two-instantiations>` },
   { nav: "the engine checks too", kicker: "the same discipline, turned inward", title: "The engine checks too.", lede: "riffcat content-addresses the structure of code. The same discipline is turned on its own core. The digest function is written twice: in Rust, the engine that ships, and in Lean, where the rules are stated as theorems. Because the output is a fixed hash and every ordering inside it is canonical, a corpus of graphs is hashed by both and the bytes must match, exactly, in CI. This is a cited plan over the existing golden and conformance substrate, not a live proof: a Lean run needs the deferred toolchain.", body: `<lockstep-bench></lockstep-bench>` },
   { nav: "the fold", kicker: "how a facet address is made", title: "A content address is a fold.", lede: "One small unit lowers to a graph. Each node gets a context-free local digest, then the addresses snap in bottom-up: a parent folds its own local content with its children's tree digests, and the whole-graph digest lands last. Step through the fold, then drop a dimension and watch every address change.", body: `<fold-merkle></fold-merkle>` },
+  { nav: "provenance", kicker: "the compiler payoff: fold riffcat into origin tracing", title: "Where it came from rides along.", lede: "A source expression is lowered to a graph, then every lowered node records where it came from as a provenance edge. The engine addresses the shape both times, live, and the address does not move: provenance is queryable payload, not part of the fingerprint the catalog dedups on. Then take two lowerings that differ by one optimization pass: the engine finds them almost the same shape, and the provenance points at the node that changed.", body: `<provenance-rides></provenance-rides>` },
   { nav: "locality runs out", kicker: "the honest edge of a local merkle address", title: "When locality runs out.", lede: "A bottom-up node digest is a function of its own subtree and nothing else (invariant I3). Two real cases push past that: a cycle has no leaf to fold from, and an instantiated shape gets its identity from a context the subtree cannot see. One ships a workaround, one stays an open edge.", body: `<locality-limit></locality-limit>` },
 ];
 
@@ -301,7 +302,7 @@ const SECTIONS = [
   ["on real code", ["recognized", "twins", "dedup"]],
   ["in the compiler", ["the compiler too", "sniff it out", "modified", "two fingerprints", "main vs meta"]],
   ["structure and meaning", ["structure vs meaning", "prove it", "seat filled", "anchors", "the cheap yes", "prior art", "the proofs check"]],
-  ["the address up close", ["the fold", "two instantiations", "locality runs out"]],
+  ["the address up close", ["the fold", "provenance", "two instantiations", "locality runs out"]],
   ["a building block", ["a shared block", "what we need"]],
   ["in honesty", ["the engine checks too", "what we sampled"]],
 ];
@@ -3593,6 +3594,209 @@ customElements.define("fold-merkle", class extends HTMLElement {
     }
   }
   disconnectedCallback() { if (this._timer) clearInterval(this._timer); }
+});
+
+// "where it came from" (nav: provenance). LIVE. Two thin bindings over the
+// facade compute everything the chapter shows:
+//   origin_shape(specJson)                 -> the shape address WITH and WITHOUT
+//                                             the EdgeRole::Origin provenance
+//                                             edges, plus the engine's own
+//                                             match verdict.
+//   origin_containment(a, b, "structure")  -> the containment fraction of two
+//                                             lowerings and, engine-derived,
+//                                             exactly which nodes diverge.
+// The JS only assembles the input graphs (a synthetic stand-in for fe's origin
+// facts); no address, fraction, or divergence verdict is computed here. If the
+// bindings are missing the chapter says so rather than baking a result. Reuses
+// .dialbar/.ladder/.stop/.eqread/.twnote and the .latarrhead marker theme; new
+// visuals are the .prov* rules in index.html.
+
+// Beat 1 input: a source expression and its lowered MIR, one bundle. The two
+// subtrees are the shape; `origin` is the attribution that rides along. Extra
+// per-node keys (lab/stage/x/y) are ignored by the Rust deserializer and used
+// only to draw.
+const PROV_B1 = {
+  owner: "pkg:token", unit: "transfer", unit_kind: "mir.body",
+  nodes: [
+    { id: "src_ret", kind: "src.return", lab: "return", stage: "src", x: 150, y: 60 },
+    { id: "src_add", kind: "src.binexpr", fields: [["structure", "op", "+"]], lab: "a + b", stage: "src", x: 150, y: 142 },
+    { id: "src_a", kind: "src.name", fields: [["names", "name", "a"]], lab: "a", stage: "src", x: 100, y: 224 },
+    { id: "src_b", kind: "src.name", fields: [["names", "name", "b"]], lab: "b", stage: "src", x: 200, y: 224 },
+    { id: "body", kind: "mir.body", lab: "body", stage: "mir", x: 556, y: 60 },
+    { id: "add", kind: "mir.add", fields: [["structure", "op", "add"]], lab: "add", stage: "mir", x: 500, y: 142 },
+    { id: "ret", kind: "mir.ret", lab: "ret", stage: "mir", x: 624, y: 142 },
+    { id: "la", kind: "mir.local", lab: "a", stage: "mir", x: 452, y: 224 },
+    { id: "lb", kind: "mir.local", lab: "b", stage: "mir", x: 556, y: 224 },
+  ],
+  children: [
+    ["src_ret", "expr", 0, "src_add"], ["src_add", "lhs", 0, "src_a"], ["src_add", "rhs", 1, "src_b"],
+    ["body", "stmt", 0, "add"], ["add", "lhs", 0, "la"], ["add", "rhs", 1, "lb"], ["body", "stmt", 1, "ret"],
+  ],
+  edges: [["add", "flows_to", "ret", "data"]],
+  origin: [
+    ["body", "lowered_from", "src_ret"], ["add", "lowered_from", "src_add"],
+    ["la", "lowered_from", "src_a"], ["lb", "lowered_from", "src_b"], ["ret", "lowered_from", "src_ret"],
+  ],
+};
+
+// Beat 2 input: two lowerings of one source (p = hash(a, b); q = a * 2; return
+// p + q) that differ only in whether q's multiply was strength-reduced. B is
+// derived from A so they truly differ at one operator (mir.mul -> mir.shl) and
+// its literal, and nowhere else.
+const PROV_B2_A = {
+  owner: "pkg:token", unit: "scale", unit_kind: "mir.body",
+  nodes: [
+    { id: "body", kind: "mir.body" },
+    { id: "s0", kind: "mir.assign" }, { id: "call", kind: "mir.call" },
+    { id: "ca", kind: "mir.local" }, { id: "cb", kind: "mir.local" },
+    { id: "s1", kind: "mir.assign" }, { id: "op", kind: "mir.mul" },
+    { id: "ma", kind: "mir.local" }, { id: "k", kind: "mir.const", fields: [["constants", "value", "2"]] },
+    { id: "s2", kind: "mir.return" }, { id: "add", kind: "mir.add" },
+    { id: "pu", kind: "mir.local" }, { id: "qu", kind: "mir.local" },
+  ],
+  children: [
+    ["body", "stmt", 0, "s0"], ["s0", "expr", 0, "call"], ["call", "arg", 0, "ca"], ["call", "arg", 1, "cb"],
+    ["body", "stmt", 1, "s1"], ["s1", "expr", 0, "op"], ["op", "lhs", 0, "ma"], ["op", "rhs", 1, "k"],
+    ["body", "stmt", 2, "s2"], ["s2", "expr", 0, "add"], ["add", "lhs", 0, "pu"], ["add", "rhs", 1, "qu"],
+  ],
+  edges: [], origin: [],
+};
+const PROV_B2_B = JSON.parse(JSON.stringify(PROV_B2_A));
+PROV_B2_B.nodes.find((n) => n.id === "op").kind = "mir.shl";
+PROV_B2_B.nodes.find((n) => n.id === "k").fields = [["constants", "value", "1"]];
+
+// Display scaffold for the two lowerings: the three source statements, with the
+// operator node id whose divergence flags the row and the source span its
+// provenance records. Marking is driven by the engine's divergent-node set, not
+// by this table.
+const PROV_B2_ROWS = [
+  { id: "s0", op: "call", a: "p = hash(a, b)", b: "p = hash(a, b)", src: "hash(a, b)" },
+  { id: "s1", op: "op", a: "q = a * 2", b: "q = a &lt;&lt; 1", src: "a * 2" },
+  { id: "s2", op: "add", a: "return p + q", b: "return p + q", src: "p + q" },
+];
+
+customElements.define("provenance-rides", class extends HTMLElement {
+  async connectedCallback() {
+    this.view = "rides";   // "rides" (beat 1) | "diverge" (beat 2)
+    this.prov = true;      // beat 1: are the origin edges drawn
+    this.b1 = null; this.b2 = null; this.err = null;
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      if (b && typeof b.origin_shape === "function" && typeof b.origin_containment === "function") {
+        this.b1 = JSON.parse(b.origin_shape(JSON.stringify(PROV_B1)));
+        this.b2 = JSON.parse(b.origin_containment(JSON.stringify(PROV_B2_A), JSON.stringify(PROV_B2_B), "structure"));
+      } else {
+        this.err = "the origin bindings are not on window.wasmBindings in this build";
+      }
+    } catch (e) { this.err = String((e && e.message) || e); }
+    this.render();
+  }
+
+  render() {
+    const tabs = [["rides", "provenance rides along"], ["diverge", "provenance explains divergence"]]
+      .map(([k, l]) => `<span class="stop ${this.view === k ? "on" : ""}" data-view="${k}">${l}</span>`).join("");
+    const provBtn = (this.view === "rides" && !this.err)
+      ? `<div class="grp"><span>origin edges</span><button class="prov-toggle" aria-pressed="${this.prov}">${this.prov ? "shown" : "hidden"}</button></div>`
+      : "";
+    const body = this.err
+      ? `<p class="live-note"><b>not live:</b> ${this.err}. Nothing is shown baked; this chapter runs on the engine.</p>`
+      : this.view === "rides" ? this.ridesView() : this.divergeView();
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>view</span><div class="ladder">${tabs}</div></div>${provBtn}</div>
+      ${body}`;
+    this.querySelectorAll("[data-view]").forEach((s) =>
+      s.addEventListener("click", () => { if (this.view !== s.dataset.view) { this.view = s.dataset.view; this.render(); } }));
+    const pt = this.querySelector(".prov-toggle");
+    if (pt) pt.addEventListener("click", () => { this.prov = !this.prov; this.render(); });
+    this.wireRead();
+  }
+
+  ridesView() {
+    const d = this.b1, spec = PROV_B1;
+    const by = new Map(spec.nodes.map((n) => [n.id, n]));
+    const child = spec.children.map(([p, , , c]) => {
+      const a = by.get(p), b = by.get(c);
+      return `<line class="prov-child" x1="${a.x}" y1="${a.y + 16}" x2="${b.x}" y2="${b.y - 16}"/>`;
+    }).join("");
+    const dataEdge = spec.edges.map(([s, , t]) => {
+      const a = by.get(s), b = by.get(t);
+      return `<line class="prov-data" x1="${a.x + 42}" y1="${a.y + 9}" x2="${b.x - 42}" y2="${b.y + 9}"/>`;
+    }).join("");
+    const origin = !this.prov ? "" : spec.origin.map(([s, , t]) => {
+      const a = by.get(s), b = by.get(t);
+      return `<line class="prov-origin" x1="${a.x - 44}" y1="${a.y}" x2="${b.x + 44}" y2="${b.y}" marker-end="url(#prov-arr)"/>`;
+    }).join("");
+    const nodes = spec.nodes.map((n) =>
+      `<g class="prov-node prov-${n.stage}" data-id="${n.id}" transform="translate(${n.x},${n.y})">`
+      + `<rect x="-42" y="-16" width="84" height="32" rx="5"/>`
+      + `<text class="prov-lab" y="-2">${n.lab}</text>`
+      + `<text class="prov-kind" y="10">${n.kind}</text></g>`).join("");
+    const w = d.with_origin, wo = d.without_origin;
+    const chip = (hex) => `<span class="chip prov-chip" style="--chip:${chipColor(hex)}">${hex.slice(0, 12)}</span>`;
+    const cmp = `
+      <div class="prov-cmp">
+        <div class="prov-cmp-h">structure facet address, computed by the engine both times</div>
+        <div class="prov-cmp-row"><span class="prov-cmp-lab">with provenance</span>${chip(w.structure)}<span class="prov-cmp-meta">${w.node_count} nodes · ${w.origin_edges} origin edges</span></div>
+        <div class="prov-cmp-row"><span class="prov-cmp-lab">provenance stripped</span>${chip(wo.structure)}<span class="prov-cmp-meta">${wo.node_count} nodes · ${wo.origin_edges} origin edges</span></div>
+        <div class="prov-cmp-verdict ${d.structure_matches ? "ok" : "bad"}">${d.structure_matches ? "identical: attaching the origin edges does not move the shape address (the full facet holds too)" : "the addresses differ (unexpected)"}</div>
+      </div>`;
+    const idle = `The two little trees are the shape; the dashed arrows are provenance (<code>EdgeRole::Origin</code>), each lowered node pointing back at the source it came from. Toggle the origin edges: the address above does not move. Hover a lowered node to read its provenance.`;
+    const note = `Fold riffcat into a compiler's origin tracing and this is the payoff. The lowering above is a small stand-in for fe's origin facts: the source expression and its lowered form are the <b>structure</b>, and the <code>EdgeRole::Origin</code> edges are the <b>attribution</b>, each lowered node recording where it came from. The engine excludes origin edges from the structural fold, so attaching a full attribution graph leaves every facet address unchanged, structure and full alike, and the fingerprint the catalog dedups on stays put. Provenance is queryable payload that <b>rides along</b>; it does not move the shape. One honest label: folding an instrumentation <code>trace_events</code> payload in <em>would</em> move the address, a deliberate versioned cost, kept off here.`;
+    return `
+      <svg viewBox="0 0 720 268" class="prov-svg" role="img" aria-label="a source expression and its lowered MIR, linked by provenance edges">
+        <defs><marker id="prov-arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="latarrhead"/></marker></defs>
+        <text x="150" y="28" text-anchor="middle" class="prov-col">source expression</text>
+        <text x="556" y="28" text-anchor="middle" class="prov-col">lowered MIR</text>
+        ${child}${dataEdge}${origin}${nodes}
+      </svg>
+      ${cmp}
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">${note}</p>`;
+  }
+
+  divergeView() {
+    const d = this.b2;
+    const divA = new Set(d.a_only.map((n) => n.id));
+    const divB = new Set(d.b_only.map((n) => n.id));
+    const pct = Math.round(d.a_in_b * 100);
+    const panel = (which, div) => {
+      const rows = PROV_B2_ROWS.map((r) => {
+        const marked = div.has(r.id) || div.has(r.op);
+        const text = which === "a" ? r.a : r.b;
+        return `<div class="prov-stmt ${marked ? "diverge" : ""}"><span class="prov-stmt-id">${r.id}</span><code>${text}</code>${marked ? `<span class="prov-flag">changed</span>` : ""}</div>`;
+      }).join("");
+      return `<div class="prov-panel"><div class="prov-panel-h">${which === "a" ? "before the pass" : "after the pass"}</div>${rows}</div>`;
+    };
+    const bar = `<div class="prov-bar-wrap"><span class="bar prov-bar" style="width:${pct}%"></span><span class="prov-bar-num">${pct}%</span></div>`;
+    const site = PROV_B2_ROWS.find((r) => divA.has(r.op));
+    const where = site ? `The divergence localizes to <code>${site.id}</code>'s operator, which provenance records came from <code>${site.src}</code> in the source. ` : "";
+    const flagged = d.a_only.map((n) => `<span class="prov-tag">${n.id} <em>${n.kind}</em></span>`).join("");
+    const idle = `Two lowerings of one source, differing by a single pass. The engine reports ${pct}% structural containment and flags exactly the nodes that differ.`;
+    return `
+      <div class="prov-panels">${panel("a", divA)}${panel("b", divB)}</div>
+      <div class="prov-cont"><span class="prov-cont-lab">structural containment (engine)</span>${bar}</div>
+      <div class="prov-flagged"><span class="prov-flagged-lab">nodes the engine flags as divergent</span>${flagged}</div>
+      <div class="eqread" data-idle="${idle}">${idle}</div>
+      <p class="twnote">${where}The other two, <code>s1</code> and <code>body</code>, differ because a changed node bubbles up its spine, the honest behavior of a bottom-up Merkle address: the smallest changed subtree is the site, its ancestors follow. riffcat re-finds <em>same shape except here</em>, and the provenance says where. Every number and every flagged node here is computed by the engine at render time over the two graphs the page hands it; nothing is baked.</p>`;
+  }
+
+  wireRead() {
+    const read = this.querySelector(".eqread");
+    if (!read) return;
+    if (this.view === "rides") {
+      const lab = new Map(PROV_B1.nodes.map((n) => [n.id, n.lab]));
+      const origOf = new Map(PROV_B1.origin.map(([s, , t]) => [s, t]));
+      this.querySelectorAll(".prov-node").forEach((g) =>
+        g.addEventListener("mouseenter", () => {
+          const id = g.dataset.id, tgt = origOf.get(id);
+          read.innerHTML = tgt
+            ? `<b>${lab.get(id)}</b> lowered from <b>${lab.get(tgt)}</b> in the source (an <code>EdgeRole::Origin</code> edge, excluded from the fold)`
+            : `<b>${lab.get(id)}</b> is a source node; the lowered nodes point back at it`;
+        }));
+    }
+    this.addEventListener("mouseleave", () => { read.innerHTML = read.dataset.idle; });
+  }
 });
 
 const LOCLIM_VIEWS = [
