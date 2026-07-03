@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 palette = "0.7"
+riff-catalog.workspace = true
 riff-catalog-music.workspace = true
 riff-catalog-core.workspace = true
 riff-catalog-yul.workspace = true

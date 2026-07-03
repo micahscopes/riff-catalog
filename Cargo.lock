@@ -765,6 +765,7 @@ name = "riff-catalog-wasm"
 version = "0.1.0"
 dependencies = [
  "palette",
+ "riff-catalog",
  "riff-catalog-core",
  "riff-catalog-evm",
  "riff-catalog-music",

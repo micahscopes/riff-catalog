@@ -9,6 +9,7 @@ license = "Apache-2.0"
 repository = "https://github.com/micahscopes/riff-catalog"
 
 [workspace.dependencies]
+riff-catalog = { path = "crates/riff-catalog" }
 riff-catalog-core = { path = "crates/riff-catalog-core" }
 riff-catalog-schema = { path = "crates/riff-catalog-schema" }
 riff-catalog-music = { path = "crates/riff-catalog-music" }
