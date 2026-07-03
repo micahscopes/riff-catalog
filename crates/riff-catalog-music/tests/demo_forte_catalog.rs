@@ -69,6 +69,7 @@ fn the_demo_catalog_matches_the_published_catalog() {
     let expect: &[(&str, &str, &[i32], &[i32], [u8; 6])] = &[
         // notation, id,      prime form,    Tn-type,        interval vector
         ("C",     "3-11B", &[0, 3, 7],    &[0, 4, 7],     [0, 0, 1, 1, 1, 0]),
+        ("G",     "3-11B", &[0, 3, 7],    &[0, 4, 7],     [0, 0, 1, 1, 1, 0]),
         ("Am",    "3-11A", &[0, 3, 7],    &[0, 3, 7],     [0, 0, 1, 1, 1, 0]),
         ("Caug",  "3-12",  &[0, 4, 8],    &[0, 4, 8],     [0, 0, 0, 3, 0, 0]),
         ("Bdim",  "3-10",  &[0, 3, 6],    &[0, 3, 6],     [0, 0, 2, 0, 0, 1]),
@@ -83,6 +84,12 @@ fn the_demo_catalog_matches_the_published_catalog() {
         assert_eq!(&transposition_normal_form(&pcs), tnf, "{notation}: Tn-type");
         assert_eq!(&interval_vector(&pcs), iv, "{notation}: interval vector");
     }
+    // The one collapse the page shows at the set-class stop: the two major
+    // triads share a Tn-type (transposition folded), while the minor triad,
+    // its mirror, does not join them until the prime-form fold.
+    let tnf = |c: &str| transposition_normal_form(&chord_to_pitch_classes(c).expect(c));
+    assert_eq!(tnf("C"), tnf("G"), "C = G at the Tn-type");
+    assert_ne!(tnf("C"), tnf("Am"), "Am stays apart at the Tn-type (the A/B point)");
 }
 
 /// The demo's invert (I) toggle: A and B swap, symmetric sets stay themselves.
@@ -90,6 +97,7 @@ fn the_demo_catalog_matches_the_published_catalog() {
 fn the_invert_operation_swaps_a_and_b_and_fixes_the_symmetric_sets() {
     let expect: &[(&str, &str)] = &[
         ("C", "3-11A"),     // major inverts onto the minor type
+        ("G", "3-11A"),
         ("Am", "3-11B"),    // and minor onto the major type
         ("Caug", "3-12"),   // the symmetric four invert to themselves
         ("Bdim", "3-10"),
@@ -114,7 +122,7 @@ fn the_invert_operation_swaps_a_and_b_and_fixes_the_symmetric_sets() {
 /// lose its Forte number to a key mismatch.
 #[test]
 fn forte_names_keys_are_exactly_the_engine_prime_forms_of_the_demo_chords() {
-    let demo_chords = ["C", "Am", "Caug", "Bdim", "Cmaj7", "G7", "Am7"];
+    let demo_chords = ["C", "G", "Am", "Caug", "Bdim", "Cmaj7", "G7", "Am7"];
     let mut emitted: Vec<String> = demo_chords
         .iter()
         .map(|c| pcs_string(&prime_form(&chord_to_pitch_classes(c).expect(c))))

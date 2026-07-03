@@ -364,8 +364,9 @@ fn pcs_fingerprint(pcs: &[i32]) -> Result<serde_json::Value, JsValue> {
     // Three rungs: note_set keys on the literal pitch-class set (two spellings
     // of the same notes collapse); transposition_normal keys on the minimal
     // rotation (all transpositions collapse, matching polyphonotopes-math's
-    // normalFormBits); set_class keys on the Forte prime form (transposition and
-    // inversion, so major, minor, and other inversions of one class collapse).
+    // normalFormBits); set_class keys on the published prime form (Rahn
+    // most-compact, transposition AND inversion folded, so major, minor, and
+    // other inversions of one class collapse).
     let tnf = transposition_normal_form(pcs);
     let (tk, tg) = encode_pitch_class_set("tnf", &tnf).map_err(js_err)?;
     let pf = prime_form(pcs);
