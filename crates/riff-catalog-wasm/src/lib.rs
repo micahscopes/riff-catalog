@@ -10,9 +10,10 @@
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 
+use riff_catalog::{containment, ingest_graph};
 use riff_catalog_core::{
-    CyclePolicy, DigestRequest, DimensionDigests, Facet, Graph, GraphHashes, GraphKey, HashPolicy,
-    NodeKey, ViewMode, digest_graph,
+    CyclePolicy, Digest, DigestRequest, Dimension, DimensionDigests, EdgeRole, EntityKey, Facet,
+    Graph, GraphHashes, GraphKey, HashPolicy, NodeKey, ViewMode, digest_graph,
 };
 
 fn js_err(msg: impl std::fmt::Display) -> JsValue {
@@ -235,6 +236,250 @@ fn node_digests_impl(ir_ast_json: &str, mode: &str) -> Result<String, String> {
     .hashes;
 
     serde_json::to_string(&fold_payload(&unit.graph, &hashes)).map_err(|e| e.to_string())
+}
+
+// --- compiler provenance: origin graphs -----------------------------------
+// The "where it came from" chapter. A producer such as fe lowers a source
+// expression down a pipeline and records, for each lowered node, where it came
+// from. riffcat carries that provenance as `EdgeRole::Origin` edges, which the
+// structural fold excludes (`graph_digest.rs`): attaching a full attribution
+// graph does not move the shape address the catalog dedups on. These two
+// bindings let the demo show that live: the fiddly `Graph` assembly lives here
+// in tested Rust, and the JS only hands over a compact, readable spec.
+
+/// The lowering contract the origin graphs are digested under. Two producers at
+/// one level must encode identically; the demo picks one fe-flavored level.
+const ORIGIN_LEVEL: &str = "fe.origin.v1";
+
+/// A compact, JS-authored description of one lowered unit as a graph. Only input
+/// data: nodes, the ordered child skeleton (the Merkle spine), flat role-tagged
+/// edges, and the `EdgeRole::Origin` provenance edges. Extra keys per node (e.g.
+/// a display `src` label) are ignored here and read by the page.
+#[derive(serde::Deserialize)]
+struct OriginSpec {
+    /// The artifact (owner) all node keys hang under, e.g. `pkg:token`.
+    owner: String,
+    /// The unit's local name, e.g. `transfer`.
+    unit: String,
+    /// The kind of the unit's owning entity; defaults to a MIR body.
+    #[serde(default = "default_unit_kind")]
+    unit_kind: String,
+    nodes: Vec<SpecNode>,
+    /// `(parent, label, ordinal, child)` ordered containment edges.
+    #[serde(default)]
+    children: Vec<(String, String, u32, String)>,
+    /// `(source, label, target, role)` flat edges; role is never `origin` here.
+    #[serde(default)]
+    edges: Vec<(String, String, String, String)>,
+    /// `(source, label, target)` provenance edges, materialized as
+    /// `EdgeRole::Origin`.
+    #[serde(default)]
+    origin: Vec<(String, String, String)>,
+}
+
+fn default_unit_kind() -> String {
+    "mir.body".to_string()
+}
+
+#[derive(serde::Deserialize)]
+struct SpecNode {
+    id: String,
+    kind: String,
+    /// `(dimension, name, value)` dimension-tagged fields; values are text.
+    #[serde(default)]
+    fields: Vec<(String, String, String)>,
+}
+
+/// Map a spec role string to an [`EdgeRole`]. `origin` is not accepted here (it
+/// travels in the dedicated `origin` list) so a flat edge can never be silently
+/// excluded from the fold.
+fn flat_role(role: &str) -> Result<EdgeRole, String> {
+    Ok(match role {
+        "graph" => EdgeRole::Graph,
+        "control" => EdgeRole::Control,
+        "data" => EdgeRole::Data,
+        "reference" => EdgeRole::Reference,
+        "call" => EdgeRole::Call,
+        "dependency" => EdgeRole::Dependency,
+        other => return Err(format!("unknown flat edge role {other:?}")),
+    })
+}
+
+/// Build one `Graph` from a spec, optionally including the provenance edges. The
+/// node set and the child skeleton are identical either way: only the
+/// `EdgeRole::Origin` edges toggle, which is exactly what makes the with/without
+/// structural addresses comparable.
+fn build_origin_graph(spec: &OriginSpec, include_origin: bool) -> Result<Graph, String> {
+    let owner_ek = EntityKey::new(&spec.unit_kind, &spec.owner, &spec.unit).map_err(str_err)?;
+    let graph_key = GraphKey::new(owner_ek, "unit").map_err(str_err)?;
+    let mut graph = Graph::new(graph_key);
+
+    let mut kind_of: std::collections::BTreeMap<&str, &str> = std::collections::BTreeMap::new();
+    for node in &spec.nodes {
+        kind_of.insert(node.id.as_str(), node.kind.as_str());
+    }
+    let key_of = |id: &str| -> Result<NodeKey, String> {
+        let kind = kind_of
+            .get(id)
+            .ok_or_else(|| format!("edge references unknown node {id:?}"))?;
+        Ok(NodeKey::entity(
+            EntityKey::new(*kind, &spec.owner, id).map_err(str_err)?,
+        ))
+    };
+
+    for node in &spec.nodes {
+        let key = key_of(&node.id)?;
+        graph.add_node(key.clone(), node.kind.clone()).map_err(str_err)?;
+        for (dim, name, value) in &node.fields {
+            let dimension =
+                Dimension::parse(dim).ok_or_else(|| format!("unknown dimension {dim:?}"))?;
+            graph
+                .add_field(&key, dimension, name.clone(), value.clone())
+                .map_err(str_err)?;
+        }
+    }
+    for (parent, label, ordinal, child) in &spec.children {
+        graph
+            .add_child(&key_of(parent)?, label.clone(), *ordinal, &key_of(child)?)
+            .map_err(str_err)?;
+    }
+    for (source, label, target, role) in &spec.edges {
+        graph
+            .add_edge(&key_of(source)?, label.clone(), &key_of(target)?, flat_role(role)?)
+            .map_err(str_err)?;
+    }
+    if include_origin {
+        for (source, label, target) in &spec.origin {
+            graph
+                .add_edge(
+                    &key_of(source)?,
+                    label.clone(),
+                    &key_of(target)?,
+                    EdgeRole::Origin,
+                )
+                .map_err(str_err)?;
+        }
+    }
+    Ok(graph)
+}
+
+fn str_err(e: impl std::fmt::Display) -> String {
+    e.to_string()
+}
+
+/// The structural and full facet addresses of a graph, plus its node count. The
+/// addresses are the exact `FacetAddress::address_digest` values the CLI and
+/// corpus compare on, so a match here is a real "equal at this facet".
+fn origin_addresses(graph: &Graph) -> Result<(String, String, usize), String> {
+    let hashes = ingest_graph(graph, ORIGIN_LEVEL).map_err(str_err)?;
+    let pid = hashes.policy_id;
+    let structure = hashes
+        .facet_address(&Facet::structure_only(pid))
+        .map_err(str_err)?
+        .address_digest()
+        .to_hex();
+    let full = hashes
+        .facet_address(&Facet::full(pid))
+        .map_err(str_err)?
+        .address_digest()
+        .to_hex();
+    Ok((structure, full, hashes.nodes.len()))
+}
+
+/// Native-testable core of [`origin_shape`]: digest the same lowering with and
+/// without its provenance edges and report both addresses. The engine, not the
+/// page, decides whether they match (`structure_matches`/`full_matches`).
+fn origin_shape_impl(spec_json: &str) -> Result<String, String> {
+    let spec: OriginSpec = serde_json::from_str(spec_json).map_err(str_err)?;
+    let (plain_structure, plain_full, plain_nodes) =
+        origin_addresses(&build_origin_graph(&spec, false)?)?;
+    let (traced_structure, traced_full, traced_nodes) =
+        origin_addresses(&build_origin_graph(&spec, true)?)?;
+    let out = json!({
+        "level": ORIGIN_LEVEL,
+        "without_origin": {
+            "structure": plain_structure,
+            "full": plain_full,
+            "node_count": plain_nodes,
+            "origin_edges": 0,
+            "flat_edges": spec.edges.len(),
+        },
+        "with_origin": {
+            "structure": traced_structure,
+            "full": traced_full,
+            "node_count": traced_nodes,
+            "origin_edges": spec.origin.len(),
+            "flat_edges": spec.edges.len(),
+        },
+        "structure_matches": plain_structure == traced_structure,
+        "full_matches": plain_full == traced_full,
+    });
+    serde_json::to_string(&out).map_err(str_err)
+}
+
+/// Digest one lowering twice, with the `EdgeRole::Origin` provenance edges
+/// present and stripped, and return both facet addresses (structure and full)
+/// plus the node count and edge tallies. The structural address is identical
+/// either way, computed by the engine both times: provenance rides along as
+/// payload and does not move the shape the catalog dedups on. Input is the
+/// compact `OriginSpec` JSON the page assembles.
+#[wasm_bindgen]
+pub fn origin_shape(spec_json: &str) -> Result<String, JsValue> {
+    origin_shape_impl(spec_json).map_err(js_err)
+}
+
+/// The node keys of `a` whose subtree (`tree`) digest at `dim` is not present on
+/// any node of `b`: the engine's own "these shapes are in `a` but not `b`". This
+/// is where a divergence localizes; the change also bubbles up the spine, so a
+/// differing leaf drags its ancestors into the set (the honest Merkle behavior).
+fn divergent_nodes(a: &GraphHashes, b: &GraphHashes, dim: Dimension) -> Vec<Value> {
+    let in_b: std::collections::BTreeSet<Digest> = b
+        .nodes
+        .values()
+        .filter_map(|n| n.tree.get(dim).copied())
+        .collect();
+    a.nodes
+        .iter()
+        .filter(|(_, n)| n.tree.get(dim).is_none_or(|d| !in_b.contains(d)))
+        .map(|(key, _)| {
+            json!({
+                "id": key.owner().local(),
+                "kind": key.owner().kind(),
+                "key": key.canonical_key(),
+            })
+        })
+        .collect()
+}
+
+/// Native-testable core of [`origin_containment`].
+fn origin_containment_impl(a_json: &str, b_json: &str, dim: &str) -> Result<String, String> {
+    let dimension = Dimension::parse(dim).ok_or_else(|| format!("unknown dimension {dim:?}"))?;
+    let a_spec: OriginSpec = serde_json::from_str(a_json).map_err(str_err)?;
+    let b_spec: OriginSpec = serde_json::from_str(b_json).map_err(str_err)?;
+    let a = ingest_graph(&build_origin_graph(&a_spec, true)?, ORIGIN_LEVEL).map_err(str_err)?;
+    let b = ingest_graph(&build_origin_graph(&b_spec, true)?, ORIGIN_LEVEL).map_err(str_err)?;
+    let out = json!({
+        "dimension": dimension.as_str(),
+        "a_in_b": containment(&a, &b, dimension),
+        "b_in_a": containment(&b, &a, dimension),
+        "a_node_count": a.nodes.len(),
+        "b_node_count": b.nodes.len(),
+        "a_only": divergent_nodes(&a, &b, dimension),
+        "b_only": divergent_nodes(&b, &a, dimension),
+    });
+    serde_json::to_string(&out).map_err(str_err)
+}
+
+/// Compare two lowerings of the same source at a dimension. Returns the engine's
+/// containment fraction each way (how much of one shape's subtrees are present in
+/// the other) and, engine-derived, exactly which nodes diverge (the subtree
+/// digests in one that are absent from the other). The page reads a differing
+/// node's recorded origin to say where it came from; the verdict of which nodes
+/// differ is the engine's. `dimension` is one of the closed dimension names,
+/// e.g. `structure`.
+#[wasm_bindgen]
+pub fn origin_containment(a_json: &str, b_json: &str, dimension: &str) -> Result<String, JsValue> {
+    origin_containment_impl(a_json, b_json, dimension).map_err(js_err)
 }
 
 /// Fingerprint a contract's Solidity source. Input is solc's source `ast` JSON;
@@ -460,6 +705,116 @@ mod tests {
         // shape (anonymous) and identity differ: names/paths enter only in identity.
         let id = super::node_digests_impl(DEMO_YUL, "identity").unwrap();
         assert_ne!(a, id, "shape view should not equal identity view");
+    }
+
+    // A small fe-style lowering bundle: a source expression subtree and its
+    // lowered MIR subtree, threaded by `lowered_from` provenance edges. The two
+    // subtrees are the shape; the origin edges are the attribution that rides
+    // along. Kept in sync with the demo chapter's beat 1 in spirit, not byte for
+    // byte (the page owns its own copy).
+    const BEAT1_SPEC: &str = r#"{
+      "owner":"pkg:token","unit":"transfer","unit_kind":"mir.body",
+      "nodes":[
+        {"id":"src_ret","kind":"src.return"},
+        {"id":"src_add","kind":"src.binexpr","fields":[["structure","op","+"]]},
+        {"id":"src_a","kind":"src.name","fields":[["names","name","a"]]},
+        {"id":"src_b","kind":"src.name","fields":[["names","name","b"]]},
+        {"id":"body","kind":"mir.body"},
+        {"id":"add","kind":"mir.add","fields":[["structure","op","add"]]},
+        {"id":"la","kind":"mir.local"},
+        {"id":"lb","kind":"mir.local"},
+        {"id":"ret","kind":"mir.ret"}
+      ],
+      "children":[
+        ["src_ret","expr",0,"src_add"],["src_add","lhs",0,"src_a"],["src_add","rhs",1,"src_b"],
+        ["body","stmt",0,"add"],["add","lhs",0,"la"],["add","rhs",1,"lb"],["body","stmt",1,"ret"]
+      ],
+      "edges":[["add","flows_to","ret","data"]],
+      "origin":[
+        ["body","lowered_from","src_ret"],["add","lowered_from","src_add"],
+        ["la","lowered_from","src_a"],["lb","lowered_from","src_b"],
+        ["ret","lowered_from","src_ret"]
+      ]
+    }"#;
+
+    // Two lowerings of one source (`p = hash(a,b); q = a*2; return p+q`) that
+    // differ only in whether q's multiply was strength-reduced (mir.mul vs
+    // mir.shl). Everything else is one shape.
+    const BEAT2_A: &str = r#"{
+      "owner":"pkg:token","unit":"scale","unit_kind":"mir.body",
+      "nodes":[
+        {"id":"body","kind":"mir.body"},
+        {"id":"s0","kind":"mir.assign"},{"id":"call","kind":"mir.call"},
+        {"id":"ca","kind":"mir.local"},{"id":"cb","kind":"mir.local"},
+        {"id":"s1","kind":"mir.assign"},{"id":"op","kind":"mir.mul"},
+        {"id":"ma","kind":"mir.local"},{"id":"k","kind":"mir.const","fields":[["constants","value","2"]]},
+        {"id":"s2","kind":"mir.return"},{"id":"add","kind":"mir.add"},
+        {"id":"pu","kind":"mir.local"},{"id":"qu","kind":"mir.local"}
+      ],
+      "children":[
+        ["body","stmt",0,"s0"],["s0","expr",0,"call"],["call","arg",0,"ca"],["call","arg",1,"cb"],
+        ["body","stmt",1,"s1"],["s1","expr",0,"op"],["op","lhs",0,"ma"],["op","rhs",1,"k"],
+        ["body","stmt",2,"s2"],["s2","expr",0,"add"],["add","lhs",0,"pu"],["add","rhs",1,"qu"]
+      ],
+      "edges":[],"origin":[]
+    }"#;
+    const BEAT2_B: &str = r#"{
+      "owner":"pkg:token","unit":"scale","unit_kind":"mir.body",
+      "nodes":[
+        {"id":"body","kind":"mir.body"},
+        {"id":"s0","kind":"mir.assign"},{"id":"call","kind":"mir.call"},
+        {"id":"ca","kind":"mir.local"},{"id":"cb","kind":"mir.local"},
+        {"id":"s1","kind":"mir.assign"},{"id":"op","kind":"mir.shl"},
+        {"id":"ma","kind":"mir.local"},{"id":"k","kind":"mir.const","fields":[["constants","value","1"]]},
+        {"id":"s2","kind":"mir.return"},{"id":"add","kind":"mir.add"},
+        {"id":"pu","kind":"mir.local"},{"id":"qu","kind":"mir.local"}
+      ],
+      "children":[
+        ["body","stmt",0,"s0"],["s0","expr",0,"call"],["call","arg",0,"ca"],["call","arg",1,"cb"],
+        ["body","stmt",1,"s1"],["s1","expr",0,"op"],["op","lhs",0,"ma"],["op","rhs",1,"k"],
+        ["body","stmt",2,"s2"],["s2","expr",0,"add"],["add","lhs",0,"pu"],["add","rhs",1,"qu"]
+      ],
+      "edges":[],"origin":[]
+    }"#;
+
+    // Beat 1: attaching the origin/provenance edges leaves every facet address
+    // unchanged, computed by the engine both times. This is the load-bearing
+    // property of the chapter, pinned through the binding path.
+    #[test]
+    fn origin_edges_do_not_move_the_shape_through_the_binding() {
+        let out = super::origin_shape_impl(BEAT1_SPEC).expect("origin_shape");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["structure_matches"], serde_json::json!(true));
+        assert_eq!(v["full_matches"], serde_json::json!(true));
+        assert_eq!(v["with_origin"]["structure"], v["without_origin"]["structure"]);
+        assert_eq!(v["with_origin"]["full"], v["without_origin"]["full"]);
+        assert_eq!(v["with_origin"]["node_count"], v["without_origin"]["node_count"]);
+        // the provenance really is there in one and absent in the other.
+        assert!(v["with_origin"]["origin_edges"].as_u64().unwrap() > 0);
+        assert_eq!(v["without_origin"]["origin_edges"], serde_json::json!(0));
+        // a facet address is 32 bytes of hex.
+        assert_eq!(v["with_origin"]["structure"].as_str().unwrap().len(), 64);
+    }
+
+    // Beat 2: two lowerings of one source that differ by a single optimization
+    // pass are partially, not fully, contained, and the divergence localizes to
+    // specific nodes (all engine-derived).
+    #[test]
+    fn divergence_is_partial_and_localized_through_the_binding() {
+        let out =
+            super::origin_containment_impl(BEAT2_A, BEAT2_B, "structure").expect("origin_containment");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let c = v["a_in_b"].as_f64().unwrap();
+        assert!(c > 0.0 && c < 1.0, "expected partial containment, got {c}");
+        // the changed multiply must be among the nodes flagged as divergent.
+        let a_only = v["a_only"].as_array().unwrap();
+        assert!(!a_only.is_empty(), "a divergence must localize to some node");
+        assert!(
+            a_only.iter().any(|n| n["id"] == "op"),
+            "the strength-reduced operator should be flagged, got {a_only:?}"
+        );
+        // an unknown dimension name is rejected, not silently defaulted.
+        assert!(super::origin_containment_impl(BEAT2_A, BEAT2_B, "bogus").is_err());
     }
 
     #[test]
