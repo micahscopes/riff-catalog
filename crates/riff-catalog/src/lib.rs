@@ -106,4 +106,50 @@ mod tests {
         let c = containment(&a, &edited, Dimension::Structure);
         assert!(c > 0.0 && c < 1.0, "partial containment, got {c}");
     }
+
+    /// The property the fe pairing rests on: recording provenance (where each
+    /// node came from) as `EdgeRole::Origin` edges does not move the shape
+    /// address at any facet. Origin edges are payload the engine excludes from
+    /// the fold, so a producer can attach a full origin/attribution graph
+    /// without perturbing the fingerprint the catalog dedups on.
+    #[test]
+    fn origin_edges_do_not_perturb_the_shape() {
+        let ek = |kind: &str, local: &str| EntityKey::new(kind, "pkg:token", local).unwrap();
+        let build = |with_origin: bool| -> Graph {
+            let mut g =
+                Graph::new(GraphKey::new(ek("mir.body", "transfer"), "body").unwrap());
+            let body = NodeKey::entity(ek("mir.body", "transfer"));
+            let s0 = NodeKey::entity(ek("mir.stmt", "stmt:0"));
+            let s1 = NodeKey::entity(ek("mir.stmt", "stmt:1"));
+            g.add_node(body.clone(), "body").unwrap();
+            g.add_node(s0.clone(), "stmt").unwrap();
+            g.add_node(s1.clone(), "stmt").unwrap();
+            g.add_field(&s0, Dimension::Structure, "op", "add").unwrap();
+            g.add_field(&s1, Dimension::Structure, "op", "ret").unwrap();
+            g.add_child(&body, "stmt", 0, &s0).unwrap();
+            g.add_child(&body, "stmt", 1, &s1).unwrap();
+            g.add_edge(&s0, "flows_to", &s1, EdgeRole::Data).unwrap();
+            if with_origin {
+                // provenance edges: each statement records the unit it lowered
+                // from. Same node set, only Origin edges added.
+                g.add_edge(&s0, "lowered_from", &body, EdgeRole::Origin).unwrap();
+                g.add_edge(&s1, "lowered_from", &body, EdgeRole::Origin).unwrap();
+            }
+            g
+        };
+
+        let plain = ingest_graph(&build(false), "fe.mir.v1").unwrap();
+        let traced = ingest_graph(&build(true), "fe.mir.v1").unwrap();
+        for facet_of in [Facet::full, Facet::names_blind, Facet::structure_only] {
+            let a = plain.facet_address(&facet_of(plain.policy_id)).unwrap();
+            let b = traced.facet_address(&facet_of(traced.policy_id)).unwrap();
+            assert_eq!(
+                a.address_digest(),
+                b.address_digest(),
+                "origin edges moved a facet address"
+            );
+        }
+        // the provenance really is present in the traced graph, just inert.
+        assert_eq!(build(false).edges.len() + 2, build(true).edges.len());
+    }
 }
