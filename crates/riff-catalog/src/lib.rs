@@ -1,12 +1,18 @@
 //! riff-catalog: a thin facade over the engine.
 //!
 //! It re-exports the core API (so producers depend on one crate), adds a
-//! solc-free graph ingest, and adds weighted-containment similarity over the
-//! per-node Merkle subtree digests. The similarity is the basis for "this shape
-//! is contained in that one", which is how modified variants are found: a fork
-//! that edited part of a function still contains most of its subtree shapes.
+//! solc-free graph ingest, a reader for fe's origin/provenance trace bundle, and
+//! weighted-containment similarity over the per-node Merkle subtree digests. The
+//! similarity is the basis for "this shape is contained in that one", which is
+//! how modified variants are found: a fork that edited part of a function still
+//! contains most of its subtree shapes.
 
 pub use riff_catalog_core::*;
+
+/// Read an fe origin/provenance trace bundle (JSONL) into riff graphs. Hand the
+/// result to [`ingest_graph`] to digest each one. The origin graph rides along
+/// as `EdgeRole::Origin` topology and does not move any facet address.
+pub use riff_catalog_ingest_trace::{IngestError, ingest_trace_bundle};
 
 use std::collections::BTreeSet;
 
@@ -151,5 +157,76 @@ mod tests {
         }
         // the provenance really is present in the traced graph, just inert.
         assert_eq!(build(false).edges.len() + 2, build(true).edges.len());
+    }
+
+    /// The same contract, proven end-to-end on the origin-bundle reader's own
+    /// output: read a small fe-style bundle into a graph, strip its
+    /// `EdgeRole::Origin` edges, and confirm every facet address (every
+    /// dimension, and the named facets) is byte-identical with and without the
+    /// provenance. The origin edges carry a real `introduced_by` payload and
+    /// still move nothing, because the engine excludes Origin edges from the
+    /// fold. This is the property the fe integration relies on.
+    #[test]
+    fn reader_origin_edges_are_inert_to_every_facet() {
+        // Two origin nodes and two provenance edges between them, in fe's wire
+        // form (with the `owner_key` / `local_key` field names).
+        let bundle = concat!(
+            "{\"record\":\"metadata\",\"schema_version\":1,\"input_path\":\"prov.fe\"}\n",
+            "{\"record\":\"fact\",\"type\":\"origin_node\",\"key\":",
+            "{\"kind\":\"hir.expr\",\"owner_key\":\"pkg:p\",\"local_key\":\"0\"}}\n",
+            "{\"record\":\"fact\",\"type\":\"origin_node\",\"key\":",
+            "{\"kind\":\"runtime.stmt\",\"owner_key\":\"pkg:p\",\"local_key\":\"s0\"}}\n",
+            "{\"record\":\"fact\",\"type\":\"origin_edge\",",
+            "\"from\":{\"kind\":\"runtime.stmt\",\"owner_key\":\"pkg:p\",\"local_key\":\"s0\"},",
+            "\"to\":{\"kind\":\"hir.expr\",\"owner_key\":\"pkg:p\",\"local_key\":\"0\"},",
+            "\"label\":\"lowered_from\",\"introduced_by\":\"mir\"}\n",
+            "{\"record\":\"fact\",\"type\":\"origin_edge\",",
+            "\"from\":{\"kind\":\"runtime.stmt\",\"owner_key\":\"pkg:p\",\"local_key\":\"s0\"},",
+            "\"to\":{\"kind\":\"hir.expr\",\"owner_key\":\"pkg:p\",\"local_key\":\"0\"},",
+            "\"label\":\"emitted_from\"}\n",
+        );
+
+        let with_origin = ingest_trace_bundle(bundle).unwrap().pop().unwrap();
+        // The provenance is present and queryable as topology.
+        assert_eq!(with_origin.edges.len(), 2);
+        assert!(with_origin.edges.iter().all(|e| e.role == EdgeRole::Origin));
+        assert!(
+            with_origin
+                .edges
+                .iter()
+                .any(|e| e.fields.iter().any(|f| f.name.as_str() == "introduced_by")),
+            "the introducing phase rides along on the edge"
+        );
+
+        // Strip the origin edges: same nodes, no provenance.
+        let mut without_origin = with_origin.clone();
+        without_origin.edges.retain(|e| e.role != EdgeRole::Origin);
+        assert!(without_origin.edges.is_empty());
+
+        let a = ingest_graph(&with_origin, "fe.origin.v1").unwrap();
+        let b = ingest_graph(&without_origin, "fe.origin.v1").unwrap();
+        assert_eq!(a.policy_id, b.policy_id);
+
+        // Every single-dimension facet address is unchanged by the provenance.
+        for d in Dimension::ALL {
+            let facet = Facet::new(a.policy_id, [d]).unwrap();
+            assert_eq!(
+                a.facet_address(&facet).unwrap().address_digest(),
+                b.facet_address(&facet).unwrap().address_digest(),
+                "origin edges moved the {d:?} facet address"
+            );
+        }
+        // And the named multi-dimension facets, including the full facet.
+        for facet_of in [Facet::full, Facet::names_blind, Facet::structure_only] {
+            assert_eq!(
+                a.facet_address(&facet_of(a.policy_id))
+                    .unwrap()
+                    .address_digest(),
+                b.facet_address(&facet_of(b.policy_id))
+                    .unwrap()
+                    .address_digest(),
+                "origin edges moved a named facet address"
+            );
+        }
     }
 }
