@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use riff_catalog_schema::{
-    Dimension, Digest, EdgeRole, EntityKey, FingerprintRecord, Graph, GraphKey, NodeKey,
+    Dimension, Digest, EdgeRole, EntityKey, Field, FingerprintRecord, Graph, GraphKey, NodeKey,
 };
 
 fn ek(kind: &str, owner: &str, local: &str) -> EntityKey {
@@ -36,6 +36,29 @@ fn sample_graph() -> Graph {
     // payload, not shape (the engine excludes them from the structural digest).
     g.add_edge(&lowered, "lowered_from", &src, EdgeRole::Origin)
         .unwrap();
+    g.validate().unwrap();
+    g
+}
+
+/// The same shape as [`sample_graph`], but the provenance edge carries a
+/// payload field (the compiler phase that introduced it). This freezes the
+/// edge-with-fields wire form the fe origin-bundle reader emits. The payload is
+/// inert to every facet address (Origin edges are excluded from the fold).
+fn sample_graph_edge_fields() -> Graph {
+    let mut g = Graph::new(GraphKey::new(ek("mir.body", "pkg:token", "transfer"), "body").unwrap());
+    let src = NodeKey::entity(ek("hir.expr", "pkg:token", "expr:7"));
+    let lowered = NodeKey::entity(ek("mir.stmt", "pkg:token", "stmt:3"));
+    g.add_node(src.clone(), "expr").unwrap();
+    g.add_node(lowered.clone(), "stmt").unwrap();
+    g.add_child(&lowered, "operand", 0, &src).unwrap();
+    g.add_edge_with_fields(
+        &lowered,
+        "lowered_from",
+        &src,
+        EdgeRole::Origin,
+        vec![Field::new(Dimension::Names, "introduced_by", "mir").unwrap()],
+    )
+    .unwrap();
     g.validate().unwrap();
     g
 }
@@ -90,6 +113,7 @@ fn wire_forms_are_frozen() {
         &GraphKey::new(ek("yul.object", "pkg:token", "Token"), "runtime").unwrap(),
     );
     golden("graph_with_origin", &sample_graph());
+    golden("graph_with_origin_edge_fields", &sample_graph_edge_fields());
     golden("fingerprint_record", &sample_record());
 }
 
