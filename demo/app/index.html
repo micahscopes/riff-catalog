@@ -52,7 +52,8 @@
   header.status .live { color: var(--a); font-size: 12px; }
   header.status .live.bad { color: var(--rose); }
 
-  nav.chapters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 18px; align-items: baseline; }
+  nav.chapters { display: flex; flex-wrap: wrap; gap: 4px; margin: 36px 0 8px; padding-top: 18px; border-top: 1px solid var(--line); align-items: baseline; }
+  nav.chapters::before { content: "jump to any chapter"; flex-basis: 100%; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 2px; }
   nav.chapters .navsec {
     flex-basis: 100%; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
     color: var(--ink-faint); margin: 9px 0 1px;
@@ -325,7 +326,7 @@
   .vhead .vsrcfy { margin-left: auto; color: var(--cool); text-decoration: none; font-size: 11px; }
   .vhead .vsrcfy:hover { text-decoration: underline; }
 
-  .pager { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .pager { display: flex; align-items: center; gap: 14px; margin: 0 0 16px; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--line); }
   .pager button { font: inherit; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); padding: 7px 16px; cursor: pointer; }
   .pager button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-bright); }
   .pager button:disabled { opacity: 0.3; cursor: default; }
@@ -967,8 +968,8 @@
     <span class="live" id="engine">booting wasm…</span>
     <span class="stamp">arrow keys or the buttons</span>
   </header>
-  <nav class="chapters" id="nav"></nav>
   <tour-app></tour-app>
+  <nav class="chapters" id="nav" aria-label="all chapters"></nav>
   <p class="note">
     The “drive the dial” fingerprints run <b>live in your browser</b> (riffcat as wasm). Those numbers
     are this run; corpus-level figures are the 2026-06-11 schema-2 stage.
