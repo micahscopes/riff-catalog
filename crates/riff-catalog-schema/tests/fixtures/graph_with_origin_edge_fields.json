@@ -1,0 +1,102 @@
+{
+  "graph_key": {
+    "owner": {
+      "kind": "mir.body",
+      "owner": "pkg:token",
+      "local": "transfer"
+    },
+    "local": "body"
+  },
+  "nodes": [
+    [
+      {
+        "entity": {
+          "kind": "hir.expr",
+          "owner": "pkg:token",
+          "local": "expr:7"
+        }
+      },
+      {
+        "key": {
+          "entity": {
+            "kind": "hir.expr",
+            "owner": "pkg:token",
+            "local": "expr:7"
+          }
+        },
+        "kind": "expr",
+        "fields": []
+      }
+    ],
+    [
+      {
+        "entity": {
+          "kind": "mir.stmt",
+          "owner": "pkg:token",
+          "local": "stmt:3"
+        }
+      },
+      {
+        "key": {
+          "entity": {
+            "kind": "mir.stmt",
+            "owner": "pkg:token",
+            "local": "stmt:3"
+          }
+        },
+        "kind": "stmt",
+        "fields": []
+      }
+    ]
+  ],
+  "children": [
+    {
+      "parent": {
+        "entity": {
+          "kind": "mir.stmt",
+          "owner": "pkg:token",
+          "local": "stmt:3"
+        }
+      },
+      "label": "operand",
+      "ordinal": 0,
+      "child": {
+        "entity": {
+          "kind": "hir.expr",
+          "owner": "pkg:token",
+          "local": "expr:7"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": {
+        "entity": {
+          "kind": "mir.stmt",
+          "owner": "pkg:token",
+          "local": "stmt:3"
+        }
+      },
+      "label": "lowered_from",
+      "target": {
+        "entity": {
+          "kind": "hir.expr",
+          "owner": "pkg:token",
+          "local": "expr:7"
+        }
+      },
+      "role": "origin",
+      "fields": [
+        {
+          "dimension": "names",
+          "name": "introduced_by",
+          "value": {
+            "kind": "text",
+            "value": "mir"
+          }
+        }
+      ]
+    }
+  ]
+}

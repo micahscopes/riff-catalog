@@ -111,6 +111,16 @@ pub struct Edge {
     pub label: Name,
     pub target: NodeKey,
     pub role: EdgeRole,
+    /// Dimension-tagged payload carried on the edge (mirrors [`Node::fields`]).
+    ///
+    /// This is provenance-side metadata, e.g. the compiler phase that introduced
+    /// an `EdgeRole::Origin` edge. It is inert to every facet address: the
+    /// structural fold reads only `role`, `label`, and endpoint digests, and
+    /// `EdgeRole::Origin` edges are excluded from the fold entirely. The field is
+    /// skip-serialized when empty, so an edge with no payload keeps its frozen
+    /// wire form unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<Field>,
 }
 
 impl Edge {
@@ -125,6 +135,24 @@ impl Edge {
             label: Name::new(label, "edge label")?,
             target,
             role,
+            fields: Vec::new(),
+        })
+    }
+
+    /// An edge carrying dimension-tagged payload fields (see [`Edge::fields`]).
+    pub fn with_fields(
+        source: NodeKey,
+        label: impl Into<String>,
+        target: NodeKey,
+        role: EdgeRole,
+        fields: Vec<Field>,
+    ) -> Result<Self, CatalogError> {
+        Ok(Self {
+            source,
+            label: Name::new(label, "edge label")?,
+            target,
+            role,
+            fields,
         })
     }
 }
@@ -205,6 +233,29 @@ impl Graph {
         self.require_node(target)?;
         self.edges
             .push(Edge::new(source.clone(), label, target.clone(), role)?);
+        Ok(())
+    }
+
+    /// Add an edge carrying dimension-tagged payload fields (see
+    /// [`Edge::fields`]). Used to attach provenance (e.g. the introducing phase)
+    /// to an `EdgeRole::Origin` edge without perturbing any facet address.
+    pub fn add_edge_with_fields(
+        &mut self,
+        source: &NodeKey,
+        label: impl Into<String>,
+        target: &NodeKey,
+        role: EdgeRole,
+        fields: Vec<Field>,
+    ) -> Result<(), CatalogError> {
+        self.require_node(source)?;
+        self.require_node(target)?;
+        self.edges.push(Edge::with_fields(
+            source.clone(),
+            label,
+            target.clone(),
+            role,
+            fields,
+        )?);
         Ok(())
     }
 
