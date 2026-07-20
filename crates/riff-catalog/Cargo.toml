@@ -11,6 +11,7 @@ doctest = false
 
 [dependencies]
 riff-catalog-core.workspace = true
+riff-catalog-ingest-trace.workspace = true
 
 [dev-dependencies]
 riff-catalog-music.workspace = true
