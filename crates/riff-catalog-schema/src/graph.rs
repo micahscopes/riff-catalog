@@ -147,6 +147,9 @@ impl Edge {
         role: EdgeRole,
         fields: Vec<Field>,
     ) -> Result<Self, CatalogError> {
+        if !fields.is_empty() && role != EdgeRole::Origin {
+            return Err(CatalogError::EdgeFieldsRequireOrigin);
+        }
         Ok(Self {
             source,
             label: Name::new(label, "edge label")?,
@@ -275,6 +278,9 @@ impl Graph {
         for edge in &self.edges {
             self.require_node(&edge.source)?;
             self.require_node(&edge.target)?;
+            if !edge.fields.is_empty() && edge.role != EdgeRole::Origin {
+                return Err(CatalogError::EdgeFieldsRequireOrigin);
+            }
         }
         Ok(())
     }
@@ -287,6 +293,34 @@ impl Graph {
                 key: key.canonical_key(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod edge_field_tests {
+    use super::*;
+    use crate::key::EntityKey;
+
+    #[test]
+    fn payload_fields_are_restricted_to_inert_origin_edges() {
+        let entity = |local| EntityKey::new("test.node", "test", local).unwrap();
+        let source = NodeKey::entity(entity("source"));
+        let target = NodeKey::entity(entity("target"));
+        let fields = vec![Field::new(Dimension::Names, "phase", "mir").unwrap()];
+
+        assert_eq!(
+            Edge::with_fields(
+                source.clone(),
+                "flows_to",
+                target.clone(),
+                EdgeRole::Data,
+                fields.clone(),
+            ),
+            Err(CatalogError::EdgeFieldsRequireOrigin),
+        );
+        assert!(
+            Edge::with_fields(source, "lowered_from", target, EdgeRole::Origin, fields).is_ok()
+        );
     }
 }
 

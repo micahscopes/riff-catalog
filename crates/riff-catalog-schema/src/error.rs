@@ -20,6 +20,8 @@ pub enum CatalogError {
     MissingNode { key: String },
     #[error("node stored under {map_key} but contains key {node_key}")]
     NodeKeyMismatch { map_key: String, node_key: String },
+    #[error("edge payload fields are only supported on origin edges")]
+    EdgeFieldsRequireOrigin,
     #[error("digest requested for graph {requested} but got {actual}")]
     GraphKeyMismatch { requested: String, actual: String },
     #[error("index policy {actual} does not match {expected}")]
