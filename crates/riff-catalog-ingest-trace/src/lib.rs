@@ -51,6 +51,9 @@ const ORIGIN_GRAPH_DEFAULT_OWNER: &str = "bundle";
 const ORIGIN_GRAPH_LOCAL: &str = "origins";
 /// Field name that carries an origin edge's introducing compiler phase.
 const INTRODUCED_BY_FIELD: &str = "introduced_by";
+/// Fe trace-bundle schema understood by this reader. This is distinct from
+/// Riffcat's canonical hashing schema version.
+pub const SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 1;
 
 /// Error raised while reading a trace bundle.
 #[derive(Debug, thiserror::Error)]
@@ -73,6 +76,17 @@ pub enum IngestError {
     /// Building the origin graph's own key failed.
     #[error("building origin graph key: {0}")]
     GraphKey(#[source] CatalogError),
+    /// A metadata header announced a trace format this reader cannot safely
+    /// interpret. Unknown fact kinds within a supported schema remain skippable;
+    /// an unknown schema may change the meaning of known kinds.
+    #[error(
+        "trace bundle line {line}: unsupported trace schema version {found} (supported: {supported})"
+    )]
+    UnsupportedSchema {
+        line: usize,
+        found: u64,
+        supported: u64,
+    },
 }
 
 /// One `origin_node` record's payload. Extra line fields (`record`, `type`) are
@@ -135,6 +149,15 @@ pub fn ingest_trace_bundle(jsonl: &str) -> Result<Vec<Graph>, IngestError> {
             serde_json::from_str(text).map_err(|source| IngestError::Json { line, source })?;
 
         if value.get("record").and_then(|r| r.as_str()) == Some("metadata") {
+            if let Some(found) = value.get("schema_version").and_then(|v| v.as_u64()) {
+                if found != SUPPORTED_TRACE_SCHEMA_VERSION {
+                    return Err(IngestError::UnsupportedSchema {
+                        line,
+                        found,
+                        supported: SUPPORTED_TRACE_SCHEMA_VERSION,
+                    });
+                }
+            }
             if let Some(path) = value.get("input_path").and_then(|p| p.as_str()) {
                 input_path = Some(path.to_string());
             }
