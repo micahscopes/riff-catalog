@@ -55,15 +55,11 @@
   .detail-toggle:hover { color: var(--ink); border-color: var(--line-bright); }
   body.details .detail-toggle { color: var(--warm); border-color: var(--warm); }
 
-  /* Presentation mode is deliberately sparse. The older storybook components
-     retain their evidence and qualifications, but they stay behind one explicit
-     control instead of competing with the slide's claim and interaction. */
+  /* Presentation mode is sparse, but only the long asides go: the twnotes (the
+     design commentary a reader wants and a room does not) and anything marked
+     detail-only. Never the evidence. The numbers, the honest floors, and the
+     ask stay on the slide, since they are the point of it. */
   body:not(.details) .stage .twnote,
-  body:not(.details) .stage .vledger-cap,
-  body:not(.details) .stage .vlead,
-  body:not(.details) .stage .ctneeds,
-  body:not(.details) .stage .ctstart,
-  body:not(.details) .stage .ctstart + *,
   body:not(.details) .stage .detail-only,
   body:not(.details) main > .note { display: none; }
 
@@ -80,20 +76,6 @@
   }
   nav.chapters button:hover { color: var(--ink); border-color: var(--line-bright); }
   nav.chapters button[aria-current="true"] { color: var(--bg); background: var(--a); border-color: var(--a); font-weight: 700; }
-  nav.deck-nav {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
-    margin: 14px 0 4px;
-  }
-  nav.deck-nav a {
-    display: flex; align-items: baseline; gap: 10px; padding: 9px 12px;
-    border: 1px solid var(--line); background: var(--bg); color: var(--ink-dim);
-    text-decoration: none;
-  }
-  nav.deck-nav a:hover { border-color: var(--line-bright); color: var(--ink); }
-  nav.deck-nav a[aria-current="page"] { border-color: var(--a); background: var(--a-dim); }
-  nav.deck-nav b { color: var(--ink); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
-  nav.deck-nav a[aria-current="page"] b { color: var(--a); }
-  nav.deck-nav span { color: var(--ink-faint); font-size: 11px; }
 
   .stage { border: 1px solid var(--line); background: var(--bg-raise); padding: 22px 24px 24px; min-height: 320px; }
   .stage .kicker { color: var(--ink-faint); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; }
@@ -1231,24 +1213,23 @@
 <main>
   <header class="status">
     <span class="prog">tour</span>
-    <span class="crumb">riffcat · DRAFT 4 · INVARIANT ARC</span>
+    <span class="crumb">riffcat</span>
     <span class="spacer"></span>
     <span class="live" id="engine">booting wasm…</span>
     <button class="detail-toggle" id="details" type="button" aria-pressed="false">details: off</button>
     <span class="stamp">arrow keys or the buttons</span>
   </header>
-  <nav class="deck-nav" id="deck-nav" aria-label="slideshow variants"></nav>
   <tour-app></tour-app>
   <nav class="chapters" id="nav" aria-label="all chapters"></nav>
   <p class="note">
-    The “drive the dial” fingerprints run <b>live in your browser</b> (riffcat as wasm). Those numbers
-    are this run; corpus-level figures are the 2026-06-11 schema-2 stage.
+    The live chapters fingerprint <b>in your browser</b> (riffcat as wasm), so those numbers are this
+    run; corpus-level figures are the 2026-06-11 schema-2 stage.
   </p>
 </main>
 <script src="realdata.js"></script>
 <script src="facetdemo.js"></script>
 <script src="vulndata.js"></script>
 <script src="fuzzydata.js"></script>
-<script type="module" src="app.js?v=multi-deck-r4-20260723"></script>
+<script type="module" src="app.js?v=talk-arc-20260727"></script>
 </body>
 </html>
