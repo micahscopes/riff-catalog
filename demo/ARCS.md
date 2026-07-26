@@ -79,8 +79,11 @@ honest limits), `possibility-grid` (four short possibilities), `lockin-visual`,
 - **talk** (default): problem, the choice, on real code, through the compiler,
   from match to knowledge, honesty and the ask. Every payoff beat is live or
   real; the three drawn slides are setup only.
-- **storybook**: the domain-coherent order the deck grew up in (all music
-  together, all code together). Good for browsing, not for a talk.
+- **short** (`?arc=short`): the same spine in ten beats, for a short slot. One
+  problem slide, one mechanism, two payoffs, the compiler beat, the boundary, the
+  ask. Everything else is one click away in the appendix.
+- **storybook** (`?arc=storybook`): the domain-coherent order the deck grew up in
+  (all music together, all code together). Good for browsing, not for a talk.
 
 Earlier draft-4 experiments (three abstract arcs, hand-drawn IR and bytecode
 columns) are in git at `7552b5e` if a framing there is worth reviving. The
