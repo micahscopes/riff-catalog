@@ -156,132 +156,475 @@ function wireHighlight(host, describe) {
   });
 }
 
-const CH = [
+const CH_INVARIANT = [
   {
     nav: "start",
-    kicker: "the one idea",
-    title: "Sameness is a spectrum",
-    lede: "Little of what a compiler emits is new; how strict sameness should be is yours to set.",
-    body: `<p>Same in every byte, or same once you ignore the names, constants, and types? Each answer is a <em>facet</em>.</p>`,
+    kicker: "the environment",
+    title: "The same program has many representations",
+    lede: "",
+    body: `<div class="compiler-paths">
+      <div class="compiler-path"><b>compiler A</b><span>source</span><i>→</i><span>AST</span><i>→</i><span>IR A</span><i>→</i><span>bytecode</span></div>
+      <div class="compiler-path"><b>compiler B</b><span>source</span><i>→</i><span>AST</span><i>→</i><span>IR B</span><i>→</i><span>bytecode</span></div>
+      <div class="compiler-others"><span>formal model</span><span>execution trace</span><span>verified source</span></div>
+    </div>`,
   },
   {
-    nav: "facets",
-    kicker: "on five functions",
-    title: "Facets of similarity",
-    lede: "Loosen what counts as the same, and watch which of these functions merge to one shape.",
+    nav: "stranded results",
+    kicker: "the problem",
+    title: "Useful results get stuck in the representation where they were made",
+    lede: "",
+    body: `<div class="result-attachments">
+      <div><b>source</b><span>warning</span></div>
+      <div><b>IR</b><span>origin information</span></div>
+      <div><b>bytecode</b><span>execution trace</span></div>
+      <div><b>formal model</b><span>proof</span></div>
+    </div>`,
+  },
+  {
+    nav: "rebuild the map",
+    kicker: "the cost",
+    title: "Change the compiler, and every tool has to find its subject again",
+    lede: "",
+    body: `<div class="broken-reference">
+      <div><span>before</span><b>proof about IR node 184</b><small>the reference works</small></div>
+      <div class="broken-arrow">→</div>
+      <div><span>after a compiler change</span><b>IR node 184 is gone</b><small>what does the proof refer to now?</small></div>
+    </div>`,
+  },
+  {
+    nav: "what stays",
+    kicker: "the question",
+    title: "Two functions can be the same for one tool and different for another",
+    lede: "",
     body: `<facet-primer></facet-primer>`,
   },
   {
     nav: "the riff",
-    kicker: "the same idea, on music",
-    title: "Riffs and riffing",
-    lede: "A motif and some variants. Choose what makes two the same, intervals, rhythm, or the bare notes, then press play.",
-    body: `<riff-dial></riff-dial><div class="kicker" style="margin-top:24px">now on chords, parsed from real notation</div><chord-fp></chord-fp>`,
+    kicker: "a familiar example",
+    title: "Every transformation preserves some properties and changes others",
+    lede: "Moving a phrase to another key changes its notes while preserving its intervals. Changing its rhythm preserves something else.",
+    body: `<riff-dial></riff-dial>`,
+  },
+  {
+    nav: "address it",
+    kicker: "the proposal",
+    title: "Riffcat makes selected invariants addressable across representations",
+    lede: "Choose what must remain unchanged, normalize the permitted differences, and derive an address from the result.",
+    body: `<div class="address-proposition">
+      <div class="address-choice"><span>keep what matters</span><b>structure</b><b>types</b><b>origins</b></div>
+      <div class="address-arrow">→</div>
+      <div class="address-result"><span>derive</span><b>an address for that invariant</b></div>
+    </div>
+    <p class="proposition-note">A checksum keeps every byte. Riffcat can keep a different declared boundary.</p>`,
   },
   {
     nav: "recognized",
-    kicker: "the pitch, on real mainnet code",
-    title: "Recognizing known library code",
-    lede: "Real verified contracts from Sourcify, each function colored by the library it matches: OpenZeppelin, Solady, Solmate. Grey is new code; hover to read it.",
+    kicker: "across contracts",
+    title: "Library functions remain recognizable across contexts",
+    lede: "These contracts contain code from OpenZeppelin, Solady, and Solmate under different names and within different surrounding structures.",
     body: `<recog-scan></recog-scan>`,
   },
   {
-    nav: "twins",
-    kicker: "the same shape, across real contracts",
-    title: "The same function across contracts",
-    lede: "The same library functions, exact same shape, recur across these contracts. Pick one to see everywhere it lands.",
-    body: `<recog-twins></recog-twins>`,
-  },
-  {
-    nav: "dedup",
-    kicker: "how much is actually new",
-    title: "How much code is actually new",
-    lede: "Across ten real contracts: how much is a known library shape, and how much is new code someone has to audit.",
-    body: `<recog-dedup></recog-dedup>`,
-  },
-  {
-    nav: "the compiler too",
-    kicker: "one level down, post-compilation",
-    title: "Repetition in compiled code",
-    lede: "Now the Yul a contract compiles to, code you never wrote. Loosen it and the colors merge; hover a chip to light its twins.",
-    body: `<live-dial></live-dial>`,
-  },
-  {
-    nav: "sniff it out",
-    kicker: "find a known bug by shape",
-    title: "Finding a known bug by shape",
-    lede: "A known ERC-4626 inflation shape, matched across Sourcify's verified vaults. The patch is a different shape, so you see who fixed it, and the shape reaches forks an exact-source match misses.",
-    body: `<vuln-sniff></vuln-sniff>`,
-  },
-  {
     nav: "modified",
-    kicker: "similarity is a spectrum",
-    title: "Catching edited forks",
-    lede: "Real forks edit the function, a dropped modifier, a hand-rolled forwarder, so exact match and text search miss them. Matching the shape's subtrees catches them anyway.",
+    kicker: "after modification",
+    title: "Vulnerability patterns can survive edits",
+    lede: "Exact source matching misses these forks. Structural comparison identifies how much of the vulnerable function remains and where it occurs.",
     body: `<fuzzy-scan></fuzzy-scan>`,
   },
   {
-    nav: "structure vs meaning",
-    kicker: "the substrate, not the climb",
-    title: "Structure as the substrate for meaning",
-    lede: "riffcat stays on the syntactic side, a lattice of facets, each a content address. Forgetting more moves toward meaning but never reaches it, and is not meant to: it is the substrate a semantic claim pins to.",
-    body: `<facet-lattice></facet-lattice>`,
+    nav: "where it came from",
+    kicker: "through the compiler",
+    title: "One check can be traced across representations",
+    lede: "The source, IR, and bytecode look different. Origin links let a tool follow the owner check through all three.",
+    body: `<authorization-trace></authorization-trace>`,
   },
-  { nav: "prove it", kicker: "the seat we leave open", title: "A match is a candidate, not a proof", lede: "A shape match is a candidate, not a verdict. riffcat points at the matching subtree and writes the proof obligation, then leaves the verdict to a named verifier. Pick a tool to see what it would have to discharge.", body: `<verdict-seat></verdict-seat>` },
+  {
+    nav: "many addresses",
+    kicker: "several useful invariants",
+    title: "Different tasks can address different invariants",
+    lede: "An exact-build address preserves every input. A structural address remains stable across changes that its policy deliberately ignores.",
+    body: `<metadata-axes></metadata-axes>`,
+  },
+  {
+    nav: "narrow the proof",
+    kicker: "from syntax to semantics",
+    title: "Finding the same check saves work. It does not finish the proof.",
+    lede: "",
+    body: `<div class="proof-handoff">
+      <div class="proof-handoff-step">
+        <span>riffcat finds</span>
+        <code>msg.sender == owner</code>
+        <b>the corresponding check in the compiled program</b>
+      </div>
+      <div class="proof-handoff-arrow">→</div>
+      <div class="proof-handoff-step proof-handoff-question">
+        <span>the verifier asks</span>
+        <strong>Can anyone else reach <code>release</code>?</strong>
+      </div>
+    </div>`,
+  },
+  {
+    nav: "prove it",
+    kicker: "the boundary",
+    title: "Structural matches are not behavioral proofs",
+    lede: "",
+    body: `<div class="role-split">
+      <div><span>riffcat</span><b>These parts correspond structurally.</b></div>
+      <div><span>verification</span><b>This behavioral claim holds.</b></div>
+    </div>`,
+  },
   {
     nav: "anchors",
-    kicker: "the heart of the framing: a fact rides an address",
-    title: "How a fact rides an address",
-    lede: "Pin a fact to an address and it rides, free, to every shape that shares it, but stays true only while the anchor keeps every dimension the fact needs. Loosen the anchor and watch where it starts to ride wrong.",
-    body: `<anchor-transport></anchor-transport>`,
+    kicker: "reuse",
+    title: "The owner claim survives one edit, but not the other",
+    lede: "",
+    body: `<div class="claim-examples">
+      <div class="claim-example claim-original">
+        <span>original</span>
+        <code>require(msg.sender == owner)</code>
+        <b>Only the owner can proceed.</b>
+      </div>
+      <div class="claim-example claim-good">
+        <span>rewritten</span>
+        <code>require(owner == msg.sender)</code>
+        <b>Claim still applies</b>
+      </div>
+      <div class="claim-example claim-bad">
+        <span>principal changed</span>
+        <code>require(msg.sender == admin)</code>
+        <b>Claim no longer applies</b>
+      </div>
+    </div>
+    <p class="proposition-note">The last check has the same general shape, but it authorizes someone different.</p>`,
   },
-  { nav: "prior art", kicker: "the primitive is older than us", title: "Where this idea comes from", lede: "Three fields reached the same move on their own: normalize a structure, then address it by its content, music theory in 1973, a content-addressed Lean kernel, a verified EVM compiler in Lean. The hash is not the new part; the faceted, explainable query is.", body: `<prior-art></prior-art>` },
+  { nav: "precedent", kicker: "precedent", title: "Other systems already address stable properties", lede: "URIs separate reference from representation. Lurk and Ix connect content-addressed objects with computation and proofs.", body: `<prior-art></prior-art>` },
   {
-    nav: "the proofs check",
-    kicker: "one rung up: the map itself is proved",
-    title: "The normal form, proved",
-    lede: "A kernel-checked Lean proof that the prime form riffcat lands on really is the canonical one for its transpose-and-invert class. The proof is content-addressed and pinned to the one facet where it holds. Hover the badge to read each part honestly.",
-    body: `<verified-attest></verified-attest>`,
+    nav: "possibilities",
+    kicker: "what becomes possible",
+    title: "Dependencies, proofs, origins, and observations can refer to invariants",
+    lede: "",
+    body: `<div class="possibility-grid">
+      <div><b>resolve</b><span>dependencies by interface</span></div>
+      <div><b>verify</b><span>claims across models</span></div>
+      <div><b>explain</b><span>traces after transformation</span></div>
+      <div><b>trust</b><span>proofs and attestations</span></div>
+    </div>`,
   },
+  { nav: "boundaries", kicker: "limits", title: "No address captures every invariant", lede: "Cycles require a larger unit, while some invariants depend on context outside the addressed code.", body: `<div class="figure"><div class="cap">two limits in the current design</div><table><tr><td class="n">cycles</td><td>The smallest addressable unit may be a whole connected region rather than one node.</td></tr><tr><td class="n">external context</td><td>Instantiation and name resolution may depend on information outside the local subtree.</td></tr></table></div>` },
   {
-    nav: "forte catalog",
-    kicker: "structure lands on a published catalog",
-    title: "The chord catalog, from structure alone",
-    lede: "Eight chords, parsed from notation, land on the published catalog at the set-class setting, A/B letters and all. The only label riffcat is given is Forte's name; the rest is read off the structure. Hit invert: A and B swap, the symmetric chords hold still.",
-    body: `<forte-catalog></forte-catalog>`,
-  },
-  { nav: "interval vector", kicker: "the harmonic signature underneath a chord", title: "A chord's interval signature", lede: "Every chord reduces to six numbers, its interval counts from the minor second up to the tritone. Move it to any key or flip it over and the six hold. Pick a chord; major and minor share a signature.", body: "<ivf-fingerprint></ivf-fingerprint>" },
-  { nav: "three rungs", kicker: "one chord, three rungs of forgetting", title: "Three rungs of similarity", lede: "Take one chord up three rungs: the literal notes; the same set packed tight, with the key forgotten; then the prime form, which also folds mirror images together. Each rung forgets one more thing.", body: `<three-rungs></three-rungs>` },
-  { nav: "two fingerprints", kicker: "two axes, not two rivals", title: "Two kinds of fingerprint", lede: "Sourcify's metadata hash answers \"is this the identical build\" and flips on a single whitespace; the structural fingerprint answers \"is this the same code wearing different clothes\" and is built to hold when the hash moves. Edit the source and watch the axes part.", body: `<metadata-axes></metadata-axes>` },
-  {
-  nav: "main vs meta",
-  kicker: "the wall riffcat steps around",
-  title: "Code and metadata, interleaved",
-  lede: "Raw onchain bytecode is one run-on strip: code (Main) interleaved with metadata, immutables, libraries, constructor arguments (Meta), no clean line between them. riffcat works one level up, on source, where structure, names, constants, and types are separate by construction.",
-  body: `<byte-wall></byte-wall>`,
-},
-  {
-    nav: "a shared block",
-    kicker: "offered for co-design, not handed over",
-    title: "A shared building block",
-    lede: "riffcat is a small library with a thin CLI. We are not asking you to adopt it, we are asking what it should become for your work.",
-    body: `<shared-block></shared-block>`,
-  },
-  {
-    nav: "what we need",
-    kicker: "offered for co-design, not a handoff",
-    title: "What each team contributes",
-    lede: "riffcat does one leg, localization. The compiler supplies provenance, source to bytecode; a verifier decides, with a proof or a counterexample. Hover a leg for what we would need from that team, and the question we cannot answer ourselves.",
+    nav: "join",
+    kicker: "an invitation",
+    title: "What must remain stable in your work?",
+    lede: "Riffcat has a working addressing core. We need other teams to identify the invariants and origin relationships their tools should share.",
     body: `<collab-triangle></collab-triangle>`,
   },
-  { nav: "what we sampled", kicker: "the honest numbers, and the ones we owe you", title: "What we measured, and what we didn't", lede: "Every number in this storybook is a Sourcify-floor count over distinct source files, plus one null calibration. None of it is precision or recall against a baseline. Below: exactly what each number is, and the measurement we still owe you.", body: "<sampled-ledger></sampled-ledger>" },
-  { nav: "the cheap yes", kicker: "generalizing a fast-path hevm already ships", title: "When structure can skip the solver", lede: "hevm opens its equivalence check with a syntactic cheap yes: if two bytecodes are byte-identical it returns equivalent and never calls a solver. riffcat generalizes that exact-equality check to a facet, so the yes fires on more pairs. Loosen it and watch where the yes stays sound, where it is only a candidate, and the one place it must not fire.", body: `<cy-cheap-yes></cy-cheap-yes>` },
-  { nav: "seat filled", kicker: "the seat, filled: a Lean proof takes it", title: "A cited proof of equivalence", lede: "The occupant is cited, not run: a pinned EquiVM Lean proof (argotorg/EquiVM) that a solc-built ERC20 runtime is observationally equivalent to a hand-written Solm spec, four-way case split, trust boundary named. Pinned to a facet address, it carries to every behavior-complete twin; the Solm spec is itself a forgetting, so it too is a facet. Nothing here runs Lean.", body: `<seat-filled></seat-filled>` },
-  { nav: "two instantiations", kicker: "the edge of the method: one generic, two ways", title: "Where structure agrees and types differ", lede: "One generic shape, instantiated two ways. At the structure facet they share one address, one skeleton; keep the type spelling and they part. The honest gap: that split is the syntactic shadow of the instantiation, not the monomorphized form.", body: `<two-instantiations></two-instantiations>` },
-  { nav: "the engine checks too", kicker: "the same discipline, turned inward", title: "Checking the engine against itself", lede: "The digest is written twice: Rust, the engine that ships, and Lean, where the rules are theorems. Every ordering is canonical, so both hash one corpus and the bytes must match in CI. This is a cited plan over the existing golden tests, not a live proof; the Lean run waits on the deferred toolchain.", body: `<lockstep-bench></lockstep-bench>` },
-  { nav: "the fold", kicker: "how a facet address is made", title: "How the address is computed", lede: "One small unit lowers to a graph. Each node gets a context-free local digest, then the addresses snap in bottom-up: a parent folds its own local content with its children's tree digests, and the whole-graph digest lands last. Step through the fold, then drop a dimension and watch every address change.", body: `<fold-merkle></fold-merkle>` },
-  { nav: "provenance", kicker: "the compiler payoff: fold riffcat into origin tracing", title: "Provenance rides along", lede: "Every lowered node keeps an edge back to its source, and the engine addresses the shape both times, live: the address does not move, provenance is queryable payload, not part of the fingerprint the catalog dedups on. The same read reaches across builds, two feature branches of fe or sonatina, or two different compilers of one contract, so where the shape agrees they share an address, and where a pass or a toolchain moves the code the divergence localizes it.", body: `<provenance-rides></provenance-rides>` },
-  { nav: "locality runs out", kicker: "the honest edge of a local merkle address", title: "The limits of a local address", lede: "A bottom-up node digest is a function of its own subtree and nothing else (invariant I3). Two real cases push past that: a cycle has no leaf to fold from, and an instantiated shape gets its identity from a context the subtree cannot see. One ships a workaround, one stays an open edge.", body: `<locality-limit></locality-limit>` },
+];
+
+const CH_AGILITY = [
+  {
+    nav: "many forms",
+    kicker: "the environment",
+    title: "The same program moves through many representations",
+    lede: "",
+    body: `<div class="compiler-paths">
+      <div class="compiler-path"><b>frontend A</b><span>source</span><i>→</i><span>AST</span><i>→</i><span>IR A</span><i>→</i><span>bytecode</span></div>
+      <div class="compiler-path"><b>frontend B</b><span>source</span><i>→</i><span>AST</span><i>→</i><span>IR B</span><i>→</i><span>bytecode</span></div>
+      <div class="compiler-others"><span>formal model</span><span>execution trace</span><span>verified source</span></div>
+    </div>`,
+  },
+  {
+    nav: "private maps",
+    kicker: "the recurring work",
+    title: "Every tool rebuilds the map between those representations",
+    lede: "",
+    body: `<div class="private-maps">
+      <div class="map-artifacts"><span>source</span><span>IR</span><span>bytecode</span><span>model</span></div>
+      <div class="map-lines" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="map-tools"><span>debugger</span><span>verifier</span><span>scanner</span><span>artifact service</span></div>
+    </div>
+    <p class="proposition-note">Origins, proofs, findings, and verification results remain tied to the maps that produced them.</p>`,
+  },
+  {
+    nav: "different meanings",
+    kicker: "not one kind of sameness",
+    title: "These maps do not all mean “the same thing”",
+    lede: "",
+    body: `<div class="meaning-grid">
+      <div><span>verification asks</span><b>Did this source produce these bytes?</b><small>compilation identity</small></div>
+      <div><span>resolution asks</span><b>Does this provide the interface I need?</b><small>type identity</small></div>
+      <div><span>FV asks</span><b>Does this enforce the same rule?</b><small>behavioral identity</small></div>
+    </div>`,
+  },
+  {
+    nav: "lock-in",
+    kicker: "the cost",
+    title: "Changing the toolchain can invalidate the work around it",
+    lede: "",
+    body: `<div class="lockin-visual">
+      <div class="lockin-before"><span>frontend A</span><i>→</i><span>IR A</span><i>→</i><span>backend A</span></div>
+      <div class="lockin-results"><b>working integrations</b><span>origins</span><span>debugger</span><span>proof model</span><span>analysis</span></div>
+      <div class="lockin-after"><span>new frontend or IR</span><i>→</i><strong>rebuild the connections</strong></div>
+    </div>`,
+  },
+  {
+    nav: "task-relative",
+    kicker: "the underlying choice",
+    title: "Two functions can be the same for one tool and different for another",
+    lede: "",
+    body: `<facet-primer></facet-primer>`,
+  },
+  {
+    nav: "the proposal",
+    kicker: "riffcat",
+    title: "Riffcat gives a declared invariant an address",
+    lede: "",
+    body: `<div class="address-proposition">
+      <div class="address-choice"><span>the task declares</span><b>what must remain</b><b>what may change</b></div>
+      <div class="address-arrow">→</div>
+      <div class="address-result"><span>riffcat derives</span><b>an address for that invariant</b></div>
+    </div>
+    <p class="proposition-note">Artifacts share the address only while the declared properties agree.</p>`,
+  },
+  {
+    nav: "many addresses",
+    kicker: "the mechanism",
+    title: "Different tasks can address different invariants",
+    lede: "An exact-build address preserves every input. A structural address remains stable across changes that its policy deliberately ignores.",
+    body: `<metadata-axes></metadata-axes>`,
+  },
+  {
+    nav: "recognized",
+    kicker: "one immediate use",
+    title: "Known code can remain recognizable after its context changes",
+    lede: "The surrounding contract, local names, and compiler context may differ while the structure a scanner needs remains.",
+    body: `<recog-scan></recog-scan>`,
+  },
+  {
+    nav: "follow it",
+    kicker: "through compilation",
+    title: "One authorization check can be followed across representations",
+    lede: "",
+    body: `<authorization-trace></authorization-trace>`,
+  },
+  {
+    nav: "narrow the proof",
+    kicker: "a handoff",
+    title: "Finding the same check saves work. It does not finish the proof.",
+    lede: "",
+    body: `<div class="proof-handoff">
+      <div class="proof-handoff-step"><span>riffcat finds</span><code>msg.sender == owner</code><b>the corresponding check in the compiled program</b></div>
+      <div class="proof-handoff-arrow">→</div>
+      <div class="proof-handoff-step proof-handoff-question"><span>the verifier asks</span><strong>Can anyone else reach <code>release</code>?</strong></div>
+    </div>`,
+  },
+  {
+    nav: "not a proof",
+    kicker: "the boundary",
+    title: "Structural correspondence is not behavioral equivalence",
+    lede: "",
+    body: `<div class="role-split">
+      <div><span>riffcat</span><b>These structures correspond.</b></div>
+      <div><span>verification</span><b>This behavioral claim holds.</b></div>
+    </div>`,
+  },
+  {
+    nav: "claim boundary",
+    kicker: "reuse",
+    title: "The owner claim survives one edit, but not the other",
+    lede: "",
+    body: `<div class="claim-examples">
+      <div class="claim-example claim-original"><span>original</span><code>require(msg.sender == owner)</code><b>Only the owner can proceed.</b></div>
+      <div class="claim-example claim-good"><span>rewritten</span><code>require(owner == msg.sender)</code><b>Claim still applies</b></div>
+      <div class="claim-example claim-bad"><span>principal changed</span><code>require(msg.sender == admin)</code><b>Claim no longer applies</b></div>
+    </div>
+    <p class="proposition-note">The final check has the same general shape, but authorizes someone different.</p>`,
+  },
+  {
+    nav: "exact identity",
+    kicker: "an essential boundary",
+    title: "Exact identity remains essential",
+    lede: "",
+    body: `<div class="identity-boundary">
+      <div><span>exact compilation</span><b>Every relevant input agrees.</b><small>Did this source produce these bytes?</small></div>
+      <div><span>selected invariant</span><b>The declared properties agree.</b><small>Does this result still apply?</small></div>
+    </div>
+    <p class="proposition-note">These addresses answer different questions. Neither replaces the other.</p>`,
+  },
+  {
+    nav: "less lock-in",
+    kicker: "the opportunity",
+    title: "Shared invariants can reduce lock-in between tools",
+    lede: "",
+    body: `<div class="shared-reference">
+      <div class="shared-center"><span>shared invariant address</span></div>
+      <div class="shared-items"><span>compiler origins</span><span>dependency resolution</span><span>debugging and traces</span><span>security findings</span><span>formal specifications</span><span>proofs and attestations</span></div>
+    </div>
+    <p class="proposition-note">Each tool keeps its own model. They gain a shared way to name what their results concern.</p>`,
+  },
+  {
+    nav: "limits",
+    kicker: "an honest boundary",
+    title: "Some relationships cannot be captured by a local address",
+    lede: "",
+    body: `<div class="limit-pair">
+      <div><b>cycles</b><span>may require addressing a larger connected unit</span></div>
+      <div><b>external context</b><span>may determine resolution, instantiation, or meaning</span></div>
+    </div>
+    <p class="proposition-note">Semantic equivalence still requires semantic evidence.</p>`,
+  },
+  {
+    nav: "join",
+    kicker: "an invitation",
+    title: "Which relationships are your tools rebuilding today?",
+    lede: "Bring one result you want to preserve, what it depends on, and the transformations across which it should remain usable.",
+    body: `<collab-triangle></collab-triangle>`,
+  },
+];
+
+const CH_PLAIN = [
+  {
+    nav: "many forms",
+    kicker: "the environment",
+    title: "A program changes form as it moves through a compiler",
+    lede: "",
+    body: `<div class="compiler-paths">
+      <div class="compiler-path"><b>compiler A</b><span>source</span><i>→</i><span>AST</span><i>→</i><span>IR A</span><i>→</i><span>bytecode</span></div>
+      <div class="compiler-path"><b>compiler B</b><span>source</span><i>→</i><span>AST</span><i>→</i><span>IR B</span><i>→</i><span>bytecode</span></div>
+      <div class="compiler-others"><span>formal model</span><span>execution trace</span><span>verified source</span></div>
+    </div>`,
+  },
+  {
+    nav: "attached results",
+    kicker: "useful knowledge",
+    title: "Tools attach their results to particular representations",
+    lede: "",
+    body: `<div class="result-attachments">
+      <div><b>source</b><span>warning</span></div>
+      <div><b>IR</b><span>origin information</span></div>
+      <div><b>bytecode</b><span>execution trace</span></div>
+      <div><b>formal model</b><span>proof</span></div>
+    </div>`,
+  },
+  {
+    nav: "broken reference",
+    kicker: "the problem",
+    title: "A broken reference does not tell us whether the result is still valid",
+    lede: "",
+    body: `<div class="broken-reference">
+      <div><span>before a compiler change</span><b>proof about IR node 184</b><small>the reference works</small></div>
+      <div class="broken-arrow">→</div>
+      <div><span>after a compiler change</span><b>IR node 184 is gone</b><small>the relevant check may still be present</small></div>
+    </div>`,
+  },
+  {
+    nav: "several questions",
+    kicker: "why one identity is not enough",
+    title: "Different tools need different answers about what stayed the same",
+    lede: "",
+    body: `<div class="meaning-grid">
+      <div><span>verification</span><b>Did this source produce these bytes?</b><small>exact compilation</small></div>
+      <div><span>resolution</span><b>Does this provide the interface I need?</b><small>types and signatures</small></div>
+      <div><span>formal verification</span><b>Does this still enforce the same rule?</b><small>behavioral claim</small></div>
+    </div>`,
+  },
+  {
+    nav: "integration cost",
+    kicker: "the consequence",
+    title: "Supporting a new compiler means rebuilding several kinds of correspondence",
+    lede: "",
+    body: `<div class="lockin-visual">
+      <div class="lockin-before"><span>new frontend or IR</span><i>→</i><span>new representations</span></div>
+      <div class="lockin-results"><b>connections to rebuild</b><span>origins</span><span>debugger</span><span>proof model</span><span>analysis</span></div>
+    </div>`,
+  },
+  {
+    nav: "address sameness",
+    kicker: "the proposal",
+    title: "Riffcat makes a chosen notion of sameness addressable",
+    lede: "",
+    body: `<div class="identity-boundary identity-three">
+      <div><span>exact build</span><b>Include every compilation input.</b><small>same build</small></div>
+      <div><span>interface</span><b>Include the required types and signatures.</b><small>same interface</small></div>
+      <div><span>structure</span><b>Include the code structure the tool needs.</b><small>same selected structure</small></div>
+    </div>
+    <p class="proposition-note">Two artifacts share an address only while the included properties agree.</p>`,
+  },
+  {
+    nav: "change granularity",
+    kicker: "try the choice",
+    title: "Change the notion of sameness, and the matches regroup",
+    lede: "",
+    body: `<facet-primer></facet-primer>`,
+  },
+  {
+    nav: "follow a check",
+    kicker: "through compilation",
+    title: "One authorization check can be followed across representations",
+    lede: "",
+    body: `<authorization-trace></authorization-trace>`,
+  },
+  {
+    nav: "stable subject",
+    kicker: "a verification handoff",
+    title: "Finding the corresponding check tells the verifier where to begin",
+    lede: "",
+    body: `<div class="proof-handoff">
+      <div class="proof-handoff-step"><span>riffcat identifies</span><code>msg.sender == owner</code><b>the corresponding check in the compiled program</b></div>
+      <div class="proof-handoff-arrow">→</div>
+      <div class="proof-handoff-step proof-handoff-question"><span>the verifier asks</span><strong>Can anyone else reach <code>release</code>?</strong></div>
+    </div>`,
+  },
+  {
+    nav: "not a proof",
+    kicker: "the boundary",
+    title: "Structural correspondence is not behavioral equivalence",
+    lede: "",
+    body: `<div class="role-split">
+      <div><span>riffcat</span><b>These structures correspond.</b></div>
+      <div><span>verification</span><b>This behavioral claim holds.</b></div>
+    </div>`,
+  },
+  {
+    nav: "claim boundary",
+    kicker: "reuse",
+    title: "The owner claim survives a rewrite, but not a different principal",
+    lede: "",
+    body: `<div class="claim-examples plain-claims">
+      <div class="claim-example claim-good"><span>same rule, rewritten</span><code>require(owner == msg.sender)</code><b>Owner claim still applies</b></div>
+      <div class="claim-example claim-bad"><span>different rule</span><code>require(msg.sender == admin)</code><b>Owner claim no longer applies</b></div>
+    </div>`,
+  },
+  {
+    nav: "shared reference",
+    kicker: "the opportunity",
+    title: "Tools can keep their own models and still share a reference",
+    lede: "",
+    body: `<div class="shared-reference">
+      <div class="shared-center"><span>address of the selected invariant</span></div>
+      <div class="shared-items"><span>compiler origins</span><span>dependency resolution</span><span>debugging and traces</span><span>security findings</span><span>formal specifications</span><span>proofs and attestations</span></div>
+    </div>`,
+  },
+  {
+    nav: "honest limit",
+    kicker: "the boundary",
+    title: "Some relationships need more than a structural address",
+    lede: "",
+    body: `<div class="limit-pair">
+      <div><b>external context</b><span>can determine resolution, instantiation, or meaning</span></div>
+      <div><b>behavior</b><span>still requires semantic evidence</span></div>
+    </div>`,
+  },
+  {
+    nav: "one integration",
+    kicker: "the next step",
+    title: "Start with one result that gets lost when its representation changes",
+    lede: "",
+    body: `<div class="plain-ask">
+      <div><span>bring</span><b>one result your tool produces</b></div>
+      <div><span>identify</span><b>what must stay true for that result to apply</b></div>
+      <div><span>test</span><b>whether riffcat can keep the reference intact</b></div>
+    </div>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -296,16 +639,50 @@ const slugify = (s) => s.replace(/\s+/g, "-");
 // so a presenter can jump to the section they want and skip the rest. We reorder
 // CH in place to follow it and tag each chapter with its section, validating
 // that every chapter lands in exactly one section (a typo throws, loudly).
-const SECTIONS = [
-  ["the idea", ["start", "facets"]],
-  ["on music", ["the riff", "forte catalog", "interval vector", "three rungs"]],
-  ["on real code", ["recognized", "twins", "dedup"]],
-  ["in the compiler", ["the compiler too", "sniff it out", "modified", "two fingerprints", "main vs meta"]],
-  ["structure and meaning", ["structure vs meaning", "prove it", "seat filled", "anchors", "the cheap yes", "prior art", "the proofs check"]],
-  ["the address up close", ["the fold", "provenance", "two instantiations", "locality runs out"]],
-  ["a building block", ["a shared block", "what we need"]],
-  ["in honesty", ["the engine checks too", "what we sampled"]],
+const INVARIANT_SECTIONS = [
+  ["the problem", ["start", "stranded results", "rebuild the map", "what stays", "the riff", "address it"]],
+  ["what it unlocks", ["recognized", "modified", "where it came from", "many addresses"]],
+  ["from match to knowledge", ["narrow the proof", "prove it", "anchors"]],
+  ["the larger opening", ["precedent", "possibilities"]],
+  ["an honest invitation", ["boundaries", "join"]],
 ];
+const AGILITY_SECTIONS = [
+  ["why this is hard", ["many forms", "private maps", "different meanings", "lock-in"]],
+  ["a shared mechanism", ["task-relative", "the proposal", "many addresses"]],
+  ["what it enables", ["recognized", "follow it", "narrow the proof", "not a proof", "claim boundary"]],
+  ["where it leads", ["exact identity", "less lock-in", "limits", "join"]],
+];
+const PLAIN_SECTIONS = [
+  ["the problem", ["many forms", "attached results", "broken reference", "several questions", "integration cost"]],
+  ["the proposal", ["address sameness", "change granularity"]],
+  ["one example", ["follow a check", "stable subject", "not a proof", "claim boundary"]],
+  ["the opportunity", ["shared reference", "honest limit", "one integration"]],
+];
+const DECKS = {
+  plain: {
+    label: "direct",
+    description: "problem, mechanism, integration",
+    chapters: CH_PLAIN,
+    sections: PLAIN_SECTIONS,
+  },
+  agility: {
+    label: "agility",
+    description: "compiler and verification agility",
+    chapters: CH_AGILITY,
+    sections: AGILITY_SECTIONS,
+  },
+  invariant: {
+    label: "invariant",
+    description: "the invariant-first draft",
+    chapters: CH_INVARIANT,
+    sections: INVARIANT_SECTIONS,
+  },
+};
+const requestedDeck = new URLSearchParams(location.search).get("deck");
+const DECK_KEY = Object.hasOwn(DECKS, requestedDeck) ? requestedDeck : "invariant";
+const ACTIVE_DECK = DECKS[DECK_KEY];
+const CH = ACTIVE_DECK.chapters.map((c) => ({ ...c }));
+const SECTIONS = ACTIVE_DECK.sections;
 {
   const byNav = new Map(CH.map((c) => [c.nav, c]));
   const ordered = [];
@@ -326,6 +703,19 @@ const SECTIONS = [
 
 customElements.define("tour-app", class extends HTMLElement {
   connectedCallback() {
+    const deckNav = document.getElementById("deck-nav");
+    deckNav.innerHTML = Object.entries(DECKS).map(([key, deck]) => {
+      const href = `?deck=${encodeURIComponent(key)}#${key === DECK_KEY ? slugify(CH[0].nav) : ""}`;
+      return `<a href="${href}" aria-current="${key === DECK_KEY ? "page" : "false"}"><b>${deck.label}</b><span>${deck.description}</span></a>`;
+    }).join("");
+    document.querySelector(".crumb").textContent = `riffcat · ${ACTIVE_DECK.label.toUpperCase()} DECK`;
+    const details = document.getElementById("details");
+    const setDetails = (on) => {
+      document.body.classList.toggle("details", on);
+      details.setAttribute("aria-pressed", on ? "true" : "false");
+      details.textContent = `details: ${on ? "on" : "off"}`;
+    };
+    details.addEventListener("click", () => setDetails(!document.body.classList.contains("details")));
     const nav = document.getElementById("nav");
     nav.innerHTML = CH.map((c, k) =>
       (c.secHead ? `<span class="navsec">${c.sec}</span>` : "")
@@ -336,6 +726,7 @@ customElements.define("tour-app", class extends HTMLElement {
       if (e.target.closest("live-dial") || e.target.closest("recog-scan")) return; // let those keep focus
       if (e.key === "ArrowRight") this.go(this.i + 1);
       if (e.key === "ArrowLeft") this.go(this.i - 1);
+      if (e.key.toLowerCase() === "d") setDetails(!document.body.classList.contains("details"));
     });
     this.i = this.chapterFromHash();
     addEventListener("hashchange", () => {
@@ -534,6 +925,11 @@ const FACET_GLOSS = {
   "names-blind": "names dropped; constants and types still count",
   "structure": "shape only; names, constants, and types all dropped",
 };
+const FACET_LABEL = {
+  "full": "keep everything",
+  "names-blind": "ignore names",
+  "structure": "shape only",
+};
 const feq = (d) => "fe-" + d.slice(0, 12);
 customElements.define("facet-primer", class extends HTMLElement {
   async connectedCallback() {
@@ -568,12 +964,12 @@ customElements.define("facet-primer", class extends HTMLElement {
         + `<pre class="fcode">${solHi(f.src)}</pre></div>`;
     }).join("");
     const ladder = FACETS.map((f) =>
-      `<span class="stop ${f === this.facet ? "on" : ""}" data-facet="${f}"><b>${this.facetCount(f)}</b> ${f}</span>`).join("");
+      `<span class="stop ${f === this.facet ? "on" : ""}" data-facet="${f}"><b>${this.facetCount(f)}</b> ${FACET_LABEL[f]}</span>`).join("");
     const groupTxt = order.map((d) => { const n = seen.get(d); return n.length > 1 ? `<b>${n.join(" = ")}</b>` : n[0]; }).join(" · ");
     const idle = `<b>${seen.size}</b> shape${seen.size === 1 ? "" : "s"} at ${this.facet} · ${FACET_GLOSS[this.facet]}`
       + ` · ${groupTxt} · ${this._ms.toFixed(0)} ms in your browser`;
     this.innerHTML = `
-      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
+      <div class="dialbar"><div class="grp"><span>comparison granularity</span><div class="ladder">${ladder}</div></div></div>
       <div class="fgrid">${cards}</div>
       <div class="eqread" data-idle="${idle}">${idle}</div>`;
     this.querySelectorAll("[data-facet]").forEach((s) =>
@@ -585,8 +981,8 @@ customElements.define("facet-primer", class extends HTMLElement {
         twins.forEach((x) => { x.classList.remove("dim"); x.classList.add("twin"); });
         const read = this.querySelector(".eqread");
         if (read) read.innerHTML = twins.length > 1
-          ? `<b>${twins.length}</b> share this shape at ${this.facet}: <b>${[...twins].map((x) => x.querySelector(".fcard-h").textContent.trim()).join(" = ")}</b>`
-          : `<b>${card.querySelector(".fcard-h").textContent.trim()}</b> is unique at ${this.facet}: no other function has this shape`;
+          ? `<b>${twins.length}</b> match when we ${FACET_LABEL[this.facet]}: <b>${[...twins].map((x) => x.querySelector(".fcard-h").textContent.trim()).join(" = ")}</b>`
+          : `<b>${card.querySelector(".fcard-h").textContent.trim()}</b> has no match here`;
       });
       card.addEventListener("mouseleave", () => {
         this.querySelectorAll(".fcard").forEach((x) => x.classList.remove("dim", "twin"));
@@ -597,7 +993,7 @@ customElements.define("facet-primer", class extends HTMLElement {
   }
 });
 
-const RECOG_HINT = "hover a function for its source; click to pin it (the URL updates, so the view is shareable)";
+const RECOG_HINT = "Hover to inspect the source. Click to keep one match selected.";
 customElements.define("recog-scan", class extends HTMLElement {
   connectedCallback() {
     const data = window.RIFFCAT_REAL;
@@ -627,12 +1023,12 @@ customElements.define("recog-scan", class extends HTMLElement {
       return `<div class="eqrow recogrow">
         <div class="libname"><b>${c.name}</b><span class="ver">${c.version}</span>
           <a class="srcfy" href="${c.url}" target="_blank" rel="noopener">sourcify ↗</a>
-          <span class="rate"><b>${rec}</b>/${c.fns.length} std-lib</span></div>
+          <span class="rate"><b>${rec}</b>/${c.fns.length} library matches</span></div>
         <div class="eqgrid" data-ci="${ci}">${chips}</div></div>`;
     }).join("");
     const legend = `<div class="legend">`
       + Object.values(LIB).map(({ n, h }) => `<span><i style="background:hsl(${h} 70% 55%)"></i>${n}</span>`).join("")
-      + `<span><i class="novel"></i>novel / app code</span></div>`;
+      + `<span><i class="novel"></i>no library match</span></div>`;
     // codedock reserves a constant height; the panel inside sizes to content.
     // Keeping the dock height fixed means hovering never changes the page
     // height, so scrollTop never clamps and the chips never bump (the flicker),
@@ -683,7 +1079,7 @@ customElements.define("recog-scan", class extends HTMLElement {
     const inN = this.spread.get(f.nb)?.size || 1;
     const verdict = f.lib && LIB[f.lib]
       ? `recognized as <span class="reclib" style="color:hsl(${LIB[f.lib].h} 70% 62%)">${LIB[f.lib].n} ${f.canon}</span>`
-      : `<span class="recnovel">novel / app-specific</span> (no std-lib match)`;
+      : `<span class="recnovel">no library match</span>`;
     const also = inN > 1 ? ` · same shape in <b>${inN}</b> of these contracts` : "";
     return `<div class="cphead"><b>${c.name}.${f.fn}</b> · ${verdict} · <span class="fp">${f.nb.slice(0, 8)}</span>${also}`
       + `<a href="${c.url}" target="_blank" rel="noopener">on sourcify ↗</a></div>`
@@ -861,13 +1257,13 @@ customElements.define("fuzzy-scan", class extends HTMLElement {
     const rows = this.variants.map((v, i) =>
       `<tr class="lxrow ${i === this.sel ? "on" : ""}" data-i="${i}">`
       + `<td class="lx-shape">${v.name} <span class="vsub">${v.chainName}</span></td>`
-      + `<td class="lx-verd bad">no class</td>`
-      + `<td class="lx-n lx-reach">${v.cwVuln.toFixed(2)}</td></tr>`).join("");
+      + `<td class="lx-verd bad">none</td>`
+      + `<td class="lx-n lx-reach">${Math.round(v.cwVuln * 100)}%</td></tr>`).join("");
     this.innerHTML = `
       <p class="vbug">${d.bug}</p>
       <p class="vlead">Each fork below <b>edited</b> the <code>multicall</code> body, so its shape is neither the vulnerable class nor the patch: exact match, Sourcify's byte-identical match, and a text search all return <b>nothing</b>. Weighted containment of the vulnerable shape still finds them. Click a row.</p>
-      <div class="codepanel fref"><div class="cphead">the vulnerable shape being matched <span class="vfp">structure ${d.vuln.fp}</span> <span class="vsub">${d.vuln.nodes} nodes</span></div><pre class="code">${solHi(d.vuln.src)}</pre></div>
-      <table class="vledger"><thead><tr><th>fork (edited the body)</th><th>exact match</th><th>fuzzy</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="codepanel fref"><div class="cphead">known vulnerable function <span class="vfp">address ${d.vuln.fp}</span> <span class="vsub">${d.vuln.nodes} nodes</span></div><pre class="code">${solHi(d.vuln.src)}</pre></div>
+      <table class="vledger"><thead><tr><th>edited fork</th><th>whole-function match</th><th>vulnerable structure retained</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="vbody codepanel"></div>
       <p class="vledger-cap">The coincidence floor for this shape is ~<b>${d.nullCeiling}</b> and the OZ patch scores ~<b>${d.patchedScore}</b>; both catches clear it. Sourcify-verified, a floor. Two further customized vulnerable bodies (${d.marginal.map((m) => m.name).join(", ")}) land near the floor and the score alone cannot certify them.</p>`;
     this.querySelectorAll(".lxrow").forEach((row) =>
@@ -878,7 +1274,7 @@ customElements.define("fuzzy-scan", class extends HTMLElement {
     const v = this.variants[this.sel];
     this.querySelector(".vbody").innerHTML =
       `<div class="vhead" style="--hue:2"><span class="vbadge">caught, modified</span> <b>${v.name}</b> <span class="vsub">${v.chainName}, ${v.nodes} nodes</span>`
-      + `<span class="vfp">fuzzy ${v.cwVuln.toFixed(2)} vs vuln, ${v.cwPatch.toFixed(2)} vs patch</span>`
+      + `<span class="vfp">${Math.round(v.cwVuln * 100)}% of vulnerable structure retained</span>`
       + `<a class="vsrcfy" href="https://sourcify.dev/#/lookup/${v.address}" target="_blank" rel="noopener">on sourcify ↗</a></div>`
       + `<p class="vrole">${v.edit}</p>`
       + `<pre class="code">${solHi(v.src)}</pre>`;
@@ -1009,9 +1405,9 @@ customElements.define("riff-dial", class extends HTMLElement {
     const n = groups.size;
     const groupTxt = [...groups.values()]
       .map((names) => names.length > 1 ? `<b>${names.join(" = ")}</b>` : names[0]).join(" · ");
-    const idle = `<b>${n}</b> shape${n === 1 ? "" : "s"} at this facet · ${groupTxt}`;
+    const idle = `<b>${n}</b> group${n === 1 ? "" : "s"} under this comparison · ${groupTxt}`;
     this.innerHTML = `
-      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
+      <div class="dialbar"><div class="grp"><span>compare by</span><div class="ladder">${ladder}</div></div></div>
       <div class="riffs">${rows}</div>
       <div class="eqread">${idle}</div>
       <p class="twnote">The same dial as the code chapters, on music. Transpose the riff and the <b>intervals</b> survive; keep the durations and the <b>rhythm</b> survives; reorder and re-octave the notes and the <b>note set</b> survives. The engine computes each with the very same facet machinery (<code>fingerprint_riff</code>).</p>`;
@@ -1124,16 +1520,16 @@ customElements.define("chord-fp", class extends HTMLElement {
 // facet address and rides it, as far as the facet covers the statement's
 // footprint. Hand-laid SVG; hover a facet, a witness, or the pinned claim.
 const SS_FACETS = {
-  full: { x: 240, y: 66, t: "full", chip: "var(--a)", s: "keep every dimension. The exact-identity address: only literal twins share it, so any claim rides it soundly." },
-  namesblind: { x: 130, y: 170, t: "names-blind", chip: "var(--cool)", s: "forget identifiers. The address two renamings of one program share. A claim rides it unless it depends on a name (a selector, a revert string)." },
-  constblind: { x: 360, y: 170, t: "constants-blind", chip: "var(--warm)", s: "forget literals. The same address across a changed constant, so a claim that depends on that constant must not ride it." },
-  structure: { x: 240, y: 274, t: "structure", chip: "var(--ink-dim)", s: "forget names, constants, and types. Pure shape: the coarsest address, the most collapsed, the closest to meaning without being meaning." },
+  full: { x: 240, y: 66, t: "all syntax", chip: "var(--a)", s: "Everything participates in the address. Only syntactically identical artifacts match." },
+  namesblind: { x: 130, y: 170, t: "ignore local names", chip: "var(--cool)", s: "Renaming a local identifier does not move the address. Behaviorally significant names still require care." },
+  constblind: { x: 360, y: 170, t: "ignore constants", chip: "var(--warm)", s: "Changing a literal does not move the address. Claims that depend on its value cannot be reused here." },
+  structure: { x: 240, y: 274, t: "structure only", chip: "var(--ink-dim)", s: "Names, constants, and types are omitted. This identifies structural agreement, not behavioral equivalence." },
 };
 const SS_EDGES = [["full", "namesblind"], ["full", "constblind"], ["namesblind", "structure"], ["constblind", "structure"]];
 const SS_HOVERS = {
-  optimizer: "Different shape, same behavior. An optimizer turns a program into one that shares no facet with it, yet computes the same thing. Meaning relates them; no syntactic address does. Meaning is not the top of the lattice.",
-  constant: "Same shape, different behavior. PUSH1 3 and PUSH1 4 share the structure address but do not compute the same thing. One address, two meanings. A coarse address is not a proof of equivalence.",
-  anchor: "The substrate. A proof from a verifier, or a verdict from an auditor, pins to a facet address and rides every program at that address, as far as the facet covers what the claim depends on. riffcat does not compute meaning; it gives meaning an address to live at, and a track to travel on.",
+  optimizer: "An optimizer may produce structurally different code with the same behavior. Semantic equivalence can relate artifacts that share no structural address.",
+  constant: "PUSH1 3 and PUSH1 4 share a structure-only address but return different values. Structural agreement alone is not a proof of equivalence.",
+  anchor: "A proof can be attached to an address when it depends only on information that address preserves.",
 };
 customElements.define("facet-lattice", class extends HTMLElement {
   connectedCallback() {
@@ -1147,20 +1543,20 @@ customElements.define("facet-lattice", class extends HTMLElement {
         + `<circle class="ss-chip" cx="-54" cy="0" r="5" style="fill:${n.chip}"/>`
         + `<text x="10" y="4" text-anchor="middle">${n.t}</text></g>`;
     };
-    const idle = "Hover a facet (each an address), a witness (why meaning is a different axis), or the pinned claim (how a proof rides an address).";
+    const idle = "Hover an address or an example to see what the comparison establishes.";
     this.innerHTML = `
       <svg viewBox="0 0 720 360" class="lattice" role="img" aria-label="syntactic facets as addresses, and the orthogonal axis of meaning">
         <defs><marker id="ssarr" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 z" class="latarrhead"/></marker></defs>
-        <text x="240" y="26" text-anchor="middle" class="latcap">syntactic facets, each an address</text>
-        <text x="588" y="26" text-anchor="middle" class="latcap sem">meaning, the verifier's axis</text>
+        <text x="240" y="26" text-anchor="middle" class="latcap">structural addresses</text>
+        <text x="588" y="26" text-anchor="middle" class="latcap sem">claims about behavior</text>
         <line x1="448" y1="44" x2="448" y2="336" class="latdivide"/>
         <path d="M 44 80 L 44 262" class="ss-coarse" marker-end="url(#ssarr)"/>
-        <text x="36" y="170" text-anchor="middle" class="ss-coarse-lab" transform="rotate(-90 36 170)">coarser, forgets more, toward meaning</text>
+        <text x="36" y="170" text-anchor="middle" class="ss-coarse-lab" transform="rotate(-90 36 170)">fewer syntactic details participate</text>
         ${edges}
         ${Object.keys(F).map(fnode).join("")}
         <line x1="100" y1="314" x2="380" y2="314" class="ss-floor"/>
-        <text x="240" y="330" text-anchor="middle" class="ss-floor-lab">semantic equivalence: never crossed, not aimed at</text>
+        <text x="240" y="330" text-anchor="middle" class="ss-floor-lab">behavioral equivalence is a separate relation</text>
         <g class="ss-wg" data-k="optimizer">
           <text x="588" y="90" text-anchor="middle">different shape, same behavior</text>
           <circle class="ss-wdot" cx="500" cy="106" r="7"/>
@@ -1176,13 +1572,13 @@ customElements.define("facet-lattice", class extends HTMLElement {
         <text x="588" y="222" text-anchor="middle" class="latfv">hevm · EquiVM · SMTChecker · Lean</text>
         <g class="ss-pin" data-k="anchor">
           <rect x="470" y="280" width="118" height="30" rx="6"/>
-          <text x="529" y="299" text-anchor="middle">proof / verdict</text>
+          <text x="529" y="299" text-anchor="middle">checked claim</text>
         </g>
         <path d="M 470 294 C 452 250, 452 200, 432 174" class="lathandoff" marker-end="url(#ssarr)"/>
-        <text x="529" y="332" text-anchor="middle" class="latflow">a claim pins to an address, and rides it</text>
+        <text x="529" y="332" text-anchor="middle" class="latflow">reusable where its required details are preserved</text>
       </svg>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">The usual picture is a line from syntactic to semantic, as if riffcat were climbing toward meaning. It is not, and it does not try to. riffcat lives entirely on the syntactic side, a <b>lattice of facets</b>: forget names, or constants, or types, independently, and a finer agreement always implies a coarser one. Each facet is a <b>content address</b>, a stable name for one syntactic equivalence class, the way a URI names a resource. Going coarser collapses more programs together, which moves toward <em>they mean the same</em> but never arrives, and is not meant to. <b>Meaning is a different axis, not the top of this one</b>: an optimizer makes a structurally different program that computes the same thing (equal in meaning, no shared address), and one changed constant keeps the shape but changes the behavior (one shared address, different meaning). So riffcat's job is to be the <b>substrate</b>. A semantic statement, a proof or a verdict, pins to a facet address and rides every program at that address, as far as the facet covers what the statement depends on. riffcat does not compute meaning. It gives meaning an address to live at, and a track to travel on.</p>`;
+      <p class="twnote"><b>Meaning is a different axis, not the top of this ladder.</b> An optimizer can change every structural address while preserving behavior; one changed constant can preserve a shape while changing behavior. riffcat does not decide meaning. It gives a semantic claim a precise place to attach.</p>`;
     const read = this.querySelector(".eqread");
     const clear = () => this.querySelectorAll(".latnode, .ss-wg, .ss-pin").forEach((x) => x.classList.remove("on"));
     this.querySelectorAll(".latnode").forEach((g) =>
@@ -1207,10 +1603,6 @@ customElements.define("facet-lattice", class extends HTMLElement {
 // Selecting a candidate row shows the obligation riffcat hands off and the seat
 // that stays open; selecting an adjudicator names what that tool would discharge
 // and how (a proof, or a counterexample). riffcat never fills the seat itself.
-const SEAT_DISCLAIMER =
-  "riffcat does not prove equivalence, verify safety, or decide exploitability. "
-  + "It localizes a candidate and states the obligation. The seat stays empty until a named tool fills it.";
-
 // Each candidate is a localized shape match from an earlier chapter, restated as
 // a proof obligation: what riffcat asserts (structural), the facet the anchor was
 // computed at (the scope the obligation stays sound in), and the semantic claim
@@ -1227,7 +1619,7 @@ const SEAT_CANDIDATES = [
     asserts: "the same shape, identifiers aside, in several deployed contracts",
     open: "do these instances compute the same function",
     footprint: "structure, constants, types",
-    obligation: "for each pair sharing this anchor, prove behavioural equivalence, or return an input where they differ",
+    obligation: "check whether each pair behaves the same, or find an input where it differs",
   },
   {
     key: "vuln",
@@ -1237,7 +1629,7 @@ const SEAT_CANDIDATES = [
     asserts: "the control- and data-flow shape of the first-depositor inflation pattern",
     open: "is this instance actually exploitable",
     footprint: "structure, constants (the guard threshold)",
-    obligation: "decide whether an attacker input reaches the unguarded mint, given this contract's constants",
+    obligation: "check whether an attacker can reach the unguarded mint",
   },
   {
     key: "fuzzy",
@@ -1247,7 +1639,7 @@ const SEAT_CANDIDATES = [
     asserts: "enough of the known vulnerable subtree is still present to be a candidate",
     open: "is the surviving shape still the vulnerable one",
     footprint: "structure, resolved callees",
-    obligation: "confirm the edit preserved the vulnerable path, or exhibit the input the edit now guards",
+    obligation: "check whether the vulnerable path remains after the edit",
   },
 ];
 
@@ -1262,7 +1654,7 @@ const SEAT_ADJUDICATORS = [
   { id: "certora",    name: "Certora",    does: "specification-driven verification; the localized candidate becomes a rule to prove or a violation to surface." },
 ];
 
-const SEAT_EMPTY = '<span class="seat-empty" title="awaiting a verifier">awaiting adjudication</span>';
+const SEAT_EMPTY = '<span class="seat-empty" title="not checked yet">not checked</span>';
 
 customElements.define("verdict-seat", class extends HTMLElement {
   connectedCallback() {
@@ -1281,20 +1673,18 @@ customElements.define("verdict-seat", class extends HTMLElement {
     const chips = SEAT_ADJUDICATORS.map((a) =>
       `<button class="seat-tool ${this.tool && this.tool.id === a.id ? "on" : ""}" data-tool="${a.id}">${a.name}</button>`).join("");
     this.innerHTML = `
-      <p class="vbug">One problem, three contributors: riffcat <b>localizes</b> the matching subtree, the compiler can supply the <b>provenance</b> down to bytecode, and a verifier <b>adjudicates</b>. The two columns on the right are the verifier's. They are empty by design.</p>
       <table class="vledger seat-ledger">
-        <thead><tr><th>candidate (localized by riffcat)</th><th>what riffcat asserts</th><th>anchor facet</th><th>verdict</th><th>attested by</th></tr></thead>
+        <thead><tr><th>code riffcat found</th><th>what matched</th><th>matched as</th><th>checked by</th><th>result</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <p class="vledger-cap">Click a candidate for the obligation riffcat hands off. The verdict is structural-not-semantic: riffcat says <em>same shape, and here are the parts that match</em>, and the sentence stops there.</p>
+      <p class="vledger-cap">Click a match to see the question another tool still needs to answer.</p>
       <div class="seat-handoff codepanel"></div>
       <div class="seat-fill">
-        <span class="seat-fill-label">who could fill the seat</span>
+        <span class="seat-fill-label">choose a tool to check it</span>
         ${chips}
         <button class="seat-tool seat-clear ${this.tool ? "" : "on"}" data-tool="">leave it open</button>
       </div>
-      <div class="seat-disclaimer"><span class="seat-disc-mark">!</span><span>${SEAT_DISCLAIMER}</span></div>
-      <p class="twnote">A facet address is an anchor. A verdict attaches to that anchor and rides every artifact sharing it, but only when the anchor is at least as fine as everything the verdict depends on (its <b>footprint</b>). That is why the obligation carries its facet: it is the exact scope a future proof stays sound in. riffcat measures what an anchor forgets; the verifier decides what is true within it.</p>`;
+      <p class="twnote">A checked result can be reused at a shared address only when the result depends exclusively on information preserved by that address. The address records structural agreement. The verification tool establishes the behavioral claim.</p>`;
     this.querySelectorAll(".seatrow").forEach((row) =>
       row.addEventListener("click", () => {
         this.sel = +row.dataset.i;
@@ -1313,16 +1703,112 @@ customElements.define("verdict-seat", class extends HTMLElement {
     const c = SEAT_CANDIDATES[this.sel];
     const seatLine = this.tool
       ? `<span class="seat-named"><b>${this.tool.name}</b> takes the seat</span>: ${this.tool.does}`
-      : `<span class="seat-open">the seat is empty</span>: riffcat states the obligation and stops. No tool above has taken it.`;
+      : `<span class="seat-open">not checked yet</span>: riffcat found the match and stopped there.`;
     this.querySelector(".seat-handoff").innerHTML =
-      `<div class="cphead seat-head"><b>${c.subj}</b> <span class="vsub">localized at ${c.facet}</span></div>`
+      `<div class="cphead seat-head"><b>${c.subj}</b> <span class="vsub">matched as ${c.facet}</span></div>`
       + `<div class="seat-ob">`
-      + `<div class="seat-ob-row"><span class="seat-tag">riffcat asserts</span><span class="seat-val">${c.asserts}</span></div>`
-      + `<div class="seat-ob-row"><span class="seat-tag">open question</span><span class="seat-val open">${c.open}</span></div>`
-      + `<div class="seat-ob-row"><span class="seat-tag">footprint</span><span class="seat-val">${c.footprint} <span class="vsub">(the dimensions the answer depends on; the anchor must cover them)</span></span></div>`
-      + `<div class="seat-ob-row"><span class="seat-tag">proof obligation</span><span class="seat-val ob">${c.obligation}</span></div>`
+      + `<div class="seat-ob-row"><span class="seat-tag">what matched</span><span class="seat-val">${c.asserts}</span></div>`
+      + `<div class="seat-ob-row"><span class="seat-tag">what we don't know</span><span class="seat-val open">${c.open}</span></div>`
+      + `<div class="seat-ob-row"><span class="seat-tag">what the answer depends on</span><span class="seat-val">${c.footprint}</span></div>`
+      + `<div class="seat-ob-row"><span class="seat-tag">what to check</span><span class="seat-val ob">${c.obligation}</span></div>`
       + `</div>`
       + `<div class="seat-resolve">${seatLine}</div>`;
+  }
+});
+
+// A concrete claim-reuse example for the main arc. Three small functions share
+// progressively broader addresses. The reader chooses a claim and an address;
+// the table shows exactly where reuse remains true and where it becomes false.
+const AUTH_TRACE = {
+  caller: {
+    label: "caller",
+    read: "CALLER is the bytecode operation corresponding to msg.sender in the source.",
+    source: "msg.sender", ir: "%caller = caller", bytecode: "CALLER",
+  },
+  owner: {
+    label: "owner",
+    read: "The compiler carries the owner value from a source-level storage read into SLOAD.",
+    source: "owner", ir: "%owner = load owner.slot", bytecode: "PUSH owner.slot · SLOAD",
+  },
+  branch: {
+    label: "decision",
+    read: "The source guard becomes a comparison and branch. These are corresponding operations, not identical text.",
+    source: "require(msg.sender == owner)", ir: "%ok = eq %caller, %owner · br %ok", bytecode: "EQ · JUMPI",
+  },
+};
+customElements.define("authorization-trace", class extends HTMLElement {
+  connectedCallback() { this.focus = "branch"; this.render(); }
+  render() {
+    const buttons = Object.entries(AUTH_TRACE).map(([key, x]) =>
+      `<button class="auth-pick ${key === this.focus ? "on" : ""}" data-focus="${key}">${x.label}</button>`).join("");
+    const cards = ["source", "ir", "bytecode"].map((stage) => {
+      const rows = Object.entries(AUTH_TRACE).map(([key, x]) =>
+        `<div class="auth-row ${key === this.focus ? "on" : ""}" data-focus="${key}"><span>${x.label}</span><code>${x[stage]}</code></div>`).join("");
+      return `<div class="auth-card"><div class="auth-stage">${stage}</div>${rows}</div>`;
+    }).join(`<div class="auth-next">→</div>`);
+    this.innerHTML = `<div class="dialbar"><div class="grp"><span>follow</span><div class="ladder">${buttons}</div></div></div>
+      <div class="auth-trace">${cards}</div>
+      <div class="eqread">${AUTH_TRACE[this.focus].read}</div>`;
+    this.querySelectorAll("[data-focus]").forEach((x) => x.addEventListener("mouseenter", () => {
+      this.focus = x.dataset.focus; this.render();
+    }));
+    this.querySelectorAll("button[data-focus]").forEach((x) => x.addEventListener("click", () => {
+      this.focus = x.dataset.focus; this.render();
+    }));
+  }
+});
+
+const SCOPE_POLICIES = [
+  { key: "exact", label: "exact source" },
+  { key: "normalized", label: "normalize equality" },
+  { key: "shape", label: "guard structure" },
+];
+const SCOPE_VARIANTS = [
+  { name: "original", code: "require(msg.sender == owner)", addr: ["exact-a", "guard-owner", "guard-principal"], facts: ["shape", "owner", "spelling"] },
+  { name: "rewritten", code: "require(owner == msg.sender)", addr: ["exact-b", "guard-owner", "guard-principal"], facts: ["shape", "owner"] },
+  { name: "principal changed", code: "require(msg.sender == admin)", addr: ["exact-c", "guard-admin", "guard-principal"], facts: ["shape"] },
+];
+const SCOPE_CLAIMS = [
+  { key: "shape", label: "has a caller guard", requires: "the guard structure" },
+  { key: "owner", label: "only the owner can proceed", requires: "the guard and the principal it compares" },
+  { key: "spelling", label: "has this exact source text", requires: "the complete source spelling" },
+];
+customElements.define("claim-scope", class extends HTMLElement {
+  connectedCallback() {
+    this.policy = 1;
+    this.claim = "owner";
+    this.render();
+  }
+  render() {
+    const subject = SCOPE_VARIANTS[0];
+    const claim = SCOPE_CLAIMS.find((c) => c.key === this.claim);
+    const subjectAddr = subject.addr[this.policy];
+    const policies = SCOPE_POLICIES.map((p, i) =>
+      `<button class="ancfact ${i === this.policy ? "on" : ""}" data-policy="${i}">${p.label}</button>`).join("");
+    const claims = SCOPE_CLAIMS.map((c) =>
+      `<button class="ancfact ${c.key === this.claim ? "on" : ""}" data-claim="${c.key}">${c.label}</button>`).join("");
+    let unsafe = 0;
+    const rows = SCOPE_VARIANTS.map((v) => {
+      const shares = v.addr[this.policy] === subjectAddr;
+      const trueHere = v.facts.includes(this.claim);
+      const status = !shares ? "different address" : trueHere ? "claim remains true" : "unsafe reuse";
+      if (shares && !trueHere) unsafe++;
+      return `<tr class="${shares && !trueHere ? "anc-wrong" : ""}"><td>${v.name}</td><td><code>${v.code}</code></td>`
+        + `<td class="fp">${v.addr[this.policy]}</td><td class="${shares && !trueHere ? "ne" : shares ? "n" : ""}">${status}</td></tr>`;
+    }).join("");
+    const result = unsafe
+      ? `<span class="anc-bad">not safe to reuse</span>: this address includes code where the claim is false.`
+      : `<span class="anc-ok">safe to reuse</span>: the claim remains true everywhere this address is shared.`;
+    this.innerHTML = `
+      <div class="ancfacts"><div class="anclabel">claim attached to the original</div>${claims}</div>
+      <div class="dialbar"><div class="grp"><span>address policy</span><div class="ladder">${policies}</div></div></div>
+      <table class="vledger"><thead><tr><th>variant</th><th>code</th><th>address</th><th>reuse</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="anccover ${unsafe ? "bad" : "ok"}">${result}</div>
+      <div class="eqread">This claim depends on <b>${claim.requires}</b>. It can be reused only while the selected address preserves them.</div>`;
+    this.querySelectorAll("[data-policy]").forEach((b) =>
+      b.addEventListener("click", () => { this.policy = +b.dataset.policy; this.render(); }));
+    this.querySelectorAll("[data-claim]").forEach((b) =>
+      b.addEventListener("click", () => { this.claim = b.dataset.claim; this.render(); }));
   }
 });
 
@@ -1344,8 +1830,8 @@ customElements.define("verdict-seat", class extends HTMLElement {
 // classes (finer). We order the ladder fine -> coarse so sliding right is
 // "forget more", matching the dial metaphor everywhere else.
 const ANC_FACETS = [
-  { key: "note_set", label: "note set", drops: "keeps the exact pitch classes" },
-  { key: "set_class", label: "set class", drops: "forgets transposition and inversion" },
+  { key: "note_set", label: "exact notes", drops: "keeps the exact notes" },
+  { key: "set_class", label: "chord shape", drops: "allows the chord to move to another key" },
 ];
 
 // The chords we anchor across. Chosen so a whole family collapses at set_class
@@ -1364,28 +1850,28 @@ const ANC_CHORDS = ["C", "Am", "F", "Em", "Caug", "Bdim"];
 //     it rides the coarse set-class anchor soundly and reaches the whole family.
 const ANC_FACTS = [
   {
-    key: "is3-11", foot: 1,
-    label: "set class is Forte 3-11",
-    say: "interval vector [0 0 1 1 1 0], the major/minor triad family",
+    key: "triad", foot: 1,
+    label: "is a major or minor chord",
+    say: "this depends on the chord's shape, not the key it is played in",
     // true exactly of the chords whose prime form is the 3-11 class [0,3,7]
     holds: (d) => JSON.stringify(d.prime_form) === JSON.stringify([0, 3, 7]),
   },
   {
     key: "evenness", foot: 1,
-    label: "no interval class is empty",
-    say: "a structural fact about the set class: every interval class appears at least once",
+    label: "uses all six interval sizes",
+    say: "this depends on the distances between notes, not their literal names",
     holds: (d) => d.interval_vector.every((x) => x > 0),
   },
   {
     key: "rootC", foot: 0,
-    label: "contains the pitch class C",
-    say: "depends on the literal notes, not just the transposition class",
+    label: "contains C",
+    say: "this depends on the literal notes, not just the chord's shape",
     holds: (d) => d.pitch_classes.includes(0),
   },
   {
     key: "hasE", foot: 0,
-    label: "contains the pitch class E",
-    say: "again a literal-notes fact: which pitch classes are present",
+    label: "contains E",
+    say: "this also depends on the literal notes",
     holds: (d) => d.pitch_classes.includes(4),
   },
 ];
@@ -1406,7 +1892,7 @@ const ancShort = (h) => (h || "").slice(0, 8);
 customElements.define("anchor-transport", class extends HTMLElement {
   async connectedCallback() {
     this.anchor = 1;   // index into ANC_FACETS; start coarse (set_class) to show the family
-    this.factKey = "is3-11";
+    this.factKey = "triad";
     this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
     try {
       const b = await engineReady;
@@ -1449,7 +1935,7 @@ customElements.define("anchor-transport", class extends HTMLElement {
 
     const factPills = ANC_FACTS.map((f) =>
       `<button class="ancfact ${f.key === this.factKey ? "on" : ""}" data-fact="${f.key}">`
-      + `<span class="ancfoot foot-${f.foot}">needs ${ANC_FACETS[f.foot].label}</span>${f.label}</button>`).join("");
+      + `<span class="ancfoot foot-${f.foot}">depends on ${ANC_FACETS[f.foot].label}</span>${f.label}</button>`).join("");
 
     // One row per chord: its notes, its address at the anchor, and a transport
     // state. A rider whose fact holds is a SOUND landing; a rider whose fact
@@ -1461,10 +1947,10 @@ customElements.define("anchor-transport", class extends HTMLElement {
       const ok = fact.holds(d.fp);
       const state = !isRider ? "out" : ok ? "sound" : "wrong";
       const notes = d.fp.pitch_classes.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
-      const tag = state === "sound" ? "fact rides here"
-        : state === "wrong" ? "fact would ride here, but is false"
-        : "different anchor";
-      const subjMark = d === subject ? `<span class="ancpin" title="the fact is pinned here">pinned</span>` : "";
+      const tag = state === "sound" ? "claim applies"
+        : state === "wrong" ? "claim would be false here"
+        : "different address";
+      const subjMark = d === subject ? `<span class="ancpin" title="the claim begins here">attached here</span>` : "";
       return `<div class="ancrow anc-${state}">`
         + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${facet.label} ${ancShort(a)}"></span>`
         + `<span class="riffname">${d.c}${subjMark}</span>`
@@ -1474,28 +1960,27 @@ customElements.define("anchor-transport", class extends HTMLElement {
     }).join("");
 
     const soundLine = covers
-      ? `<span class="anc-ok">cover holds</span>: the anchor (<b>${facet.label}</b>) is at least as fine as the fact's footprint (<b>${ANC_FACETS[fact.foot].label}</b>), so every rider is a sound landing.`
-      : `<span class="anc-bad">cover fails</span>: the anchor (<b>${facet.label}</b>) forgot a dimension the fact depends on (its footprint is <b>${ANC_FACETS[fact.foot].label}</b>), so the fact would ride to <b>${wrong.length}</b> shape${wrong.length === 1 ? "" : "s"} where it is not true: ${wrong.map((d) => d.c).join(", ") || "none in this set"}.`;
+      ? `<span class="anc-ok">safe to reuse</span>: <b>${facet.label}</b> preserves everything this claim depends on.`
+      : `<span class="anc-bad">not safe to reuse</span>: <b>${facet.label}</b> omits information the claim depends on. The claim would be false for ${wrong.map((d) => d.c).join(", ") || "at least one match"}.`;
 
-    const idle = `fact <b>${fact.label}</b> pinned on <b>${subject.c}</b> at the <b>${facet.label}</b> anchor`
-      + ` · rides to <b>${riders.length}</b> shape${riders.length === 1 ? "" : "s"} sharing that address`
-      + (covers ? "" : ` · <b>${wrong.length}</b> of them wrongly`);
+    const idle = `The claim <b>${fact.label}</b> is attached to <b>${subject.c}</b> using its <b>${facet.label}</b> address.`
+      + ` <b>${riders.length}</b> chord${riders.length === 1 ? "" : "s"} share that address.`;
 
     this.innerHTML = `
       <div class="ancfacts">
-        <div class="anclabel">pin a fact</div>
+        <div class="anclabel">choose a claim</div>
         ${factPills}
-        <p class="ancsay">${fact.say}. Its footprint is <b>${ANC_FACETS[fact.foot].label}</b>: the coarsest anchor it can ride soundly.</p>
+        <p class="ancsay detail-only">${fact.say}. It can safely follow the <b>${ANC_FACETS[fact.foot].label}</b> handle.</p>
       </div>
       <div class="dialbar">
-        <div class="grp"><span>anchor facet</span><div class="ladder">${ladder}</div></div>
-        <span class="ancslidehint">slide right to forget more</span>
+        <div class="grp"><span>attach it to</span><div class="ladder">${ladder}</div></div>
+        <span class="ancslidehint">the broader address preserves fewer details</span>
       </div>
       <div class="ancrows">${rows}</div>
       <div class="anccover ${covers ? "ok" : "bad"}">${soundLine}</div>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">The mechanism is the claims layer: a fact keys on a facet address, and sharing that address is decidable by lookup, so transport is free and instant. Soundness is one condition, and it is provable: <b>a fact rides an anchor soundly only if the anchor keeps every dimension the fact depends on</b>. The facet's own invariance theorem measures what it forgets; the transport theorem lets a fact ride exactly when its footprint avoids that forgotten set. Slide the anchor below its home facet and the fact does not get more general, it gets wrong, which is also how you read off what the fact truly depends on.</p>
-      <div class="ancfv">
+      <p class="twnote">Address equality is decidable by lookup, so reusing an attached claim is inexpensive. The soundness condition is explicit: the address must preserve every input on which the claim depends. Choosing a broader address does not make the claim more general. It can make the claim false.</p>
+      <div class="ancfv detail-only">
         <div class="anclabel">the same condition, on code (stated, not computed here)</div>
         ${ANC_FV.map((e) => `<div class="ancfvrow"><span class="ancfvfact">${e.fact}</span>`
           + `<span class="ancfvhome">home facet: <b>${e.home}</b></span>`
@@ -1510,43 +1995,38 @@ customElements.define("anchor-transport", class extends HTMLElement {
   }
 });
 
-// "prior art" chapter: content-addressed structural identity, independently
-// reinvented across three communities. Pure copy, no engine: renders
-// synchronously. Three cards on a lineage timeline (Forte 1973 -> Yatima/Ix ->
-// Verity), each with one honest sentence; hovering a card writes its precise
-// same/different-vs-riffcat line into a readout that restores an idle line on
-// leave (the facet-lattice hover idiom). A closing note concedes the primitive
-// and draws the line at our actual slice: the faceted, explainable query.
+// Three precedents for the larger story: shared pointing, addressed proving
+// computation, and proof reuse across a deliberately chosen boundary of change.
 const PRIORART_CARDS = [
   {
-    k: "forte",
-    era: "1973 · music theory",
-    who: "Allen Forte",
-    what: "pitch-class set theory",
-    line: "Prime form is a canonical address for a chord, invariant under transposition and inversion; the Forte number is that address into a catalog of shapes.",
+    k: "uri",
+    era: "1990s–today · the web",
+    who: "URIs",
+    what: "identity independent of representation",
+    line: "The web did not require every system to share a representation. It gave them a common way to identify a resource while leaving access and interpretation to each system.",
     accent: "var(--warm)",
-    read: "Same move: normalize a structure (a set of notes), then address it. A facet by another name, settled in the 1970s. You saw the engine land on this catalog two chapters back, on real chords.",
+    read: "The broad precedent: agree on how to point before agreeing on how to use. URI comparison even has several levels, from exact strings through increasingly informed normalization.",
   },
   {
     k: "lurk",
-    era: "ongoing · FV / Lean",
-    who: "Lurk · Yatima · Ix",
-    what: "content-addressed Lean",
-    line: "A nameless, De-Bruijn kernel IR, Merkle-hashed to a content address independent of computationally-irrelevant naming, so a proof of typechecking can travel with the artifact.",
+    era: "ongoing · proving computation",
+    who: "Lurk",
+    what: "content-addressed values inside evaluation",
+    line: "Lurk recursively hashes compound values inside its evaluator, joining evaluation, shared storage, private commitments, and zero-knowledge claims around the same addressed data.",
     accent: "var(--cool)",
-    read: "Same primitive, our names-blind facet frozen as the only setting. Theirs is an exact-identity oracle: two terms share an address or they are unrelated. No near-match, no distance, by design.",
+    read: "The evaluator represents compound values through content-derived scalar pointers. Evaluation, commitments, and proofs can therefore refer to the same value without a separate naming layer.",
   },
   {
-    k: "verity",
-    era: "ongoing · FV / EVM",
-    who: "Verity (LFG Labs)",
-    what: "a verified Lean compiler for the EVM",
-    line: "A formally verified compiler from an embedded DSL to EVM bytecode, proven to preserve semantics across its supported fragment, with the trust boundary named in the open.",
+    k: "ix",
+    era: "ongoing · Lean",
+    who: "Ix",
+    what: "proof reuse across equivalent declarations",
+    line: "Ix removes local names and presentation details before addressing a Lean declaration, so the same mathematical object receives the same handle and its typechecking proof can be reused.",
     accent: "var(--a)",
-    read: "The other axis: meaning. Verity proves one contract correct against its spec. riffcat points at which of the millions of deployed contracts share its shape, so a proof like that knows where to aim. Complement, not competitor.",
+    read: "Ix demonstrates the full chain: choose which changes do not matter, derive a stable address, attach a claim, and reuse the proof when that address appears again.",
   },
 ];
-const PRIORART_IDLE = "Three independent arrivals at one idea: normalize, then content-address. Hover a card for how it sits beside riffcat. The shared primitive is theirs; what follows is ours.";
+const PRIORART_IDLE = "These systems separate the identity needed by a task from incidental representation details. Hover a card for the specific connection.";
 customElements.define("prior-art", class extends HTMLElement {
   connectedCallback() {
     const cards = PRIORART_CARDS.map((c) =>
@@ -1559,7 +2039,7 @@ customElements.define("prior-art", class extends HTMLElement {
       <div class="paline" aria-hidden="true"></div>
       <div class="pagrid">${cards}</div>
       <div class="eqread" data-idle="${PRIORART_IDLE}">${PRIORART_IDLE}</div>
-      <p class="twnote">The point is not that we are first. It is that the primitive (content-addressed, names-blind structural hashing) is established, well, by people whose judgement we trust, and that this is reassuring rather than awkward. So we do not claim the hash. riffcat's slice is turning a structural digest from an exact-identity oracle into a <b>faceted, graded, explainable query</b> over a large, adversarial corpus: a ladder of normalizations, per-dimension digests, twins and near-match, for recognition and triage. Same primitive; opposite question. They ask whether this is the exact same object. We ask how much, and in which dimensions, this resembles that, across millions of independently compiled contracts. We can show you the why-they-match. We do not claim the why-they-mean-the-same.</p>`;
+      <p class="twnote">The web shows why a shared pointer matters. Lurk shows that addressed data can sit naturally inside a proving computation. Ix shows that the address can deliberately ignore cosmetic change, letting a proof follow the object it is about. <b>Riffcat's next move is plurality:</b> one artifact can expose several useful addresses, each clear about which differences it ignores. Different tools can meet at the narrowest address that still preserves the fact they want to share.</p>`;
     const read = this.querySelector(".eqread");
     this.querySelectorAll(".pacard").forEach((card) => {
       const c = PRIORART_CARDS.find((x) => x.k === card.dataset.k);
@@ -2283,7 +2763,7 @@ customElements.define("metadata-axes", class extends HTMLElement {
         : `${cur.note}`;
 
     this.innerHTML = `
-      <div class="mha-quote">
+      <div class="mha-quote detail-only">
         <span class="mha-qmark">Sourcify, on the metadata hash:</span>
         it &ldquo;acts as a fingerprint of the compilation &hellip; the slightest change in the compiler
         settings or even a whitespace in any of the source files will cause a change in the metadata hash.&rdquo;
@@ -2447,20 +2927,20 @@ customElements.define("byte-wall", class extends HTMLElement {
 const SB_LEGS = {
   localize: {
     x: 360, y: 70, role: "riffcat",
-    t: "localize",
-    s: "Point at the exact subtree that matches or changed. Explainable, content-addressed. This is the leg riffcat does, and it stops there.",
+    t: "find the part",
+    s: "Point at the exact piece of code that matches or changed. This is what riffcat does, and where it stops.",
     owns: "riffcat (this)", state: "built",
   },
   provenance: {
     x: 150, y: 250, role: "the compiler",
-    t: "provenance",
-    s: "Which source, and which Yul, became which bytecode. Only the compiler team can emit it. riffcat has a slot wired for it (trace_events) and today nothing fills it.",
+    t: "show its origin",
+    s: "Show which source and intermediate code became this output. Only the compiler can provide that trail.",
     owns: "solc / a compiler", state: "empty slot",
   },
   adjudicate: {
     x: 570, y: 250, role: "a verifier",
-    t: "adjudicate",
-    s: "Prove the two really compute the same thing, or return a counterexample. A verifier consumes a localized candidate as a scoped proof obligation. The verdict is theirs, not riffcat's.",
+    t: "check the claim",
+    s: "Prove the two pieces really behave the same, or show an input where they differ. That answer belongs to the checking tool, not riffcat.",
     owns: "hevm / SMTChecker / Certora", state: "builds on top",
   },
 };
@@ -2469,9 +2949,9 @@ const SB_EDGES = [["localize", "provenance"], ["provenance", "adjudicate"], ["ad
 // The library surface, plainly: what is a stable library boundary today, and
 // what is the thin CLI shell over it. Honest about which calls are real.
 const SB_SURFACE = [
-  { k: "fingerprint", d: "digest a graph at a chosen facet (full, names-blind, structure). The same call the live chapters made in your browser.", lib: true },
-  { k: "recognize", d: "look a shape up against a catalog and get back what it is, with the subtrees that matched.", lib: true },
-  { k: "similar", d: "weighted containment over a shape's subtrees, for the forks that edited the function. Direction stated, leaf floor reported.", lib: true },
+  { k: "fingerprint", d: "give code a stable handle based on what you choose to keep.", lib: true },
+  { k: "recognize", d: "find a known shape and show the exact parts that matched.", lib: true },
+  { k: "similar", d: "find edited versions that still contain most of a known shape.", lib: true },
   { k: "the CLI", d: "a thin shell over the library: ingest, query by shape, diff. The library is the building block; the CLI is one way to hold it.", lib: false },
 ];
 
@@ -2502,9 +2982,9 @@ customElements.define("shared-block", class extends HTMLElement {
         ${Object.keys(N).map(node).join("")}
       </svg>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <div class="sbsurface">${surface}</div>
-      <p class="twnote">On the fe team we wanted to know exactly where each piece of compiled output came from, so the provenance tracking mattered, and riffcat grew out of that. fe is young, which helped: we could build that producer side from the start, the slot a mature compiler would have to retrofit. So fe is not the thing we are asking you to adopt. It is the proof that the producer side can be built, which is why the schema here is real and not a sketch.</p>
-      <p class="twnote sbclose">It rides the corpus, it does not rebuild it. This is a draft passed around the table, not a contract handed across it. The honest question is the close: it could plausibly help several of these projects, so what fields and shapes does <b>your</b> data model actually need.</p>`;
+      <div class="sbsurface detail-only">${surface}</div>
+      <p class="twnote">fe gave us a place to build provenance into a compiler from the start. That makes the producer side real, but fe is not what anyone here must adopt.</p>
+      <p class="twnote sbclose">Riffcat works with the code and data teams already have. The question is: what would this shared handle need to carry for <b>your</b> tool?</p>`;
     const read = this.querySelector(".eqread");
     this.querySelectorAll(".sbnode").forEach((g) =>
       g.addEventListener("mouseenter", () => {
@@ -2530,47 +3010,44 @@ customElements.define("shared-block", class extends HTMLElement {
 // Unique tag + CT_-prefixed module names to avoid colliding with app.js.
 const CT_LEGS = {
   localize: {
-    x: 250, y: 60, t: "riffcat · localize", who: "the leg we do",
-    s: "Points at the matching or changed subtree, on source and on Yul, content-addressed so the match is a receipt you can read, not a score to trust.",
-    ask: "This is the one leg we run today. The honest question is whether the thing we hand off, a localized candidate at a chosen facet, is the right shape for you to receive.",
-    q: "What would make a localized candidate worth picking up?",
+    x: 250, y: 60, t: "riffcat · identify structure", who: "the current implementation",
+    s: "Identifies the exact source or generated subtree that matched or changed.",
+    ask: "Riffcat can hand another tool a concrete structural match, not merely a similarity score.",
+    q: "Which structural distinctions does your tool need?",
   },
   provenance: {
-    x: 70, y: 300, t: "the compiler · provenance", who: "the empty slot",
-    s: "Which source, and which Yul, became which bytecode. riffcat has a slot built for exactly this (the trace_events dimension and origin edges) and today nothing fills it.",
-    ask: "Reaching a contract that was never verified needs source and Yul traced down to bytecode. That is genuinely hard, and you are the only ones who can emit it. fe could build the slot from the start; solc would retrofit it.",
-    q: "What would it take to fill that slot, and is Yul the right layer?",
+    x: 70, y: 300, t: "compiler · record origins", who: "information only the compiler has",
+    s: "Records which source and intermediate operations produced each output operation.",
+    ask: "Following a match through generated code requires those transformation records.",
+    q: "Which compiler stages could expose them?",
   },
   adjudicate: {
-    x: 430, y: 300, t: "a verifier · adjudicate", who: "the leg above us",
-    s: "Proves the two really are equivalent, or returns a counterexample. riffcat shows the why-they-match; it does not adjudicate the why-they-mean-the-same.",
-    ask: "We localize a candidate and scope it to a facet. A verifier turns that into a proof obligation and answers it with a why. The facet we anchor at is exactly the scope the obligation stays sound in.",
-    q: "Where is your line between worth-proving and noise?",
+    x: 430, y: 300, t: "verification · prove the claim", who: "the semantic result",
+    s: "Proves that the matched artifacts preserve a stated behavior, or produces a counterexample.",
+    ask: "Riffcat can reduce the question to a specific pair of subtrees and a stated address policy.",
+    q: "What evidence would make that a useful verification input?",
   },
 };
-const CT_PAIN = "Sourcify holds the pain: match onchain bytecode to verified source. None of the three legs closes that loop alone.";
+const CT_PAIN = "The shared problem is maintaining useful identity across source, compiler artifacts, and semantic models. None of these tools closes that loop alone.";
 // The honest list from the posture doc, each beat ending on a question the named
 // team owns. Offer, never prescribe.
 const CT_NEEDS = [
-  { who: "Sourcify, and all the Argot projects",
-    body: "If this is a shared building block, the fingerprint, facet, and origin schema has to fit more than riffcat. We have a candidate already near-isomorphic across fe and riffcat.",
+  { who: "Tool builders",
+    body: "The address and origin record must carry the facts your tool needs to recover.",
     q: "What fields does your data model actually need?" },
-  { who: "The solc team (fe as the existence proof)",
-    body: "Recognizing a known shape in an unverified contract needs source and Yul to bytecode provenance. That is the empty trace_events slot, wired and waiting, with no plug yet made for it.",
-    q: "What would that provenance cost, and is Yul the right place to fill it?" },
-  { who: "The verification teams",
-    body: "riffcat narrows the haystack; a person or a prover still checks each needle. A localized, facet-scoped candidate is meant to read as a tight proof obligation, not a verdict.",
-    q: "What would you need from a candidate to treat its output as one?" },
-  { who: "Sourcify and r0qs, for ground truth",
-    body: "Precision and recall need labelled data. You hold the corpus and the provenance tags.",
-    q: "Could we co-build the eval slice?" },
-  { who: "Roadmap owners and auditors",
-    body: "The roadmap names vulnerability patterns. Which ones first is your domain knowledge, not ours.",
-    q: "Which shapes are worth catching first?" },
+  { who: "Compiler teams",
+    body: "Following a shape into generated code needs source-to-IR-to-output origins.",
+    q: "What would that origin trail cost, and is Yul the right place to expose it?" },
+  { who: "Verification teams",
+    body: "A match should arrive as one small, clearly stated question.",
+    q: "What would you need before choosing to check it?" },
+  { who: "People with real projects",
+    body: "We need examples where knowledge currently gets lost between tools.",
+    q: "Which fact would you most want to survive a transformation?" },
 ];
 // Open-ended starters, the kind you end a beat on, not a feature pitch.
 const CT_STARTERS = [
-  "Query the corpus by shape instead of by address. What is the first question you would ask it?",
+  "Query the code you already have by shape instead of by address. What is the first question you would ask it?",
   "We are not asking you to adopt a finished thing. We are offering a working core and asking what it should become for you.",
 ];
 customElements.define("collab-triangle", class extends HTMLElement {
@@ -2584,7 +3061,7 @@ customElements.define("collab-triangle", class extends HTMLElement {
         + `<rect x="-92" y="-17" width="184" height="34" rx="6"/>`
         + `<text x="0" y="4" text-anchor="middle">${n.t}</text></g>`;
     };
-    const idle = "Hover a leg. Each one is a different team's piece; none of them closes the loop alone.";
+    const idle = "Hover a contribution to see what exists and what requires collaboration.";
     const needs = CT_NEEDS.map((n) =>
       `<div class="ctneed"><div class="ctneed-who">${n.who}</div>`
       + `<div class="ctneed-body">${n.body}</div>`
@@ -2593,15 +3070,15 @@ customElements.define("collab-triangle", class extends HTMLElement {
     this.innerHTML = `
       <svg viewBox="-30 0 560 360" class="cttri" role="img" aria-label="the localize, provenance, adjudicate triangle">
         ${edge("localize", "provenance")}${edge("provenance", "adjudicate")}${edge("adjudicate", "localize")}
-        <text x="250" y="200" text-anchor="middle" class="ctpain">Sourcify</text>
-        <text x="250" y="220" text-anchor="middle" class="ctpain sub">holds the pain</text>
+        <text x="250" y="200" text-anchor="middle" class="ctpain">shared identity</text>
+        <text x="250" y="220" text-anchor="middle" class="ctpain sub">across representations</text>
         ${Object.keys(L).map(node).join("")}
       </svg>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">${CT_PAIN} riffcat rides the corpus, it does not rebuild it. It narrows what to read; it does not decide what is true.</p>
-      <div class="kicker" style="margin-top:24px">what we would actually need, and who owns the answer</div>
+      <p class="twnote">${CT_PAIN} riffcat works with the code teams already have; it does not rebuild it. It narrows what to read; it does not decide what is true.</p>
+      <div class="kicker detail-only" style="margin-top:24px">where you could join</div>
       <div class="ctneeds">${needs}</div>
-      <div class="kicker" style="margin-top:22px">two questions to start on</div>
+      <div class="kicker detail-only" style="margin-top:22px">two questions to start on</div>
       <ul class="ctstart">${starters}</ul>`;
     const read = this.querySelector(".eqread");
     this.querySelectorAll(".ctleg").forEach((g) =>
@@ -3632,7 +4109,7 @@ const PROV_B1 = {
     ["src_ret", "expr", 0, "src_add"], ["src_add", "lhs", 0, "src_a"], ["src_add", "rhs", 1, "src_b"],
     ["body", "stmt", 0, "add"], ["add", "lhs", 0, "la"], ["add", "rhs", 1, "lb"], ["body", "stmt", 1, "ret"],
   ],
-  edges: [["add", "flows_to", "ret", "data"]],
+  edges: [],
   origin: [
     ["body", "lowered_from", "src_ret"], ["add", "lowered_from", "src_add"],
     ["la", "lowered_from", "src_a"], ["lb", "lowered_from", "src_b"], ["ret", "lowered_from", "src_ret"],
@@ -3694,8 +4171,8 @@ customElements.define("provenance-rides", class extends HTMLElement {
   }
 
   render() {
-    const tabs = [["rides", "provenance rides along"], ["diverge", "provenance explains divergence"]]
-      .map(([k, l]) => `<span class="stop ${this.view === k ? "on" : ""}" data-view="${k}">${l}</span>`).join("");
+    const tabs = [["rides", "origin links"], ["diverge", "compare two lowerings"]]
+      .map(([k, l]) => `<span class="stop ${this.view === k ? "on" : ""} ${k === "diverge" ? "detail-only" : ""}" data-view="${k}">${l}</span>`).join("");
     const provBtn = (this.view === "rides" && !this.err)
       ? `<div class="grp"><span>origin edges</span><button class="prov-toggle" aria-pressed="${this.prov}">${this.prov ? "shown" : "hidden"}</button></div>`
       : "";
@@ -3703,7 +4180,7 @@ customElements.define("provenance-rides", class extends HTMLElement {
       ? `<p class="live-note"><b>not live:</b> ${this.err}. Nothing is shown baked; this chapter runs on the engine.</p>`
       : this.view === "rides" ? this.ridesView() : this.divergeView();
     this.innerHTML = `
-      <div class="dialbar"><div class="grp"><span>view</span><div class="ladder">${tabs}</div></div>${provBtn}</div>
+      <div class="dialbar"><div class="grp"><span>show</span><div class="ladder">${tabs}</div></div>${provBtn}</div>
       ${body}`;
     this.querySelectorAll("[data-view]").forEach((s) =>
       s.addEventListener("click", () => { if (this.view !== s.dataset.view) { this.view = s.dataset.view; this.render(); } }));
@@ -3719,10 +4196,6 @@ customElements.define("provenance-rides", class extends HTMLElement {
       const a = by.get(p), b = by.get(c);
       return `<line class="prov-child" x1="${a.x}" y1="${a.y + 16}" x2="${b.x}" y2="${b.y - 16}"/>`;
     }).join("");
-    const dataEdge = spec.edges.map(([s, , t]) => {
-      const a = by.get(s), b = by.get(t);
-      return `<line class="prov-data" x1="${a.x + 42}" y1="${a.y + 9}" x2="${b.x - 42}" y2="${b.y + 9}"/>`;
-    }).join("");
     const origin = !this.prov ? "" : spec.origin.map(([s, , t]) => {
       const a = by.get(s), b = by.get(t);
       return `<line class="prov-origin" x1="${a.x - 44}" y1="${a.y}" x2="${b.x + 44}" y2="${b.y}" marker-end="url(#prov-arr)"/>`;
@@ -3734,21 +4207,18 @@ customElements.define("provenance-rides", class extends HTMLElement {
       + `<text class="prov-kind" y="10">${n.kind}</text></g>`).join("");
     const w = d.with_origin, wo = d.without_origin;
     const chip = (hex) => `<span class="chip prov-chip" style="--chip:${chipColor(hex)}">${hex.slice(0, 12)}</span>`;
-    const cmp = `
-      <div class="prov-cmp">
-        <div class="prov-cmp-h">structure facet address, computed by the engine both times</div>
-        <div class="prov-cmp-row"><span class="prov-cmp-lab">with provenance</span>${chip(w.structure)}<span class="prov-cmp-meta">${w.node_count} nodes · ${w.origin_edges} origin edges</span></div>
-        <div class="prov-cmp-row"><span class="prov-cmp-lab">provenance stripped</span>${chip(wo.structure)}<span class="prov-cmp-meta">${wo.node_count} nodes · ${wo.origin_edges} origin edges</span></div>
-        <div class="prov-cmp-verdict ${d.structure_matches ? "ok" : "bad"}">${d.structure_matches ? "identical: attaching the origin edges does not move the shape address (the full facet holds too)" : "the addresses differ (unexpected)"}</div>
-      </div>`;
-    const idle = `The two little trees are the shape; the dashed arrows are provenance (<code>EdgeRole::Origin</code>), each lowered node pointing back at the source it came from. Toggle the origin edges: the address above does not move. Hover a lowered node to read its provenance.`;
+    const cmp = `<div class="prov-cmp prov-cmp-one">
+      <span class="prov-cmp-lab">structural address</span>${chip(this.prov ? w.structure : wo.structure)}
+      <span class="prov-cmp-verdict ${d.structure_matches ? "ok" : "bad"}">${d.structure_matches ? "unchanged" : "changed unexpectedly"}</span>
+    </div>`;
+    const idle = `The dashed links show where the generated operations came from. Hide them and the structural address remains unchanged.`;
     const note = `Fold riffcat into a compiler's origin tracing and this is the payoff. The lowering above is a small stand-in for fe's origin facts: the source expression and its lowered form are the <b>structure</b>, and the <code>EdgeRole::Origin</code> edges are the <b>attribution</b>, each lowered node recording where it came from. The engine excludes origin edges from the structural fold, so attaching a full attribution graph leaves every facet address unchanged, structure and full alike, and the fingerprint the catalog dedups on stays put. Provenance is queryable payload that <b>rides along</b>; it does not move the shape. One honest label: folding an instrumentation <code>trace_events</code> payload in <em>would</em> move the address, a deliberate versioned cost, kept off here.`;
     return `
       <svg viewBox="0 0 720 268" class="prov-svg" role="img" aria-label="a source expression and its lowered MIR, linked by provenance edges">
         <defs><marker id="prov-arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="latarrhead"/></marker></defs>
         <text x="150" y="28" text-anchor="middle" class="prov-col">source expression</text>
         <text x="556" y="28" text-anchor="middle" class="prov-col">lowered MIR</text>
-        ${child}${dataEdge}${origin}${nodes}
+        ${child}${origin}${nodes}
       </svg>
       ${cmp}
       <div class="eqread" data-idle="${idle}">${idle}</div>
