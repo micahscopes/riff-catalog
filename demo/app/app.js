@@ -428,6 +428,19 @@ const ARCS = {
       ["in honesty, and the ask", ["locality runs out", "what we sampled", "what we need"]],
     ],
   },
+  // Same spine, ten beats, for a short slot: one problem slide, one mechanism,
+  // two payoffs, the compiler beat, the boundary, the ask.
+  short: {
+    label: "short",
+    sections: [
+      ["the problem", ["broken reference"]],
+      ["the choice", ["facets"]],
+      ["on real code", ["recognized", "sniff it out"]],
+      ["through the compiler", ["provenance"]],
+      ["from match to knowledge", ["prove it", "anchors"]],
+      ["in honesty, and the ask", ["what we sampled", "what we need"]],
+    ],
+  },
   // The storybook order the deck grew up in: domain-coherent rather than causal,
   // useful for browsing everything that exists.
   storybook: {
