@@ -199,8 +199,58 @@ const CH = [
     nav: "generated names",
     kicker: "how the compiler names things",
     title: "The names the compiler generates",
-    lede: "One helper function, compiled next to three different libraries. solc builds the name from a number it assigns while parsing, so the number moves when the code above it changes.",
+    lede: "The same Solidity function, compiled twice; the second build adds one unrelated function above it. solc numbers the generated name from a parse counter, so the counter moves.",
     body: `<generated-names></generated-names>`,
+  },
+  {
+    nav: "a rename",
+    kicker: "the question",
+    title: "A rename at six scales",
+    lede: "Something is renamed and nothing else changes. Each row is who notices.",
+    body: `<div class="figure"><div class="cap">the same edit, six scales</div><table>
+      <tr><th>renamed</th><th>who notices</th></tr>
+      <tr><td class="n">a local variable</td><td>no one else can even refer to it</td></tr>
+      <tr><td class="n">a function argument</td><td>call sites that pass arguments by name</td></tr>
+      <tr><td class="n">a function</td><td>every caller</td></tr>
+      <tr><td class="n">a module</td><td>every import</td></tr>
+      <tr><td class="n">the module tree</td><td>every path, in code and in tooling</td></tr>
+      <tr><td class="n">a package version</td><td>every lockfile that pinned it</td></tr>
+    </table></div>`,
+  },
+  {
+    nav: "the selector",
+    kicker: "a name on the wire",
+    title: "The four bytes a name becomes",
+    lede: "A caller reaches a Solidity function through four bytes: a hash of its name and argument types. Rename the function and the four bytes move.",
+    body: `<sel-rename></sel-rename>`,
+  },
+  {
+    nav: "one selector",
+    kicker: "the same four bytes",
+    title: "Two names, one selector",
+    lede: "Two unrelated signatures whose hashes share their first four bytes. solc refuses to compile the pair into one contract; its exact error below.",
+    body: `<sel-collide></sel-collide>`,
+  },
+  {
+    nav: "quiet edits",
+    kicker: "edits that change nothing",
+    title: "Three edits that change no code",
+    lede: "solc stamps every deployed artifact with a hash of the whole build input, file paths included, and exact-match verification keys on that stamp. Three edits that leave every executable byte identical.",
+    body: `<quiet-edits></quiet-edits>`,
+  },
+  {
+    nav: "every name",
+    kicker: "ids nobody promised",
+    title: "Every name one function has",
+    lede: "The same two builds: every name the toolchain hangs on withdraw, and what one unrelated edit above it did to each. Ids like these are not stable within one compiler, let alone between versions, let alone between two compilers.",
+    body: `<name-ledger></name-ledger>`,
+  },
+  {
+    nav: "one address",
+    kicker: "the payoff, live in this browser",
+    title: "Two builds, one address",
+    lede: "The same two builds' withdraw, fingerprinted in your browser this run. Choose whether the names go into the address.",
+    body: `<held-address></held-address>`,
   },
   {
     nav: "an address",
@@ -485,21 +535,22 @@ const ARCS = {
       ["in honesty, and the ask", ["locality runs out", "what we sampled", "what we need"]],
     ],
   },
-  // The naming arc: one defect (we point with names, names move), one tool
-  // (an address you can check), two payoffs (across authors, across compilers),
-  // one boundary, one ask. Recognition comes before the compiler beat on
-  // purpose: the first payoff should be the one that lands without effort.
+  // The naming arc, built around one escalating question: what's in a name?
+  // A rename at six scales, then receipts at each scale from real solc runs
+  // (the wire selector, the collision, the no-op edits, the id ledger), the
+  // climax that ids inside a compiler are promised by nothing, and the payoff
+  // computed live: the address the unrelated edit cannot reach. The earlier
+  // ordering of this arc is in git before 2026-07-27.
   names: {
     label: "names",
     sections: [
-      ["the defect", ["many forms", "generated names", "broken reference"]],
-      ["what an address is", ["an address", "the fold", "two builds"]],
-      ["the proposal", ["facets"]],
-      ["on real code", ["recognized", "three libraries", "dedup", "sniff it out"]],
-      ["across compilers", ["provenance", "two fingerprints"]],
-      ["what you attach to it", ["anchors", "the cubical prototype", "prove it"]],
-      ["an old idea, and its limits", ["prior art", "locality runs out", "what we sampled"]],
-      ["the ask", ["what we need"]],
+      ["what's in a name", ["many forms", "a rename"]],
+      ["names people choose", ["the selector", "one selector"]],
+      ["names nobody chose", ["quiet edits", "broken reference", "generated names", "every name"]],
+      ["an address instead", ["an address", "the fold", "one address"]],
+      ["what an address buys", ["facets", "recognized", "resolution"]],
+      ["across compilers", ["two builds", "provenance", "two fingerprints"]],
+      ["limits, and the ask", ["locality runs out", "what we sampled", "what we need"]],
     ],
   },
   // Same spine, ten beats, for a short slot: one problem slide, one mechanism,
@@ -636,10 +687,11 @@ customElements.define("tour-app", class extends HTMLElement {
 });
 
 // The name a compiler generates belongs to the file, not to the function. Both
-// builds contain a byte-identical `withdraw`; the second adds one unrelated
-// function above it, and solc numbers the generated Yul function from a
-// parse-order node id, so the id moves. Generated by tools/gen-namesdata.mjs,
-// which fails loudly rather than emitting a slide that is no longer true.
+// builds contain the same Solidity `withdraw`, byte for byte; the second adds
+// one unrelated function above it, and solc numbers the generated Yul function
+// from a parse-order node id, so the id moves (as do the ids inside the body,
+// which "every name" itemizes). Generated by tools/gen-namesdata.mjs, which
+// fails loudly rather than emitting a slide that is no longer true.
 customElements.define("generated-names", class extends HTMLElement {
   connectedCallback() {
     const d = window.RIFFCAT_NAMES;
@@ -650,6 +702,130 @@ customElements.define("generated-names", class extends HTMLElement {
     this.innerHTML = `<pre class="gnsrc">${solHi(d.tracked)}</pre>
       <div class="gnames">${rows}</div>
       <div class="eqread">One function, unchanged. Two builds, two names.</div>`;
+  }
+});
+
+// --- the name ladder ------------------------------------------------------
+// The "what's in a name" evidence chapters. Everything they show is baked in
+// nameladder.js by tools/gen-nameladder.mjs from real solc runs; the generator
+// throws rather than write a slide that stopped being true. The one live
+// chapter (held-address) additionally recomputes its addresses in this browser
+// and refuses to render if the engine disagrees with the slide.
+const NL = () => window.RIFFCAT_NAMELADDER;
+const NL_MISSING = `<p class="live-note bad">name-ladder data not loaded</p>`;
+const escText = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+// Rename the function, keep the body: the ABI selector is a hash of the name,
+// so the four bytes on the wire move with it.
+customElements.define("sel-rename", class extends HTMLElement {
+  connectedCallback() {
+    const d = NL();
+    if (!d) { this.innerHTML = NL_MISSING; return; }
+    const rows = d.selector.rows.map((r, i) =>
+      `<div class="gnrow"><span class="gnwhere">${r.label}</span><code>${r.sig}</code>`
+      + `<code class="gnname">${i === 0 ? `<b>${r.sel}</b>` : `<i class="moved">${r.sel}</i>`}</code></div>`).join("");
+    this.innerHTML = `<div class="gnames">${rows}</div>
+      <div class="eqread">Same arguments, same body. Every caller holding <b>${d.selector.rows[0].sel}</b> now misses.</div>`;
+  }
+});
+
+// Two unrelated signatures, one selector, and solc's own refusal, verbatim.
+customElements.define("sel-collide", class extends HTMLElement {
+  connectedCallback() {
+    const d = NL();
+    if (!d) { this.innerHTML = NL_MISSING; return; }
+    const rows = d.collision.rows.map((r) =>
+      `<div class="gnrow"><span class="gnwhere"><code>${r.sig}</code></span>`
+      + `<code class="gnname"><b>${r.sel}</b></code></div>`).join("");
+    this.innerHTML = `<div class="gnames">${rows}</div>
+      <pre class="cmd">${escText(d.collision.error)}</pre>
+      <div class="eqread">The dispatcher reads only the four bytes, so it cannot tell these two apart.</div>`;
+  }
+});
+
+// Three edits that change no executable byte; the appended metadata hash, the
+// artifact's identity for exact-match verification, moves every time.
+customElements.define("quiet-edits", class extends HTMLElement {
+  connectedCallback() {
+    const d = NL();
+    if (!d) { this.innerHTML = NL_MISSING; return; }
+    const rows = d.quiet.rows.map((r, i) =>
+      `<tr><td class="n">${r.label}</td>`
+      + `<td>${i === 0 ? `${d.quiet.codeBytes} bytes` : `the same ${d.quiet.codeBytes} bytes`}</td>`
+      + `<td class="fp${i === 0 ? "" : " moved"}">${r.meta}…</td></tr>`).join("");
+    this.innerHTML = `<div class="figure"><div class="cap">one contract, four builds</div><table>
+      <tr><th>the edit</th><th>the code it deploys</th><th>the hash solc appends</th></tr>${rows}</table></div>
+      <div class="eqread">Zero code bytes moved. The identity hash moved all three times.</div>`;
+  }
+});
+
+// Every name the toolchain hangs on one function, across the same two builds
+// as "generated names", and which of them one unrelated edit moved.
+customElements.define("name-ledger", class extends HTMLElement {
+  connectedCallback() {
+    const d = NL();
+    if (!d) { this.innerHTML = NL_MISSING; return; }
+    const rows = d.ledger.rows.map((r) =>
+      `<tr><td class="n">${r.what}</td><td><code>${r.a}</code></td><td><code>${r.b}</code></td>`
+      + `<td class="lx-verd ${r.held ? "ok" : "bad"}">${r.held ? "held" : "moved"}</td></tr>`).join("");
+    const moved = d.ledger.rows.filter((r) => !r.held).length;
+    this.innerHTML = `<div class="figure"><div class="cap">one function, two builds</div><table>
+      <tr><th></th><th>as written</th><th>one function added above</th><th></th></tr>${rows}</table></div>
+      <div class="eqread"><b>${moved} of ${d.ledger.rows.length}</b> moved. The two that held are the two a person chose.</div>`;
+  }
+});
+
+// The payoff, computed as you watch: the two builds' fun_withdraw subtrees
+// (extracted verbatim from solc's irAst) are fingerprinted by the engine in
+// this browser. Names kept in the address: the unrelated edit moved it. Names
+// left out: one address. If the engine ever disagrees, the slide says so
+// instead of rendering.
+customElements.define("held-address", class extends HTMLElement {
+  async connectedCallback() {
+    this.keep = true;
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      const d = NL();
+      if (!d) throw new Error("name-ladder data not loaded");
+      const t0 = performance.now();
+      const fp = (o) => JSON.parse(b.fingerprint_yul(JSON.stringify(o), "shape"))
+        .find((u) => /^fun_withdraw_\d+$/.test(u.name));
+      this.units = [fp(d.address.a), fp(d.address.b)];
+      this.ms = performance.now() - t0;
+      if (this.units.some((u) => !u)
+        || this.units[0].facets["names-blind"] !== this.units[1].facets["names-blind"]
+        || this.units[0].facets["full"] === this.units[1].facets["full"])
+        throw new Error("the engine disagrees with this slide; regenerate nameladder.js");
+      this.render();
+    } catch (e) {
+      this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
+    }
+  }
+  render() {
+    const facet = this.keep ? "full" : "names-blind";
+    const rows = this.units.map((u, i) =>
+      `<div class="gnrow"><span class="gnwhere">${i === 0 ? "as written" : "one function added above"}`
+      + ` · <code>${u.name}</code></span><code class="gnname">${this.keep
+        ? `<i class="moved">${short(u.facets[facet])}</i>` : `<b>${short(u.facets[facet])}</b>`}</code></div>`).join("");
+    const d = NL();
+    const read = this.keep
+      ? `Two addresses. ${d.irlines.moved} of ${d.irlines.total} lines of the untouched function's IR differ`
+        + ` between the builds, every difference a generated name or offset, and this address keeps names in.`
+      : `<b>One address.</b> The numbering is out; what is left is everything else about the function,`
+        + ` and the unrelated edit cannot reach any of it. ${this.ms.toFixed(0)} ms in your browser.`;
+    this.innerHTML = `
+      <div class="dialbar"><div class="grp"><span>the names</span>
+        <button data-k="1" aria-pressed="${this.keep}">kept in the address</button>
+        <button data-k="0" aria-pressed="${!this.keep}">left out</button>
+      </div></div>
+      <div class="gnames">${rows}</div>
+      <div class="eqread">${read}</div>`;
+    this.querySelectorAll("[data-k]").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const keep = btn.dataset.k === "1";
+        if (keep !== this.keep) { this.keep = keep; this.render(); }
+      }));
   }
 });
 
