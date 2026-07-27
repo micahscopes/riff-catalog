@@ -1538,10 +1538,15 @@ customElements.define("recog-scan", class extends HTMLElement {
         if (!f.lib) { novel++; continue; }
         seen.set(f.lib, (seen.get(f.lib) || 0) + 1);
       }
+    const sortedLibs = [...seen.entries()].sort((a, b) => b[1] - a[1]);
+    const mainLibs = sortedLibs.filter(([, n]) => n >= 2);
+    const asideLibs = sortedLibs.filter(([, n]) => n < 2);
     const legend = `<div class="legend">`
-      + [...seen.entries()].sort((a, b) => b[1] - a[1])
-        .map(([k, n]) => `<span><i style="background:hsl(${(LIB[k] || {}).h || 0} 70% 55%)"></i>${(LIB[k] || {}).sym || ""} ${(LIB[k] || {}).n || k} <b>${n}</b></span>`).join("")
-      + `<span><i class="novel"></i>no library match <b>${novel}</b></span></div>`;
+      + mainLibs
+        .map(([k, n]) => `<span><span class="lg-sym" style="color:hsl(${(LIB[k] || {}).h || 0} 70% 55%)">${(LIB[k] || {}).sym || ""}</span> ${(LIB[k] || {}).n || k} <b>${n}</b></span>`).join("")
+      + `<span><span class="lg-sym" style="color:var(--ink-dim)">○</span> no library match <b>${novel}</b></span>`
+      + (asideLibs.length ? `<span class="lg-aside">plus ${asideLibs.map(([k, n]) => `${n} ${(LIB[k] || {}).n || k} match`).join(", ")}, shown on hover</span>` : "")
+      + `</div>`;
     // codedock reserves a constant height; the panel inside sizes to content.
     // Keeping the dock height fixed means hovering never changes the page
     // height, so scrollTop never clamps and the chips never bump (the flicker),
@@ -1666,8 +1671,11 @@ customElements.define("recog-dedup", class extends HTMLElement {
     const libOrder = Object.entries(s.byLib).sort((a, b) => b[1] - a[1]);
     const segs = libOrder.map(([lib, k]) => `<span style="flex:${k};background:hsl(${LIB[lib].h} 58% 46%)" title="${LIB[lib].n} ${k}"></span>`).join("")
       + `<span class="seg-novel" style="flex:${s.novel}" title="novel ${s.novel}"></span>`;
-    const legend = libOrder.map(([lib, k]) => `<span><i style="background:hsl(${LIB[lib].h} 58% 46%)"></i>${LIB[lib].sym} ${LIB[lib].n} ${k}</span>`).join("")
-      + `<span><i class="novel"></i>novel ${s.novel}</span>`;
+    const mainLibs = libOrder.filter(([, k]) => k >= 2);
+    const asideLibs = libOrder.filter(([, k]) => k < 2);
+    const legend = mainLibs.map(([lib, k]) => `<span><span class="lg-sym" style="color:hsl(${LIB[lib].h} 58% 46%)">${LIB[lib].sym}</span> ${LIB[lib].n} ${k}</span>`).join("")
+      + `<span><span class="lg-sym" style="color:var(--ink-dim)">○</span> novel ${s.novel}</span>`
+      + (asideLibs.length ? `<span class="lg-aside">plus ${asideLibs.map(([lib, k]) => `${k} ${LIB[lib].n} match`).join(", ")}, shown on hover</span>` : "");
     const rows = this.contracts.map((c) => {
       const seg = {}; for (const f of c.fns) { const key = (f.lib && LIB[f.lib]) ? f.lib : "novel"; seg[key] = (seg[key] || 0) + 1; }
       const bar = Object.entries(seg).sort((a, b) => (a[0] === "novel" ? 1 : 0) - (b[0] === "novel" ? 1 : 0))
