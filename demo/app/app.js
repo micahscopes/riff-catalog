@@ -438,24 +438,61 @@ const CH = [
     body: `<sampled-ledger></sampled-ledger>`,
   },
   {
+    nav: "where we're headed",
+    tonightOnly: true,
+    kicker: "the vision, plainly",
+    title: "One substrate, five worlds",
+    lede: "Each of these tools hand-rolls its own answer to when code counts as the same; a faceted address is that answer, built once and shared.",
+    body: `<div class="vh-conv">
+    <div class="vh-row"><span class="vh-w">compilers</span><span class="vh-h">pin facts to the shape, not the build</span></div>
+    <div class="vh-row"><span class="vh-w">verification</span><span class="vh-h">a proof travels with its scope attached</span></div>
+    <div class="vh-row"><span class="vh-w">debugging</span><span class="vh-h">a breakpoint that survives every pass</span></div>
+    <div class="vh-row"><span class="vh-w">reuse</span><span class="vh-h">audit a shape once, recognize it everywhere</span></div>
+    <div class="vh-row"><span class="vh-w">naming</span><span class="vh-h">resolve to content, let names ride</span></div>
+    <svg class="vh-fan" viewBox="0 0 64 220" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" y1="22" x2="64" y2="110"/>
+      <line x1="0" y1="66" x2="64" y2="110"/>
+      <line x1="0" y1="110" x2="64" y2="110"/>
+      <line x1="0" y1="154" x2="64" y2="110"/>
+      <line x1="0" y1="198" x2="64" y2="110"/>
+    </svg>
+    <div class="vh-hub"><b>one index</b><small>every part a shape, every shape an address, facts riding along</small></div>
+  </div>
+  <p class="vh-punch">Every tool keeps its own rigor. <b>The address is what they share.</b></p>
+  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. The engine is content-blind over labelled graphs, which is why five worlds can land in one index.</p>`,
+  },
+  {
     nav: "what we need",
-    kicker: "offered for co-design, not a handoff",
-    title: "What each team contributes",
-    lede: "Three legs: riffcat localizes, the compiler carries origins, a verifier decides; one question per team.",
-    body: `<div class="identity-boundary">
-      <div><span>riffcat · localize</span><b>points at the matching subtree</b><small>Which structural distinctions must an address preserve for your tool?</small></div>
-      <div><span>compiler · origins</span><b>records what produced each output</b><small>What would a source-to-Yul-to-bytecode origin trail cost, and where would you expose it?</small></div>
-      <div><span>verifier · decide</span><b>a proof or a counterexample</b><small>What evidence turns a shape match into a question you would accept?</small></div>
-    </div>
-    <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape.</p>
-`,
+    kicker: "the invitation",
+    title: "Bring your rigor, share the substrate",
+    lede: "riffcat points at a part, a compiler can remember where it came from, a verifier can decide what it does; nobody closes that loop alone.",
+    body: `<div class="wn-loop">
+    <div class="wn-row wn-riffcat"><span class="wn-who">riffcat <i class="wn-state">built</i></span>
+      <span class="wn-brings">one address for a part, across representations</span>
+      <span class="wn-q">What must an address never forget before your tool would trust it?</span></div>
+    <div class="wn-row wn-compiler"><span class="wn-who">a compiler <i class="wn-state">open seat</i></span>
+      <span class="wn-brings">lowers the program, and can carry origins through every pass</span>
+      <span class="wn-q">If origins rode along, what would you build first?</span></div>
+    <div class="wn-row wn-verifier"><span class="wn-who">a verifier <i class="wn-state">open seat</i></span>
+      <span class="wn-brings">makes checkable claims about what the code does</span>
+      <span class="wn-q">What would make a shape match worth your solver's time?</span></div>
+  </div>
+  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. riffcat triages, it does not adjudicate: a match is a candidate, handed to the seat we leave open.</p>`,
   },
   {
     nav: "a shared block",
-    kicker: "offered for co-design, not handed over",
+    kicker: "co-design, not a handoff",
     title: "A shared building block",
-    lede: "A small library with a thin CLI, offered for co-design.",
-    body: `<shared-block></shared-block>`,
+    lede: "The offer is small on purpose: a library of three verbs, a thin CLI, and a schema that has not hardened yet.",
+    body: `<div class="sb2-verbs">
+    <div><b>fingerprint</b><small>a stable handle for exactly what you chose to keep</small></div>
+    <div><b>recognize</b><small>find a known shape, point at the parts that match</small></div>
+    <div><b>similar</b><small>catch edited versions that still carry it</small></div>
+  </div>
+  <p class="sb2-cli">behind a thin CLI: <code>ingest</code> · <code>query by shape</code> · <code>diff</code></p>
+  <p class="sb2-close"><span class="sb2-setup">An address format hardens the day tools start depending on it.</span>
+  <span class="sb2-punch">This one is not fixed yet.</span></p>
+  <p class="twnote">fe gave us a compiler where provenance could be built in from the start: an existence proof for the producer seat, not a dependency. riffcat works with the code and data teams already have; the open question is what the shared handle must carry for your tool.</p>`,
   },
   {
     nav: "structure vs meaning",
@@ -715,83 +752,6 @@ const CH = [
     body: `<fold-merkle></fold-merkle>`,
   },
   {
-    nav: "the local ceiling",
-    tonightOnly: true,
-    kicker: "the fold, named",
-    title: "The fold is 1-WL color refinement",
-    lede: "Each round a node's new color hashes its own previous color with the sorted multiset of its neighbors' colors and edge roles, iterated until the partition stops splitting: this fold has a name, Weisfeiler-Leman (1-WL) color refinement, and a known ceiling.",
-    body: `<svg viewBox="0 0 720 308" class="lattice wl-svg" role="img" aria-label="1-WL refinement on a five-node path reaching a fixpoint, beside the 3-prism and K3,3, two non-isomorphic 3-regular graphs that 1-WL cannot tell apart">
-      <text x="186" y="24" text-anchor="middle" class="latcap">refine to a fixpoint</text>
-      <text x="546" y="24" text-anchor="middle" class="latcap sem">the ceiling: 1-WL is incomplete</text>
-      <line x1="372" y1="36" x2="372" y2="296" class="latdivide"/>
-
-      <text x="24" y="59" class="wl-round">round 0: start from the local digest</text>
-      <text x="348" y="59" text-anchor="end" class="wl-count">1 class</text>
-      <line class="wl-e" x1="65" y1="86" x2="105" y2="86"/><line class="wl-e" x1="131" y1="86" x2="171" y2="86"/><line class="wl-e" x1="197" y1="86" x2="237" y2="86"/><line class="wl-e" x1="263" y1="86" x2="303" y2="86"/>
-      <g class="wl-n wl-c0" transform="translate(52,86)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c0" transform="translate(118,86)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c0" transform="translate(184,86)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c0" transform="translate(250,86)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c0" transform="translate(316,86)"><circle r="13"/><text y="4">●</text></g>
-
-      <text x="24" y="141" class="wl-round">round 1: fold in the neighbors' colors</text>
-      <text x="348" y="141" text-anchor="end" class="wl-count">2 classes</text>
-      <line class="wl-e" x1="65" y1="168" x2="105" y2="168"/><line class="wl-e" x1="131" y1="168" x2="171" y2="168"/><line class="wl-e" x1="197" y1="168" x2="237" y2="168"/><line class="wl-e" x1="263" y1="168" x2="303" y2="168"/>
-      <g class="wl-n wl-c1" transform="translate(52,168)"><circle r="13"/><text y="4">■</text></g>
-      <g class="wl-n wl-c0" transform="translate(118,168)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c0" transform="translate(184,168)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c0" transform="translate(250,168)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c1" transform="translate(316,168)"><circle r="13"/><text y="4">■</text></g>
-
-      <text x="24" y="223" class="wl-round">round 2: one more split, stable</text>
-      <text x="348" y="223" text-anchor="end" class="wl-count">3 classes · fixpoint</text>
-      <line class="wl-e" x1="65" y1="250" x2="105" y2="250"/><line class="wl-e" x1="131" y1="250" x2="171" y2="250"/><line class="wl-e" x1="197" y1="250" x2="237" y2="250"/><line class="wl-e" x1="263" y1="250" x2="303" y2="250"/>
-      <g class="wl-n wl-c1" transform="translate(52,250)"><circle r="13"/><text y="4">■</text></g>
-      <g class="wl-n wl-c0" transform="translate(118,250)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c2" transform="translate(184,250)"><circle r="13"/><text y="4">▲</text></g>
-      <g class="wl-n wl-c0" transform="translate(250,250)"><circle r="13"/><text y="4">●</text></g>
-      <g class="wl-n wl-c1" transform="translate(316,250)"><circle r="13"/><text y="4">■</text></g>
-      <text x="52" y="272" class="wl-role">end</text><text x="118" y="272" class="wl-role">mid</text><text x="184" y="272" class="wl-role">center</text><text x="250" y="272" class="wl-role">mid</text><text x="316" y="272" class="wl-role">end</text>
-      <text x="186" y="292" class="wl-good">isomorphic shapes always hash equal: no false splits</text>
-
-      <text x="546" y="42" text-anchor="middle" class="wl-sub">both 3-regular on six nodes</text>
-      <text x="546" y="56" text-anchor="middle" class="wl-sub">refinement never splits: one color, forever</text>
-
-      <path class="wl-e" d="M455 112 L493 178 L417 178 Z"/>
-      <path class="wl-e" d="M455 135 L473 167 L437 167 Z"/>
-      <line class="wl-e" x1="455" y1="112" x2="455" y2="135"/>
-      <line class="wl-e" x1="493" y1="178" x2="473" y2="167"/>
-      <line class="wl-e" x1="417" y1="178" x2="437" y2="167"/>
-      <g class="wl-n wl-c0 wl-m" transform="translate(455,112)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(493,178)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(417,178)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(455,135)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(473,167)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(437,167)"><circle r="10"/><text y="3">●</text></g>
-
-      <text x="542" y="152" class="wl-neq">≠</text>
-
-      <line class="wl-e" x1="592" y1="118" x2="592" y2="182"/><line class="wl-e" x1="592" y1="118" x2="634" y2="182"/><line class="wl-e" x1="592" y1="118" x2="676" y2="182"/>
-      <line class="wl-e" x1="634" y1="118" x2="592" y2="182"/><line class="wl-e" x1="634" y1="118" x2="634" y2="182"/><line class="wl-e" x1="634" y1="118" x2="676" y2="182"/>
-      <line class="wl-e" x1="676" y1="118" x2="592" y2="182"/><line class="wl-e" x1="676" y1="118" x2="634" y2="182"/><line class="wl-e" x1="676" y1="118" x2="676" y2="182"/>
-      <g class="wl-n wl-c0 wl-m" transform="translate(592,118)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(634,118)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(676,118)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(592,182)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(634,182)"><circle r="10"/><text y="3">●</text></g>
-      <g class="wl-n wl-c0 wl-m" transform="translate(676,182)"><circle r="10"/><text y="3">●</text></g>
-
-      <text x="455" y="206" class="wl-glab">3-prism · has triangles</text>
-      <text x="634" y="206" class="wl-glab">K3,3 · no triangles</text>
-      <g class="wl-chip"><rect x="411" y="220" width="88" height="20" rx="3"/><text x="455" y="234">wl 9b1f4e</text></g>
-      <text x="542" y="234" class="wl-eq">=</text>
-      <g class="wl-chip"><rect x="590" y="220" width="88" height="20" rx="3"/><text x="634" y="234">wl 9b1f4e</text></g>
-      <text x="546" y="292" class="wl-bad">different shapes, one address: the known collision</text>
-    </svg>
-    <p class="twnote">The engine runs this refinement only inside a condensed recursive region (condensed.rs), where members are told apart by WL color rather than node key order (invariant I5); outside those regions the plain fold is exact. The guarantee is one-sided: isomorphic shapes always hash equal (no false splits, so no missed matches from this step), while 1-WL is incomplete on pathological regular graphs, so an adversarial non-isomorphic pair can share an address. Anonymous equality therefore means "WL-equivalent under this policy", not "isomorphic": the equivalence is the kernel of the hash, versioned by the schema, and the claims layer exists to govern exactly these residuals (wl.rs). Node colors and digests here are illustrative stand-ins; the wasm wrapper surfaces only graph-level addresses.</p>
-`,
-  },
-  {
     nav: "the bug's shape",
     demosOnly: true,
     title: "The shape of a bug",
@@ -916,10 +876,11 @@ const ARCS = {
     sections: [
       ["what counts as the same", ["sameness", "on music", "names out"]],
       ["on real code", ["recognized", "audit once", "shared machinery"]],
-      ["through the compiler", ["the compiler too", "flips vs holds", "leaves up", "the local ceiling"]],
+      ["through the compiler", ["the compiler too", "flips vs holds", "leaves up"]],
       ["put to work", ["the bug's shape", "edited forks", "a fact rides"]],
       ["standing on", ["the cheap yes", "prior art"]],
-      ["honesty, and the ask", ["what we sampled", "what we need", "a shared block"]],
+      ["in honesty", ["what we sampled"]],
+      ["the invitation", ["where we're headed", "what we need", "a shared block"]],
     ],
   },
 };
@@ -3451,94 +3412,6 @@ customElements.define("byte-wall", class extends HTMLElement {
     this.addEventListener("mouseleave", () => {
       this.querySelectorAll(".bw-cell").forEach((x) => x.classList.remove("bw-lit"));
       this.querySelectorAll(".bw-dim").forEach((x) => x.classList.remove("on"));
-      read.innerHTML = read.dataset.idle;
-    });
-  }
-});
-
-// "A shared building block" chapter. Static, synchronous, no engine: this is
-// mostly copy. It places riffcat as a library-plus-thin-CLI offered for
-// co-design, with the fe lineage as a background existence-proof ("we wanted X,
-// so Y mattered"), and the collaboration triangle (localize / provenance /
-// adjudicate) as a hand-laid SVG in the spirit of facet-lattice: hover a leg for
-// who owns it. Solidity-facing throughout; fe stays brief and demystifying.
-// Unique tag + SB_-prefixed module names so nothing collides with app.js.
-
-// The triangle: one problem, three contributors, none can solve it alone. Each
-// leg names what it does, who owns it, and (honestly) whether riffcat fills it
-// today. Coordinates are hand-laid to sit in the same 720x320 frame the lattice
-// uses, so the two diagrams read as siblings.
-const SB_LEGS = {
-  localize: {
-    x: 360, y: 70, role: "riffcat",
-    t: "find the part",
-    s: "Point at the exact piece of code that matches or changed. This is what riffcat does, and where it stops.",
-    owns: "riffcat (this)", state: "built",
-  },
-  provenance: {
-    x: 150, y: 250, role: "the compiler",
-    t: "show its origin",
-    s: "Show which source and intermediate code became this output. Only the compiler can provide that trail.",
-    owns: "solc / a compiler", state: "empty slot",
-  },
-  adjudicate: {
-    x: 570, y: 250, role: "a verifier",
-    t: "check the claim",
-    s: "Prove the two pieces really behave the same, or show an input where they differ. That answer belongs to the checking tool, not riffcat.",
-    owns: "hevm / SMTChecker / Certora", state: "builds on top",
-  },
-};
-const SB_EDGES = [["localize", "provenance"], ["provenance", "adjudicate"], ["adjudicate", "localize"]];
-
-// The library surface, plainly: what is a stable library boundary today, and
-// what is the thin CLI shell over it. Honest about which calls are real.
-const SB_SURFACE = [
-  { k: "fingerprint", d: "give code a stable handle based on what you choose to keep.", lib: true },
-  { k: "recognize", d: "find a known shape and show the exact parts that matched.", lib: true },
-  { k: "similar", d: "find edited versions that still contain most of a known shape.", lib: true },
-  { k: "the CLI", d: "a thin shell over the library: ingest, query by shape, diff. The library is the building block; the CLI is one way to hold it.", lib: false },
-];
-
-customElements.define("shared-block", class extends HTMLElement {
-  connectedCallback() {
-    this.render();
-  }
-  render() {
-    const N = SB_LEGS;
-    const edges = SB_EDGES.map(([a, b]) =>
-      `<line x1="${N[a].x}" y1="${N[a].y}" x2="${N[b].x}" y2="${N[b].y}" class="sbedge"/>`).join("");
-    const node = (k) => {
-      const n = N[k];
-      return `<g class="sbnode sb-${k}" data-k="${k}" transform="translate(${n.x},${n.y})">`
-        + `<rect x="-78" y="-20" width="156" height="40" rx="6"/>`
-        + `<text class="sb-t" x="0" y="-1" text-anchor="middle">${n.t}</text>`
-        + `<text class="sb-r" x="0" y="13" text-anchor="middle">${n.role}</text></g>`;
-    };
-    const surface = SB_SURFACE.map((s) =>
-      `<div class="sbrow"><span class="sb-k">riffcat ${s.k}</span>`
-      + `<span class="sb-tag ${s.lib ? "lib" : "cli"}">${s.lib ? "library" : "thin CLI"}</span>`
-      + `<span class="sb-d">${s.d}</span></div>`).join("");
-    const idle = "Hover a leg. One problem, three contributors, none of them closes the loop alone.";
-    this.innerHTML = `
-      <svg viewBox="0 0 720 320" class="sbtri" role="img" aria-label="the collaboration triangle: localize, provenance, adjudicate">
-        <text x="360" y="26" text-anchor="middle" class="sbcap">one problem, three legs</text>
-        ${edges}
-        ${Object.keys(N).map(node).join("")}
-      </svg>
-      <div class="eqread" data-idle="${idle}">${idle}</div>
-      <div class="sbsurface detail-only">${surface}</div>
-      <p class="twnote">fe gave us a place to build provenance into a compiler from the start. That makes the producer side real, but fe is not what anyone here must adopt.</p>
-      <p class="twnote sbclose">Riffcat works with the code and data teams already have. The question is: what would this shared handle need to carry for <b>your</b> tool?</p>`;
-    const read = this.querySelector(".eqread");
-    this.querySelectorAll(".sbnode").forEach((g) =>
-      g.addEventListener("mouseenter", () => {
-        this.querySelectorAll(".sbnode").forEach((x) => x.classList.remove("on"));
-        g.classList.add("on");
-        const n = SB_LEGS[g.dataset.k];
-        read.innerHTML = `<b>${n.t}</b> · owned by ${n.owns} · <span class="sb-state">${n.state}</span><br>${n.s}`;
-      }));
-    this.addEventListener("mouseleave", () => {
-      this.querySelectorAll(".sbnode").forEach((x) => x.classList.remove("on"));
       read.innerHTML = read.dataset.idle;
     });
   }

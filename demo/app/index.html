@@ -726,32 +726,52 @@
   .bw-dimt { fill: var(--ink); font-family: var(--mono); font-size: 12px; pointer-events: none; }
   .bw-ride { fill: var(--warm); font-family: var(--mono); font-size: 11px; letter-spacing: .03em; }
 
-  /* shared-block */
-/* a shared building block: the collaboration triangle (sibling to the facet
-     lattice) plus a plain library/CLI surface list. Static, no engine. */
-  .sbtri { width: 100%; height: auto; max-width: 720px; margin: 10px auto 4px; display: block; }
-  .sbcap { fill: var(--ink-dim); font-family: var(--mono); font-size: 11px; letter-spacing: .04em; }
-  .sbedge { stroke: var(--line-bright); stroke-width: 1.5; stroke-dasharray: 5 4; }
-  .sbnode rect { fill: var(--bg-chip); stroke: var(--line-bright); stroke-width: 1; transition: fill .14s ease, stroke .14s ease, stroke-width .14s ease; }
-  .sbnode .sb-t { fill: var(--ink); font-family: var(--mono); font-size: 12.5px; font-weight: 700; pointer-events: none; }
-  .sbnode .sb-r { fill: var(--ink-faint); font-family: var(--mono); font-size: 10.5px; pointer-events: none; }
-  /* riffcat is the leg we do (cool); the two we need are the warm dashed slots */
-  .sbnode.sb-localize rect { stroke: var(--cool); }
-  .sbnode.sb-provenance rect, .sbnode.sb-adjudicate rect { stroke: var(--warm); stroke-dasharray: 4 3; }
-  .sbnode.on rect { stroke-width: 2; }
-  .sbnode.sb-localize.on rect { fill: color-mix(in oklch, var(--cool) 22%, var(--bg)); }
-  .sbnode.sb-provenance.on rect, .sbnode.sb-adjudicate.on rect { fill: color-mix(in oklch, var(--warm) 22%, var(--bg)); }
-  .eqread .sb-state { color: var(--warm); }
-  /* the library/CLI surface: one row per call, library vs thin-CLI tagged */
-  .sbsurface { margin: 14px 0 6px; border: 1px solid var(--line); }
-  .sbrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
-  .sbrow:last-child { border-bottom: none; }
-  .sbrow .sb-k { flex: 0 0 150px; color: var(--ink); font-weight: 700; font-size: 12.5px; }
-  .sbrow .sb-tag { flex: 0 0 64px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; text-align: center; padding: 2px 0; border-radius: 3px; }
-  .sbrow .sb-tag.lib { color: var(--a); border: 1px solid var(--a-dim); background: rgba(93,242,166,.07); }
-  .sbrow .sb-tag.cli { color: var(--ink-dim); border: 1px solid var(--line-bright); }
-  .sbrow .sb-d { flex: 1 1 240px; min-width: 0; color: var(--ink-dim); font-size: 12px; }
-  .twnote.sbclose { border-top: 1px solid var(--line); margin-top: 4px; }
+
+/* --- where we're headed (vh-): five worlds converge on one index --------- */
+.vh-conv { display: grid; grid-template-columns: 1fr 64px minmax(160px, max-content); column-gap: 16px; align-items: stretch; margin: 26px 0 8px; }
+.vh-row { grid-column: 1; display: flex; align-items: baseline; gap: 14px; padding: 9px 0; }
+.vh-row + .vh-row { border-top: 1px solid var(--line); }
+.vh-w { flex: 0 0 108px; text-align: right; color: var(--ink-faint); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+.vh-h { color: var(--ink); font-size: 15.5px; }
+.vh-fan { grid-column: 2; grid-row: 1 / span 5; width: 100%; height: 100%; display: block; }
+.vh-fan line { stroke: var(--line-bright); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.vh-hub { grid-column: 3; grid-row: 1 / span 5; align-self: center; border: 1px solid var(--a-dim); background: var(--bg); padding: 18px 20px; max-width: 200px; text-align: center; }
+.vh-hub b { display: block; color: var(--a); font-size: 18px; margin-bottom: 6px; }
+.vh-hub small { display: block; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+.vh-punch { text-align: center; font-size: 19px; line-height: 1.55; color: var(--ink); max-width: 640px; margin: 24px auto 6px; }
+.vh-punch b { color: var(--a); }
+
+/* --- what we need (wn-): three seats, one question each ------------------ */
+.wn-loop { margin: 24px 0 8px; }
+.wn-row { border-left: 3px solid var(--line-bright); background: var(--bg); padding: 12px 18px 13px; margin: 0 0 14px; }
+.wn-row.wn-riffcat { border-color: var(--cool); }
+.wn-row.wn-compiler, .wn-row.wn-verifier { border-color: var(--warm); }
+.wn-who { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-dim); }
+.wn-riffcat .wn-who { color: var(--cool); }
+.wn-compiler .wn-who, .wn-verifier .wn-who { color: var(--warm); }
+.wn-state { font-style: normal; font-size: 10px; letter-spacing: .08em; color: var(--ink-faint); border: 1px solid var(--line); padding: 1px 7px; margin-left: 8px; border-radius: 3px; }
+.wn-riffcat .wn-state { color: var(--a); border-color: var(--a-dim); }
+.wn-brings { display: block; color: var(--ink-dim); font-size: 13.5px; margin: 5px 0 7px; }
+.wn-q { display: block; color: var(--ink); font-size: 16.5px; line-height: 1.5; }
+
+/* --- a shared block (sb2-): three verbs and the open hand ---------------- */
+.sb2-verbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 22px 0 14px; }
+.sb2-verbs > div { border: 1px solid var(--line-bright); background: var(--bg); padding: 14px 16px; }
+.sb2-verbs b { display: block; color: var(--cool); font-size: 15.5px; margin-bottom: 6px; }
+.sb2-verbs small { display: block; color: var(--ink-dim); font-size: 13px; line-height: 1.5; }
+.sb2-cli { text-align: center; color: var(--ink-dim); font-size: 13px; margin: 0 0 6px; }
+.sb2-close { text-align: center; max-width: 620px; margin: 30px auto 10px; }
+.sb2-setup { display: block; color: var(--ink-dim); font-size: 14px; margin-bottom: 8px; }
+.sb2-punch { display: block; color: var(--ink); font-size: 21px; font-weight: 700; line-height: 1.5; }
+
+@media (max-width: 700px) {
+  .vh-conv { grid-template-columns: 1fr; }
+  .vh-fan { display: none; }
+  .vh-hub { grid-column: 1; grid-row: auto; max-width: none; margin-top: 12px; }
+  .vh-row { flex-direction: column; gap: 2px; }
+  .vh-w { flex-basis: auto; text-align: left; }
+  .sb2-verbs { grid-template-columns: 1fr; }
+}
 
   /* need-help */
 /* what we would need with: the localize / provenance / adjudicate triangle.
@@ -1013,28 +1033,6 @@
 .loclim-inst-edge.on { background: color-mix(in oklch, var(--warm) 12%, var(--bg)); }
 .loclim-edge-mark, .loclim-inst-edge .loclim-edge-mark { display: inline-block; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--warm); border: 1px solid var(--warm); border-radius: 3px; padding: 1px 5px; margin-right: 7px; vertical-align: 1px; }
 .twnote.loclim-foot { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; }
-
-  /* the local ceiling (nav: the local ceiling): 1-WL color refinement and its
-     collision. Reuses .lattice/.latcap/.latdivide/.twnote; new rules wl-* scoped. */
-  .wl-svg { max-width: 720px; }
-  .wl-svg text { fill: var(--ink); }
-  .wl-round { fill: var(--ink-dim); font-size: 12px; }
-  .wl-count { fill: var(--ink-faint); font-size: 11px; font-family: var(--mono); }
-  .wl-role { fill: var(--ink-faint); font-size: 10px; text-anchor: middle; }
-  .wl-e { stroke: var(--line-bright); stroke-width: 1.6; fill: none; }
-  .wl-n circle { stroke: var(--bg); stroke-width: 2; }
-  .wl-n text { fill: var(--bg); font-size: 12px; font-weight: 700; }
-  .wl-c0 circle { fill: var(--ink-faint); }
-  .wl-c1 circle { fill: var(--warm); }
-  .wl-c2 circle { fill: var(--a); }
-  .wl-good { fill: var(--a); font-size: 11px; }
-  .wl-bad { fill: var(--warm); font-size: 11px; }
-  .wl-sub { fill: var(--ink-faint); font-size: 10px; }
-  .wl-glab { fill: var(--ink-dim); font-size: 10.5px; }
-  .wl-neq { fill: var(--warm); font-size: 22px; font-weight: 700; }
-  .wl-eq { fill: var(--ink-dim); font-size: 18px; }
-  .wl-chip rect { fill: var(--bg-chip); stroke: var(--line); }
-  .wl-chip text { fill: var(--ink-dim); font-size: 11px; font-family: var(--mono); }
 
   /* provenance rides along (nav: provenance). Reuses .dialbar/.ladder/.stop,
      .eqread/.twnote, .chip, .bar, and the .latarrhead marker theme; new rules
