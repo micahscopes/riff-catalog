@@ -311,7 +311,7 @@ const CH = [
     nav: "the riff",
     kicker: "the same idea, on music",
     title: "Riffs and riffing",
-    lede: "A motif and some variants. Choose what makes two the same, intervals, rhythm, or the bare notes, then press play.",
+    lede: "A motif and its variants: choose what counts as the same, then press play.",
     body: `<riff-dial></riff-dial><div class="kicker" style="margin-top:24px">now on chords, parsed from real notation</div><chord-fp></chord-fp>`,
   },
   {
@@ -329,7 +329,7 @@ const CH = [
     nav: "recognized",
     kicker: "the pitch, on real mainnet code",
     title: "Recognizing known library code",
-    lede: "Ten verified contracts from Sourcify, selected as OpenZeppelin users, each function colored by the library it matches. Grey is new code; hover to read it.",
+    lede: "Ten verified Sourcify contracts, every function marked by the library shape it matches; grey is new code.",
     body: `<recog-scan></recog-scan>`,
   },
   {
@@ -357,21 +357,21 @@ const CH = [
     nav: "sniff it out",
     kicker: "find a known bug by shape",
     title: "Finding a known bug by shape",
-    lede: "A known ERC-4626 inflation shape, matched across Sourcify's verified vaults. The patch is a different shape, so you see who fixed it, and the shape reaches forks an exact-source match misses.",
+    lede: "A known bug is a shape: match it across verified vaults, and the patch reads as a different shape.",
     body: `<vuln-sniff></vuln-sniff>`,
   },
   {
     nav: "modified",
     kicker: "similarity is a spectrum",
     title: "Catching edited forks",
-    lede: "Real forks edit the function, a dropped modifier, a hand-rolled forwarder, so exact match and text search miss them. Matching the shape's subtrees catches them anyway.",
+    lede: "Forks edit the function, so exact match and text search miss them; the subtree shapes still match.",
     body: `<fuzzy-scan></fuzzy-scan>`,
   },
   {
     nav: "the compiler too",
     kicker: "one level down, post-compilation",
     title: "Repetition in compiled code",
-    lede: "Now the Yul a contract compiles to, code you never wrote. Loosen it and the colors merge; hover a chip to light its twins.",
+    lede: "The Yul this contract compiles to, fingerprinted: loosen the facet and the groups merge.",
     body: `<live-dial></live-dial>`,
   },
   {
@@ -385,7 +385,7 @@ const CH = [
     nav: "two fingerprints",
     kicker: "two axes, not two rivals",
     title: "Two kinds of fingerprint",
-    lede: "Sourcify's metadata hash answers \"is this the identical build\" and flips on a single whitespace; the structural fingerprint answers \"is this the same code wearing different clothes\" and holds when the hash moves. Edit the source and watch the axes part. The hash here is a stand-in over the source text, not a recompile.",
+    lede: "Edit the source: the metadata hash flips on any character, the structural fingerprint holds while the shape holds.",
     body: `<metadata-axes></metadata-axes>`,
   },
   {
@@ -420,7 +420,7 @@ const CH = [
     nav: "prior art",
     kicker: "the primitive is older than us",
     title: "Where this idea comes from",
-    lede: "Three fields reached the same move on their own: normalize a structure, then address it by its content, music theory in 1973, a content-addressed Lean kernel, a verified EVM compiler in Lean. The hash is not the new part; the faceted, explainable query is.",
+    lede: "Several systems reached this move separately; the hash is not the new part, the faceted explainable query is.",
     body: `<prior-art></prior-art>`,
   },
   {
@@ -432,9 +432,9 @@ const CH = [
   },
   {
     nav: "what we sampled",
-    kicker: "the honest numbers, and the ones we owe you",
+    kicker: "what we measured, and what we did not",
     title: "What we measured, and what we didn't",
-    lede: "Every number here is an exact floor count over Sourcify's verified sources. Click a row to see how it was made.",
+    lede: "Every number is an exact count over Sourcify's verified sources; click a row for how it was made.",
     body: `<sampled-ledger></sampled-ledger>`,
   },
   {
@@ -454,7 +454,7 @@ const CH = [
     nav: "a shared block",
     kicker: "offered for co-design, not handed over",
     title: "A shared building block",
-    lede: "riffcat is a small library with a thin CLI. We are not asking you to adopt it, we are asking what it should become for your work.",
+    lede: "A small library with a thin CLI, offered for co-design.",
     body: `<shared-block></shared-block>`,
   },
   {
@@ -689,7 +689,7 @@ const CH = [
   {
     nav: "on music",
     demosOnly: true,
-    title: "The same facets, on music",
+    title: "Facets of musical riffs",
     lede: "Press play on each variant, then choose what counts as the same.",
     body: `<riff-dial></riff-dial>`,
   },
@@ -1540,8 +1540,11 @@ customElements.define("facet-primer", class extends HTMLElement {
       seen.get(d).push(f.name);
     }
     const syms = symMapFor(order);
+    // Per-view palette: evenly spaced hues by group order, so a handful of shapes
+    // never land on near-identical hashed hues. Keyed by digest, so twins match.
+    const cols = new Map(order.map((d, i) => [d, `oklch(72% 0.15 ${Math.round((i * 360) / Math.max(1, order.length))})`]));
     const cards = this.fns.map((f) => {
-      const d = this.byName[f.name].facets[this.facet], col = chipColor(d);
+      const d = this.byName[f.name].facets[this.facet], col = cols.get(d);
       return `<div class="fcard ${feq(d)}" data-eq="${feq(d)}" data-nm="${f.name}" style="--chip:${col}">`
         + `<div class="fcard-h"><span class="sw" style="color:${col};background:none">${syms.get(d)}</span>${f.name}</div>`
         + `<pre class="fcode">${solHi(f.src)}</pre></div>`;
@@ -2518,7 +2521,7 @@ const PRIORART_CARDS = [
     who: "URIs",
     what: "a shared way to point",
     line: "Systems agreed how to name a resource without agreeing how to store or serve it.",
-    accent: "var(--warm)",
+    accent: "var(--ink-dim)",
     read: "Agree how to point before agreeing how to use. URI comparison even has several levels, from exact strings through increasingly informed normalization.",
   },
   {
@@ -2527,7 +2530,7 @@ const PRIORART_CARDS = [
     who: "BitTorrent",
     what: "fetch by hash, verify on arrival",
     line: "Ask strangers for content by its hash, then check what they send you.",
-    accent: "var(--rose)",
+    accent: "var(--ink-dim)",
     read: "The address is the integrity check. Files are split into pieces with their own hashes, so a bad piece is caught locally rather than after the whole download.",
   },
   {
@@ -2536,7 +2539,7 @@ const PRIORART_CARDS = [
     who: "Nix",
     what: "the inputs decide the address",
     line: "A build is named by everything that went into it, so it can be shared and reused.",
-    accent: "var(--cool)",
+    accent: "var(--ink-dim)",
     read: "Addressing build inputs makes results reproducible and cacheable across machines. The same instinct as a lockfile, at the granularity of every dependency.",
   },
   {
@@ -2545,7 +2548,7 @@ const PRIORART_CARDS = [
     who: "Unison",
     what: "definitions stored by hash",
     line: "Code is keyed by the hash of its structure, and names are a separate mapping on top.",
-    accent: "var(--a)",
+    accent: "var(--ink-dim)",
     read: "The same split Ix arrived at later: identity from the structure, names as metadata beside it. Renaming a definition therefore costs nothing and breaks nothing.",
   },
   {
@@ -2563,7 +2566,7 @@ const PRIORART_CARDS = [
     who: "Ix",
     what: "a proof that follows the address",
     line: "Address a declaration with local names left out, attach its proof, and reuse the proof wherever that address turns up.",
-    accent: "var(--a)",
+    accent: "var(--ink-dim)",
     read: "The full chain: choose what does not matter, derive the address, attach a claim, reuse it. Their claims even carry the address of the assumption set they depend on.",
   },
 ];
