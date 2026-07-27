@@ -916,7 +916,7 @@ const ARCS = {
     sections: [
       ["what counts as the same", ["sameness", "on music", "names out"]],
       ["on real code", ["recognized", "audit once", "shared machinery"]],
-      ["through the compiler", ["the compiler too", "flips vs holds", "leaves up"]],
+      ["through the compiler", ["the compiler too", "flips vs holds", "leaves up", "the local ceiling"]],
       ["put to work", ["the bug's shape", "edited forks", "a fact rides"]],
       ["standing on", ["the cheap yes", "prior art"]],
       ["honesty, and the ask", ["what we sampled", "what we need", "a shared block"]],

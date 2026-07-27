@@ -1014,6 +1014,28 @@
 .loclim-edge-mark, .loclim-inst-edge .loclim-edge-mark { display: inline-block; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--warm); border: 1px solid var(--warm); border-radius: 3px; padding: 1px 5px; margin-right: 7px; vertical-align: 1px; }
 .twnote.loclim-foot { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; }
 
+  /* the local ceiling (nav: the local ceiling): 1-WL color refinement and its
+     collision. Reuses .lattice/.latcap/.latdivide/.twnote; new rules wl-* scoped. */
+  .wl-svg { max-width: 720px; }
+  .wl-svg text { fill: var(--ink); }
+  .wl-round { fill: var(--ink-dim); font-size: 12px; }
+  .wl-count { fill: var(--ink-faint); font-size: 11px; font-family: var(--mono); }
+  .wl-role { fill: var(--ink-faint); font-size: 10px; text-anchor: middle; }
+  .wl-e { stroke: var(--line-bright); stroke-width: 1.6; fill: none; }
+  .wl-n circle { stroke: var(--bg); stroke-width: 2; }
+  .wl-n text { fill: var(--bg); font-size: 12px; font-weight: 700; }
+  .wl-c0 circle { fill: var(--ink-faint); }
+  .wl-c1 circle { fill: var(--warm); }
+  .wl-c2 circle { fill: var(--a); }
+  .wl-good { fill: var(--a); font-size: 11px; }
+  .wl-bad { fill: var(--warm); font-size: 11px; }
+  .wl-sub { fill: var(--ink-faint); font-size: 10px; }
+  .wl-glab { fill: var(--ink-dim); font-size: 10.5px; }
+  .wl-neq { fill: var(--warm); font-size: 22px; font-weight: 700; }
+  .wl-eq { fill: var(--ink-dim); font-size: 18px; }
+  .wl-chip rect { fill: var(--bg-chip); stroke: var(--line); }
+  .wl-chip text { fill: var(--ink-dim); font-size: 11px; font-family: var(--mono); }
+
   /* provenance rides along (nav: provenance). Reuses .dialbar/.ladder/.stop,
      .eqread/.twnote, .chip, .bar, and the .latarrhead marker theme; new rules
      are all prov-* scoped. */
