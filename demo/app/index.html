@@ -65,6 +65,16 @@
   body:not(.details) .stage .detail-only,
   body:not(.details) main > .note { display: none; }
 
+  /* The demos arc is spare by construction: the demo carries the slide, so the
+     kicker and the long in-component captions go; the interaction, its live
+     readout, and the one lede line stay. Scoped to the arc so every other arc
+     renders exactly as before. */
+  body.arc-demos .stage .kicker,
+  body.arc-demos .stage vuln-sniff .vbug,
+  body.arc-demos .stage vuln-sniff .vledger-cap,
+  body.arc-demos .stage fuzzy-scan .vbug,
+  body.arc-demos .stage fuzzy-scan .vledger-cap { display: none; }
+
   /* Arc switcher. The query string is the source of truth, but nobody should
      have to type it: a stale tab or a query after the hash both fail silently,
      and this makes the active arc visible and one click away. */
@@ -1304,6 +1314,6 @@
 <script src="fuzzydata.js"></script>
 <script src="namesdata.js"></script>
 <script src="nameladder.js"></script>
-<script type="module" src="app.js?v=declutter-20260727"></script>
+<script type="module" src="app.js?v=demos-declutter-20260727"></script>
 </body>
 </html>
