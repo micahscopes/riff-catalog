@@ -682,15 +682,15 @@ const CH = [
   {
     nav: "sameness",
     demosOnly: true,
-    title: "What counts as the same is a choice",
-    lede: "Loosen the dial and watch which functions merge to one shape.",
+    title: "Facets of similarity",
+    lede: "Loosen the facet and watch which functions merge to one shape.",
     body: `<facet-primer></facet-primer>`,
   },
   {
     nav: "on music",
     demosOnly: true,
-    title: "The same dial, on music",
-    lede: "Press play on each variant, then change what counts as the same.",
+    title: "The same facets, on music",
+    lede: "Press play on each variant, then choose what counts as the same.",
     body: `<riff-dial></riff-dial>`,
   },
   {
@@ -1307,7 +1307,7 @@ customElements.define("live-dial", class extends HTMLElement {
     const grid = funcs.map((u) => chip(u, this.facet, null, syms)).join("");
     const k = count(this.facet);
     const idle = `${funcs.length} functions · <b>${k}</b> classes at ${this.facet} · ${this.mode} ·`
-      + ` ${this.mode === "shape" ? "loosen the dial and the colors merge" : "identity pins every artifact, so nothing merges"}`
+      + ` ${this.mode === "shape" ? "loosen the facet and the colors merge" : "identity pins every artifact, so nothing merges"}`
       + ` · ${this._ms.toFixed(0)} ms in your browser`;
     this.innerHTML = `
       <div class="dialbar">
