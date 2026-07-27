@@ -480,9 +480,9 @@ const CH = [
   },
   {
     nav: "a shared block",
-    kicker: "co-design, not a handoff",
-    title: "A shared building block",
-    lede: "A small library: three verbs, a thin CLI, and a schema that is not fixed yet.",
+    kicker: "the offer",
+    title: "A library and a thin CLI",
+    lede: "The whole library is three verbs.",
     body: `<div class="sb2-verbs">
     <div><b>fingerprint</b><small>a handle for what you chose to keep</small></div>
     <div><b>recognize</b><small>find a known shape, point at the parts that match</small></div>
