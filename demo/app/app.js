@@ -441,8 +441,14 @@ const CH = [
     nav: "what we need",
     kicker: "offered for co-design, not a handoff",
     title: "What each team contributes",
-    lede: "riffcat does one leg, localization. The compiler supplies provenance, source to bytecode; a verifier decides, with a proof or a counterexample. Hover a leg for what we would need from that team, and the question we cannot answer ourselves.",
-    body: `<collab-triangle></collab-triangle>`,
+    lede: "Three legs: riffcat localizes, the compiler carries origins, a verifier decides; one question per team.",
+    body: `<div class="identity-boundary">
+      <div><span>riffcat · localize</span><b>points at the matching subtree</b><small>Which structural distinctions must an address preserve for your tool?</small></div>
+      <div><span>compiler · origins</span><b>records what produced each output</b><small>What would a source-to-Yul-to-bytecode origin trail cost, and where would you expose it?</small></div>
+      <div><span>verifier · decide</span><b>a proof or a counterexample</b><small>What evidence turns a shape match into a question you would accept?</small></div>
+    </div>
+    <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape.</p>
+`,
   },
   {
     nav: "a shared block",
@@ -3453,103 +3459,6 @@ customElements.define("shared-block", class extends HTMLElement {
       }));
     this.addEventListener("mouseleave", () => {
       this.querySelectorAll(".sbnode").forEach((x) => x.classList.remove("on"));
-      read.innerHTML = read.dataset.idle;
-    });
-  }
-});
-
-// "What we would need help with": the localize + provenance + adjudicate
-// triangle. riffcat does one leg (localize); the compiler supplies the missing
-// provenance; a verifier adjudicates. Sourcify holds the pain in the middle.
-// Mostly copy with a small hand-laid SVG triangle: hover a leg to surface the
-// honest per-team ask, each ending on a question that team owns. No engine
-// needed, so this renders synchronously. Models its SVG + hover + .eqread
-// readout on facet-lattice; reuses .twnote, .legend, and the theme vars.
-// Unique tag + CT_-prefixed module names to avoid colliding with app.js.
-const CT_LEGS = {
-  localize: {
-    x: 250, y: 60, t: "riffcat · identify structure", who: "the current implementation",
-    s: "Identifies the exact source or generated subtree that matched or changed.",
-    ask: "Riffcat can hand another tool a concrete structural match, not merely a similarity score.",
-    q: "Which structural distinctions does your tool need?",
-  },
-  provenance: {
-    x: 70, y: 300, t: "compiler · record origins", who: "information only the compiler has",
-    s: "Records which source and intermediate operations produced each output operation.",
-    ask: "Following a match through generated code requires those transformation records.",
-    q: "Which compiler stages could expose them?",
-  },
-  adjudicate: {
-    x: 430, y: 300, t: "verification · prove the claim", who: "the semantic result",
-    s: "Proves that the matched artifacts preserve a stated behavior, or produces a counterexample.",
-    ask: "Riffcat can reduce the question to a specific pair of subtrees and a stated address policy.",
-    q: "What evidence would make that a useful verification input?",
-  },
-};
-const CT_PAIN = "The shared problem is maintaining useful identity across source, compiler artifacts, and semantic models. None of these tools closes that loop alone.";
-// The honest list from the posture doc, each beat ending on a question the named
-// team owns. Offer, never prescribe.
-const CT_NEEDS = [
-  { who: "Tool builders",
-    body: "The address and origin record must carry the facts your tool needs to recover.",
-    q: "What fields does your data model actually need?" },
-  { who: "Compiler teams",
-    body: "Following a shape into generated code needs source-to-IR-to-output origins.",
-    q: "What would that origin trail cost, and is Yul the right place to expose it?" },
-  { who: "Verification teams",
-    body: "A match should arrive as one small, clearly stated question.",
-    q: "What would you need before choosing to check it?" },
-  { who: "People with real projects",
-    body: "We need examples where knowledge currently gets lost between tools.",
-    q: "Which fact would you most want to survive a transformation?" },
-];
-// Open-ended starters, the kind you end a beat on, not a feature pitch.
-const CT_STARTERS = [
-  "Query the code you already have by shape instead of by address. What is the first question you would ask it?",
-  "We are not asking you to adopt a finished thing. We are offering a working core and asking what it should become for you.",
-];
-customElements.define("collab-triangle", class extends HTMLElement {
-  connectedCallback() {
-    const L = CT_LEGS;
-    const edge = (a, b) =>
-      `<line x1="${L[a].x}" y1="${L[a].y}" x2="${L[b].x}" y2="${L[b].y}" class="ctedge"/>`;
-    const node = (k) => {
-      const n = L[k];
-      return `<g class="ctleg ${k}" data-k="${k}" transform="translate(${n.x},${n.y})">`
-        + `<rect x="-92" y="-17" width="184" height="34" rx="6"/>`
-        + `<text x="0" y="4" text-anchor="middle">${n.t}</text></g>`;
-    };
-    const idle = "Hover a contribution to see what exists and what requires collaboration.";
-    const needs = CT_NEEDS.map((n) =>
-      `<div class="ctneed"><div class="ctneed-who">${n.who}</div>`
-      + `<div class="ctneed-body">${n.body}</div>`
-      + `<div class="ctneed-q">${n.q}</div></div>`).join("");
-    const starters = CT_STARTERS.map((s) => `<li>${s}</li>`).join("");
-    this.innerHTML = `
-      <svg viewBox="-30 0 560 360" class="cttri" role="img" aria-label="the localize, provenance, adjudicate triangle">
-        ${edge("localize", "provenance")}${edge("provenance", "adjudicate")}${edge("adjudicate", "localize")}
-        <text x="250" y="200" text-anchor="middle" class="ctpain">shared identity</text>
-        <text x="250" y="220" text-anchor="middle" class="ctpain sub">across representations</text>
-        ${Object.keys(L).map(node).join("")}
-      </svg>
-      <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">${CT_PAIN} riffcat works with the code teams already have; it does not rebuild it. It narrows what to read; it does not decide what is true.</p>
-      <div class="kicker" style="margin-top:24px">where you could join</div>
-      <div class="ctneeds">${needs}</div>
-      <div class="kicker" style="margin-top:22px">two questions to start on</div>
-      <ul class="ctstart">${starters}</ul>`;
-    const read = this.querySelector(".eqread");
-    this.querySelectorAll(".ctleg").forEach((g) =>
-      g.addEventListener("mouseenter", () => {
-        this.querySelectorAll(".ctleg").forEach((x) => x.classList.remove("on"));
-        g.classList.add("on");
-        const n = CT_LEGS[g.dataset.k];
-        read.innerHTML = `<span class="ctwho">${n.who}</span> <b>${n.t}</b> · ${n.s}`
-          + `<div class="ctask">${n.ask}</div>`
-          + `<div class="ctq">${n.q}</div>`;
-      }));
-    this.addEventListener("mouseleave", () => {
-      this.querySelectorAll(".ctleg").forEach((x) => x.classList.remove("on"));
       read.innerHTML = read.dataset.idle;
     });
   }
