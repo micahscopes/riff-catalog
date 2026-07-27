@@ -175,12 +175,12 @@ const CH = [
   {
     nav: "stranded",
     kicker: "the problem",
-    title: "Every finding is stuck to the form it came from",
-    lede: "",
+    title: "A different finding on each form",
+    lede: "Each tool leaves what it learns on the form it works in, and none of it moves to the others on its own.",
     body: `<div class="result-attachments">
       <div><b>source</b><span>an audit finding</span></div>
-      <div><b>IR</b><span>a source map</span></div>
-      <div><b>bytecode</b><span>a trace step</span></div>
+      <div><b>IR</b><span>a compiler warning</span></div>
+      <div><b>bytecode</b><span>an execution trace</span></div>
       <div><b>formal model</b><span>a proof</span></div>
     </div>`,
   },
@@ -837,7 +837,7 @@ customElements.define("address-check", class extends HTMLElement {
     this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
     try {
       const b = await engineReady;
-      const u = yulUnits(b, "oz-muldiv", "shape").units.find((x) => GN_WRAPPER.test(x.name));
+      const u = yulUnits(b, "oz-muldiv", "shape").units.find((x) => /^fun_appId_/.test(x.name));
       this.render(short(u.facets["full"]));
     } catch (e) {
       this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
