@@ -1929,7 +1929,7 @@ customElements.define("riff-dial", class extends HTMLElement {
       return `<div class="riffrow"><button class="playbtn" data-i="${i}">▶ play</button>`
         + `<span class="riffname">${r.name}</span>`
         + `<span class="nchips">${chips}</span>`
-        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="shape ${a.slice(0, 10)}">${syms.get(a)}</span></div>`;
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="address ${a.slice(0, 10)}">${syms.get(a)}</span></div>`;
     }).join("");
     const n = groups.size;
     const groupTxt = [...groups.values()]
@@ -4437,7 +4437,7 @@ customElements.define("fold-merkle", class extends HTMLElement {
 
 // "where it came from" (nav: provenance). LIVE. Two thin bindings over the
 // facade compute everything the chapter shows:
-//   origin_shape(specJson)                 -> the shape address WITH and WITHOUT
+//   origin_shape(specJson)                 -> the structural address WITH and WITHOUT
 //                                             the EdgeRole::Origin provenance
 //                                             edges, plus the engine's own
 //                                             match verdict.
