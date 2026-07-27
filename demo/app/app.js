@@ -329,6 +329,19 @@ const CH = [
     body: `<anchor-transport></anchor-transport>`,
   },
   {
+    nav: "the cubical prototype",
+    kicker: "the same rule, mechanized",
+    title: "The cubical Agda prototype",
+    lede: "Cubical type theory is built on the idea that equality is something you declare rather than something fixed. A facet is such a declaration, and the typechecker refuses to let a fact travel along one unless the fact respects it.",
+    body: `<div class="figure"><div class="cap">what the prototype checks</div><table>
+      <tr><td class="n">a facet</td><td>a declared identification, as a real type</td></tr>
+      <tr><td class="n">the address</td><td>the normalization that decides it, without ever inspecting the proof</td></tr>
+      <tr><td class="n">a fact riding an address</td><td>allowed only by supplying the proof that the fact respects the identification</td></tr>
+      <tr><td class="n">the fact arrives unchanged</td><td>and it computes, which the Lean version cannot do</td></tr>
+    </table></div>
+    <p class="proposition-note">The hash is abstract here, so this witness proves the laws, not the bytes: the Lean port owns the byte oracle. One command checks it, <code>agda Riffcat.agda</code>.</p>`,
+  },
+  {
     nav: "prior art",
     kicker: "the primitive is older than us",
     title: "Where this idea comes from",
@@ -477,7 +490,7 @@ const ARCS = {
       ["the proposal", ["facets"]],
       ["on real code", ["recognized", "dedup", "sniff it out"]],
       ["across compilers", ["provenance", "two fingerprints"]],
-      ["what you attach to it", ["anchors", "prove it"]],
+      ["what you attach to it", ["anchors", "the cubical prototype", "prove it"]],
       ["an old idea, and its limits", ["prior art", "locality runs out", "what we sampled"]],
       ["the ask", ["what we need"]],
     ],
