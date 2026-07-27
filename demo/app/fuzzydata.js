@@ -4,7 +4,7 @@
 // match, and a name/text search) all miss them, but weighted containment over the
 // engine's per-node Merkle digests still recognizes the dangerous shape.
 //
-// Numbers and bodies are verbatim from demo/vuln-fuzzy-vehicle-2026-06-24.md
+// Numbers and bodies are verbatim from demo/MEASUREMENTS.md
 // (the scratch `nodedump` + `sim.py` run, Sourcify-verified, a floor). The metric
 // is the proposed `riffcat similar`; it is precomputed here (the engine ships the
 // node digests, not yet the query).

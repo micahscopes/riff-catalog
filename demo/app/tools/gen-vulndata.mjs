@@ -6,8 +6,8 @@
 // distinct (patched) shape; and solady stays mitigated while KEEPING the
 // _initialConvertToShares name a keyword search trips on, which the shape sees
 // through. Bodies are verbatim (OZ-vuln from a deployed witness per the
-// vuln-sniff report; the rest from the vendored stdlib). Deployed witnesses are
-// from demo/vuln-sniff-candidates-2026-06-23.md.
+// vuln-sniff report; the rest from the vendored stdlib). The counts come from
+// demo/MEASUREMENTS.md.
 //
 // Reproducible: needs solc + the built wasm engine in ../dist. Run:
 //   bun tools/gen-vulndata.mjs
@@ -111,7 +111,7 @@ const SRC = {
 }`,
 };
 
-// Counts from demo/vuln-reach-2026-06-23.md, which classified every DISTINCT
+// Counts from demo/MEASUREMENTS.md, which classified every DISTINCT
 // source_hash variant of ERC4626.sol in Sourcify's verified population (one file
 // per variant; a source_hash is one exact file, so every deployment of it shares
 // the shape, and the per-contract totals are arithmetic, not extrapolation).
@@ -127,24 +127,12 @@ const shapes = [
   { key: "solady-mitig", lib: "solady", label: "Solady convertToShares", sub: "virtual shares on by default", status: "mitigated", keyword: true, exact: null, reach: null, src: SRC.soladyMitig, ...fp("soladyMitig") },
 ];
 
-const CHAIN = { 1: "Ethereum", 137: "Polygon", 8453: "Base", 56: "BSC", 10: "Optimism", 42161: "Arbitrum" };
-const W = (chain, address, name, shape) => ({ chain, chainName: CHAIN[chain], address, name, shape, url: "https://sourcify.dev/#/lookup/" + address });
-const witnesses = [
-  W(137, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "RiveraConcNoStaking", "oz-vuln"),
-  W(8453, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "RiveraAutoCompoundingVaultV2Public", "oz-vuln"),
-  W(137, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "MBVault", "oz-vuln"),
-  W(137, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "FCNProduct", "oz-vuln"),
-  W(56, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "GatewayToken", "oz-vuln"),
-  W(8453, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "ERC4626EthRouter", "solmate-vuln"),
-  W(56, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "StratX4Venus", "solmate-vuln"),
-  W(10, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "AaveV3ERC4626Factory", "solmate-vuln"),
-  W(1, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "Market", "solmate-vuln"),
-  W(137, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "StrategVault", "oz-patched"),
-  W(8453, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "FluidAprOracleBase", "oz-patched"),
-  W(8453, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "CreditStrategy", "oz-patched"),
-  W(8453, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "ERC7540Engine", "solady-mitig"),
-  W(137, "0xREDACTED_ADDRESS_REMOVED_FROM_HISTORY", "MaxApyVaultFactory", "solady-mitig"),
-];
+// Deployed witnesses are deliberately NOT listed here any more. A shape match is
+// a candidate, not a verdict, so a public, curated, deep-linked list of live
+// contracts under a "vulnerable" heading asserts more than the method supports.
+// The demo renders the counts, which are the claim. The witness list stayed in
+// the private research notes (archived outside this repo) and never ships.
+const witnesses = [];
 
 // sanity: vulnerable and patched must be different shapes at structure
 console.log("=== structure fingerprints (first 12 hex) ===");
