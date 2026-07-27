@@ -262,8 +262,15 @@ const CH = [
     nav: "recognized",
     kicker: "the pitch, on real mainnet code",
     title: "Recognizing known library code",
-    lede: "Real verified contracts from Sourcify, each function colored by the library it matches: OpenZeppelin, Solady, Solmate. Grey is new code; hover to read it.",
+    lede: "Ten verified contracts from Sourcify, each function colored by the library it matches. These ten are OpenZeppelin-derived, so that is nearly everything the key shows. Grey is new code; hover to read it.",
     body: `<recog-scan></recog-scan>`,
+  },
+  {
+    nav: "three libraries",
+    kicker: "the same job, three implementations",
+    title: "Three libraries, side by side",
+    lede: "Multiply and divide with rounding, as OpenZeppelin, Solady and Solmate compile it. Same color means same shape; hover one to trace it across all three.",
+    body: `<live-xref></live-xref>`,
   },
   {
     nav: "twins",
@@ -488,7 +495,7 @@ const ARCS = {
       ["the defect", ["many forms", "generated names", "broken reference"]],
       ["what an address is", ["an address", "the fold", "two builds"]],
       ["the proposal", ["facets"]],
-      ["on real code", ["recognized", "dedup", "sniff it out"]],
+      ["on real code", ["recognized", "three libraries", "dedup", "sniff it out"]],
       ["across compilers", ["provenance", "two fingerprints"]],
       ["what you attach to it", ["anchors", "the cubical prototype", "prove it"]],
       ["an old idea, and its limits", ["prior art", "locality runs out", "what we sampled"]],
@@ -949,9 +956,21 @@ customElements.define("recog-scan", class extends HTMLElement {
           <span class="rate"><b>${rec}</b>/${c.fns.length} library matches</span></div>
         <div class="eqgrid" data-ci="${ci}">${chips}</div></div>`;
     }).join("");
+    // The key is derived from the data, with counts, never from the LIB table.
+    // Listing every library we can recognize implied a three-way mix that this
+    // sample does not contain: these ten contracts are OpenZeppelin-derived, so
+    // the honest key is one library with 232 matches and one with 1.
+    const seen = new Map();
+    let novel = 0;
+    for (const c of this.contracts)
+      for (const f of c.fns) {
+        if (!f.lib) { novel++; continue; }
+        seen.set(f.lib, (seen.get(f.lib) || 0) + 1);
+      }
     const legend = `<div class="legend">`
-      + Object.values(LIB).map(({ n, h }) => `<span><i style="background:hsl(${h} 70% 55%)"></i>${n}</span>`).join("")
-      + `<span><i class="novel"></i>no library match</span></div>`;
+      + [...seen.entries()].sort((a, b) => b[1] - a[1])
+        .map(([k, n]) => `<span><i style="background:hsl(${(LIB[k] || {}).h || 0} 70% 55%)"></i>${(LIB[k] || {}).n || k} <b>${n}</b></span>`).join("")
+      + `<span><i class="novel"></i>no library match <b>${novel}</b></span></div>`;
     // codedock reserves a constant height; the panel inside sizes to content.
     // Keeping the dock height fixed means hovering never changes the page
     // height, so scrollTop never clamps and the chips never bump (the flicker),
