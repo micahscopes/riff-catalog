@@ -164,9 +164,9 @@ function wireHighlight(host, describe) {
 const CH = [
   {
     nav: "many forms",
-    kicker: "the environment",
-    title: "A program takes many forms",
-    lede: "",
+    kicker: "what is actually there",
+    title: "A myth: the compiler",
+    lede: "There is no single thing called the compiler. There are representations of the program, and transformations between them.",
     body: `<div class="compiler-paths">
       <div class="compiler-path"><b>solc</b><span>source</span><i>→</i><span>AST</span><i>→</i><span>Yul</span><i>→</i><span>bytecode</span></div>
       <div class="compiler-path"><b>fe</b><span>source</span><i>→</i><span>HIR</span><i>→</i><span>sonatina IR</span><i>→</i><span>bytecode</span></div>
@@ -526,6 +526,10 @@ const ARCS = {
 };
 const APPENDIX_LABEL = "for follow-up questions";
 const requestedArc = new URLSearchParams(location.search).get("arc");
+// A query string that lands after the hash, or a tab still running an older
+// build, both read as "no arc requested" and would silently serve the default.
+// Remember the miss so the header can say so out loud instead.
+const ARC_MISSING = requestedArc && !Object.hasOwn(ARCS, requestedArc) ? requestedArc : null;
 const ARC_KEY = Object.hasOwn(ARCS, requestedArc) ? requestedArc : "talk";
 const ARC = ARCS[ARC_KEY];
 const SECTIONS = [];
@@ -552,6 +556,13 @@ const SECTIONS = [];
 
 customElements.define("tour-app", class extends HTMLElement {
   connectedCallback() {
+    // Relative hrefs, so this works at a subpath and from a local server alike.
+    // No hash, so switching arcs lands on that arc's first chapter.
+    document.getElementById("arcs").innerHTML =
+      Object.entries(ARCS).map(([k, a]) =>
+        `<a href="?arc=${encodeURIComponent(k)}" aria-current="${k === ARC_KEY ? "page" : "false"}">${a.label}</a>`).join("")
+      + (ARC_MISSING ? `<em>no arc named "${ARC_MISSING}", showing ${ARC.label}</em>` : "");
+    document.querySelector(".crumb").textContent = `riffcat · ${ARC.label}`;
     const details = document.getElementById("details");
     const setDetails = (on) => {
       document.body.classList.toggle("details", on);
