@@ -715,6 +715,83 @@ const CH = [
     body: `<fold-merkle></fold-merkle>`,
   },
   {
+    nav: "the local ceiling",
+    tonightOnly: true,
+    kicker: "the fold, named",
+    title: "The fold is 1-WL color refinement",
+    lede: "Each round a node's new color hashes its own previous color with the sorted multiset of its neighbors' colors and edge roles, iterated until the partition stops splitting: this fold has a name, Weisfeiler-Leman (1-WL) color refinement, and a known ceiling.",
+    body: `<svg viewBox="0 0 720 308" class="lattice wl-svg" role="img" aria-label="1-WL refinement on a five-node path reaching a fixpoint, beside the 3-prism and K3,3, two non-isomorphic 3-regular graphs that 1-WL cannot tell apart">
+      <text x="186" y="24" text-anchor="middle" class="latcap">refine to a fixpoint</text>
+      <text x="546" y="24" text-anchor="middle" class="latcap sem">the ceiling: 1-WL is incomplete</text>
+      <line x1="372" y1="36" x2="372" y2="296" class="latdivide"/>
+
+      <text x="24" y="59" class="wl-round">round 0: start from the local digest</text>
+      <text x="348" y="59" text-anchor="end" class="wl-count">1 class</text>
+      <line class="wl-e" x1="65" y1="86" x2="105" y2="86"/><line class="wl-e" x1="131" y1="86" x2="171" y2="86"/><line class="wl-e" x1="197" y1="86" x2="237" y2="86"/><line class="wl-e" x1="263" y1="86" x2="303" y2="86"/>
+      <g class="wl-n wl-c0" transform="translate(52,86)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c0" transform="translate(118,86)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c0" transform="translate(184,86)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c0" transform="translate(250,86)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c0" transform="translate(316,86)"><circle r="13"/><text y="4">●</text></g>
+
+      <text x="24" y="141" class="wl-round">round 1: fold in the neighbors' colors</text>
+      <text x="348" y="141" text-anchor="end" class="wl-count">2 classes</text>
+      <line class="wl-e" x1="65" y1="168" x2="105" y2="168"/><line class="wl-e" x1="131" y1="168" x2="171" y2="168"/><line class="wl-e" x1="197" y1="168" x2="237" y2="168"/><line class="wl-e" x1="263" y1="168" x2="303" y2="168"/>
+      <g class="wl-n wl-c1" transform="translate(52,168)"><circle r="13"/><text y="4">■</text></g>
+      <g class="wl-n wl-c0" transform="translate(118,168)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c0" transform="translate(184,168)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c0" transform="translate(250,168)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c1" transform="translate(316,168)"><circle r="13"/><text y="4">■</text></g>
+
+      <text x="24" y="223" class="wl-round">round 2: one more split, stable</text>
+      <text x="348" y="223" text-anchor="end" class="wl-count">3 classes · fixpoint</text>
+      <line class="wl-e" x1="65" y1="250" x2="105" y2="250"/><line class="wl-e" x1="131" y1="250" x2="171" y2="250"/><line class="wl-e" x1="197" y1="250" x2="237" y2="250"/><line class="wl-e" x1="263" y1="250" x2="303" y2="250"/>
+      <g class="wl-n wl-c1" transform="translate(52,250)"><circle r="13"/><text y="4">■</text></g>
+      <g class="wl-n wl-c0" transform="translate(118,250)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c2" transform="translate(184,250)"><circle r="13"/><text y="4">▲</text></g>
+      <g class="wl-n wl-c0" transform="translate(250,250)"><circle r="13"/><text y="4">●</text></g>
+      <g class="wl-n wl-c1" transform="translate(316,250)"><circle r="13"/><text y="4">■</text></g>
+      <text x="52" y="272" class="wl-role">end</text><text x="118" y="272" class="wl-role">mid</text><text x="184" y="272" class="wl-role">center</text><text x="250" y="272" class="wl-role">mid</text><text x="316" y="272" class="wl-role">end</text>
+      <text x="186" y="292" class="wl-good">isomorphic shapes always hash equal: no false splits</text>
+
+      <text x="546" y="42" text-anchor="middle" class="wl-sub">both 3-regular on six nodes</text>
+      <text x="546" y="56" text-anchor="middle" class="wl-sub">refinement never splits: one color, forever</text>
+
+      <path class="wl-e" d="M455 112 L493 178 L417 178 Z"/>
+      <path class="wl-e" d="M455 135 L473 167 L437 167 Z"/>
+      <line class="wl-e" x1="455" y1="112" x2="455" y2="135"/>
+      <line class="wl-e" x1="493" y1="178" x2="473" y2="167"/>
+      <line class="wl-e" x1="417" y1="178" x2="437" y2="167"/>
+      <g class="wl-n wl-c0 wl-m" transform="translate(455,112)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(493,178)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(417,178)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(455,135)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(473,167)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(437,167)"><circle r="10"/><text y="3">●</text></g>
+
+      <text x="542" y="152" class="wl-neq">≠</text>
+
+      <line class="wl-e" x1="592" y1="118" x2="592" y2="182"/><line class="wl-e" x1="592" y1="118" x2="634" y2="182"/><line class="wl-e" x1="592" y1="118" x2="676" y2="182"/>
+      <line class="wl-e" x1="634" y1="118" x2="592" y2="182"/><line class="wl-e" x1="634" y1="118" x2="634" y2="182"/><line class="wl-e" x1="634" y1="118" x2="676" y2="182"/>
+      <line class="wl-e" x1="676" y1="118" x2="592" y2="182"/><line class="wl-e" x1="676" y1="118" x2="634" y2="182"/><line class="wl-e" x1="676" y1="118" x2="676" y2="182"/>
+      <g class="wl-n wl-c0 wl-m" transform="translate(592,118)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(634,118)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(676,118)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(592,182)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(634,182)"><circle r="10"/><text y="3">●</text></g>
+      <g class="wl-n wl-c0 wl-m" transform="translate(676,182)"><circle r="10"/><text y="3">●</text></g>
+
+      <text x="455" y="206" class="wl-glab">3-prism · has triangles</text>
+      <text x="634" y="206" class="wl-glab">K3,3 · no triangles</text>
+      <g class="wl-chip"><rect x="411" y="220" width="88" height="20" rx="3"/><text x="455" y="234">wl 9b1f4e</text></g>
+      <text x="542" y="234" class="wl-eq">=</text>
+      <g class="wl-chip"><rect x="590" y="220" width="88" height="20" rx="3"/><text x="634" y="234">wl 9b1f4e</text></g>
+      <text x="546" y="292" class="wl-bad">different shapes, one address: the known collision</text>
+    </svg>
+    <p class="twnote">The engine runs this refinement only inside a condensed recursive region (condensed.rs), where members are told apart by WL color rather than node key order (invariant I5); outside those regions the plain fold is exact. The guarantee is one-sided: isomorphic shapes always hash equal (no false splits, so no missed matches from this step), while 1-WL is incomplete on pathological regular graphs, so an adversarial non-isomorphic pair can share an address. Anonymous equality therefore means "WL-equivalent under this policy", not "isomorphic": the equivalence is the kernel of the hash, versioned by the schema, and the claims layer exists to govern exactly these residuals (wl.rs). Node colors and digests here are illustrative stand-ins; the wasm wrapper surfaces only graph-level addresses.</p>
+`,
+  },
+  {
     nav: "the bug's shape",
     demosOnly: true,
     title: "The shape of a bug",
@@ -877,7 +954,7 @@ const SECTIONS = [];
   // reveal steps. An arc may opt out of the appendix entirely (appendix:
   // false); the demos arc does, so it ends where its demos end.
   if (ARC.appendix !== false)
-    place(APPENDIX_LABEL, [...pool.values()].filter((c) => !c.talkOnly && !c.demosOnly).map((c) => c.nav));
+    place(APPENDIX_LABEL, [...pool.values()].filter((c) => !c.talkOnly && !c.demosOnly && !c.tonightOnly).map((c) => c.nav));
   CH.length = 0;
   CH.push(...ordered);
 }
