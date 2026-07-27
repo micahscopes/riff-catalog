@@ -197,6 +197,43 @@ const CH = [
     </div>`,
   },
   {
+    nav: "generated names",
+    kicker: "how the compiler names things",
+    title: "The names the compiler generates",
+    lede: "One helper function, compiled next to three different libraries. solc builds the name from a number it assigns while parsing, so the number moves when the code above it changes.",
+    body: `<generated-names></generated-names>`,
+  },
+  {
+    nav: "an address",
+    kicker: "what an address is",
+    title: "What a content address is",
+    lede: "Ask for the content with this address, hash what comes back, and you know whether it is right. Nobody has to be trusted.",
+    body: `<address-check></address-check>`,
+  },
+  {
+    nav: "two builds",
+    kicker: "comparing two builds",
+    title: "Two builds of the same program",
+    lede: "Two compilers, or two branches of one. Four reasons the output differs.",
+    body: `<div class="figure"><div class="cap">why the bytes disagree</div><table>
+      <tr><td class="n">the generated names</td><td><code>fun_appId_185</code> and <code>fun_appId_1843</code></td><td>leave names out of the address</td></tr>
+      <tr><td class="n">the order of independent operations</td><td>the same work, scheduled differently</td><td>would need an order-blind address, we do not have one</td></tr>
+      <tr><td class="n">optimization choices</td><td>one inlines the call, the other does not</td><td>nothing. This one is a real difference</td></tr>
+      <tr><td class="n">one small edit</td><td>moves the hash of the whole file</td><td>address the parts, so the change stays local</td></tr>
+    </table></div>`,
+  },
+  {
+    nav: "resolution",
+    kicker: "inside the compiler",
+    title: "Resolution by address",
+    lede: "A path resolves through scope, imports, and whichever version you selected. An address resolves to one definition, everywhere.",
+    body: `<div class="identity-boundary">
+      <div><span>by name</span><b>SafeERC20.safeTransfer</b><small>depends on the imports in scope and the version selected</small></div>
+      <div><span>by address</span><b>7f3a91c4</b><small>one definition, the same one everywhere</small></div>
+    </div>
+    <p class="proposition-note">We have not built this. Unison has.</p>`,
+  },
+  {
     nav: "facets",
     kicker: "on five functions",
     title: "Facets of similarity",
@@ -428,6 +465,23 @@ const ARCS = {
       ["in honesty, and the ask", ["locality runs out", "what we sampled", "what we need"]],
     ],
   },
+  // The naming arc: one defect (we point with names, names move), one tool
+  // (an address you can check), two payoffs (across authors, across compilers),
+  // one boundary, one ask. Recognition comes before the compiler beat on
+  // purpose: the first payoff should be the one that lands without effort.
+  names: {
+    label: "names",
+    sections: [
+      ["the defect", ["many forms", "generated names", "broken reference"]],
+      ["what an address is", ["an address", "the fold", "two builds"]],
+      ["the proposal", ["facets"]],
+      ["on real code", ["recognized", "dedup", "sniff it out"]],
+      ["across compilers", ["provenance", "two fingerprints"]],
+      ["what you attach to it", ["anchors", "prove it"]],
+      ["an old idea, and its limits", ["prior art", "locality runs out", "what we sampled"]],
+      ["the ask", ["what we need"]],
+    ],
+  },
   // Same spine, ten beats, for a short slot: one problem slide, one mechanism,
   // two payoffs, the compiler beat, the boundary, the ask.
   short: {
@@ -547,6 +601,75 @@ customElements.define("tour-app", class extends HTMLElement {
     this.querySelectorAll(".pager button").forEach((b) =>
       b.addEventListener("click", () => this.go(this.i + (+b.dataset.d))));
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+});
+
+// The name a compiler generates belongs to the file, not to the function. Each
+// library fixture wraps the same helper, and solc numbers the generated function
+// from a parse-order node id, so the number tracks how much source precedes it:
+// smallest library, smallest number. The names are read off the engine's own
+// units rather than typed in here, so this cannot drift from the fixtures.
+// Ordered small to large so the ascending numbers are visible.
+const GN_FIXTURES = [
+  { id: "solmate-muldiv", lib: "next to Solmate" },
+  { id: "oz-muldiv", lib: "next to OpenZeppelin" },
+  { id: "solady-muldiv", lib: "next to Solady" },
+];
+const GN_WRAPPER = /^fun_appId_/;
+customElements.define("generated-names", class extends HTMLElement {
+  async connectedCallback() {
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      // Same courtesy as live-xref: if the fixtures are not warm yet, let the
+      // note paint before the one-time synchronous engine work.
+      if (!GN_FIXTURES.every((x) => yulCache.has(x.id + ":shape"))) {
+        this.innerHTML = `<p class="live-note">compiling three fixtures in your browser…</p>`;
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      }
+      this.rows = GN_FIXTURES.map(({ id, lib }) => ({
+        lib, name: (yulUnits(b, id, "shape").units.find((u) => GN_WRAPPER.test(u.name)) || {}).name,
+      }));
+      if (this.rows.some((r) => !r.name)) throw new Error("the wrapper is missing from a fixture");
+      this.render();
+    } catch (e) {
+      this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
+    }
+  }
+  render() {
+    const rows = this.rows.map(({ lib, name }) => {
+      const cut = name.lastIndexOf("_") + 1;
+      return `<div class="gnrow"><span class="gnwhere">${lib}</span>`
+        + `<code class="gnname">${name.slice(0, cut)}<b>${name.slice(cut)}</b></code></div>`;
+    }).join("");
+    this.innerHTML = `<div class="gnames">${rows}</div>
+      <div class="eqread">One function in the source, three names in the output. Read off the compiled fixtures on this page.</div>`;
+  }
+});
+
+// The definition slide. One real address, taken from the fixtures so the figure
+// is not decorated with an invented digest, and the check spelled out: you can
+// run the hash yourself, so the reference does not require trusting the sender.
+customElements.define("address-check", class extends HTMLElement {
+  async connectedCallback() {
+    this.innerHTML = `<p class="live-note">booting the wasm engine…</p>`;
+    try {
+      const b = await engineReady;
+      const u = yulUnits(b, "oz-muldiv", "shape").units.find((x) => GN_WRAPPER.test(x.name));
+      this.render(short(u.facets["full"]));
+    } catch (e) {
+      this.innerHTML = `<p class="live-note bad">engine error: ${e}</p>`;
+    }
+  }
+  render(addr) {
+    this.innerHTML = `<div class="addrcheck">
+        <div><span>you ask for</span><code>${addr}</code></div>
+        <div class="addrarrow">→</div>
+        <div><span>you receive</span><b>the content</b></div>
+        <div class="addrarrow">→</div>
+        <div class="addrok"><span>you hash it yourself</span><code>${addr}</code></div>
+      </div>
+      <p class="addrnote">An address that leaves some details out works the same way, as long as you can run the same rules. That is why the rules are written down and checked against a second implementation.</p>`;
   }
 });
 
@@ -1680,30 +1803,57 @@ customElements.define("anchor-transport", class extends HTMLElement {
 const PRIORART_CARDS = [
   {
     k: "uri",
-    era: "1990s–today · the web",
+    era: "1990s · the web",
     who: "URIs",
-    what: "identity independent of representation",
-    line: "The web did not require every system to share a representation. It gave them a common way to identify a resource while leaving access and interpretation to each system.",
+    what: "a shared way to point",
+    line: "Systems agreed how to name a resource without agreeing how to store or serve it.",
     accent: "var(--warm)",
-    read: "The broad precedent: agree on how to point before agreeing on how to use. URI comparison even has several levels, from exact strings through increasingly informed normalization.",
+    read: "Agree how to point before agreeing how to use. URI comparison even has several levels, from exact strings through increasingly informed normalization.",
+  },
+  {
+    k: "bittorrent",
+    era: "2001 · file sharing",
+    who: "BitTorrent",
+    what: "fetch by hash, verify on arrival",
+    line: "Ask strangers for content by its hash, then check what they send you.",
+    accent: "var(--rose)",
+    read: "The address is the integrity check. Files are split into pieces with their own hashes, so a bad piece is caught locally rather than after the whole download.",
+  },
+  {
+    k: "nix",
+    era: "2003 · builds",
+    who: "Nix",
+    what: "the inputs decide the address",
+    line: "A build is named by everything that went into it, so it can be shared and reused.",
+    accent: "var(--cool)",
+    read: "Addressing build inputs makes results reproducible and cacheable across machines. The same instinct as a lockfile, at the granularity of every dependency.",
+  },
+  {
+    k: "unison",
+    era: "2019 · a language",
+    who: "Unison",
+    what: "definitions stored by hash",
+    line: "Code is keyed by the hash of its structure, and names are a separate mapping on top.",
+    accent: "var(--a)",
+    read: "The same split Ix arrived at later: identity from the structure, names as metadata beside it. Renaming a definition therefore costs nothing and breaks nothing.",
   },
   {
     k: "lurk",
-    era: "ongoing · proving computation",
+    era: "ongoing · proving",
     who: "Lurk",
-    what: "content-addressed values inside evaluation",
-    line: "Lurk recursively hashes compound values inside its evaluator, joining evaluation, shared storage, private commitments, and zero-knowledge claims around the same addressed data.",
-    accent: "var(--cool)",
-    read: "The evaluator represents compound values through content-derived scalar pointers. Evaluation, commitments, and proofs can therefore refer to the same value without a separate naming layer.",
+    what: "addressed values inside the evaluator",
+    line: "Values are addressed as the program runs, so storage, evaluation and proofs share one handle.",
+    accent: "var(--ink-dim)",
+    read: "Compound values are content-derived pointers inside evaluation, which is also what makes memoization and commitments fall out of the same mechanism.",
   },
   {
     k: "ix",
     era: "ongoing · Lean",
     who: "Ix",
-    what: "proof reuse across equivalent declarations",
-    line: "Ix removes local names and presentation details before addressing a Lean declaration, so the same mathematical object receives the same handle and its typechecking proof can be reused.",
+    what: "a proof that follows the address",
+    line: "Address a declaration with local names left out, attach its proof, and reuse the proof wherever that address turns up.",
     accent: "var(--a)",
-    read: "Ix demonstrates the full chain: choose which changes do not matter, derive a stable address, attach a claim, and reuse the proof when that address appears again.",
+    read: "The full chain: choose what does not matter, derive the address, attach a claim, reuse it. Their claims even carry the address of the assumption set they depend on.",
   },
 ];
 const PRIORART_IDLE = "These systems separate the identity needed by a task from incidental representation details. Hover a card for the specific connection.";
@@ -1719,7 +1869,7 @@ customElements.define("prior-art", class extends HTMLElement {
       <div class="paline" aria-hidden="true"></div>
       <div class="pagrid">${cards}</div>
       <div class="eqread" data-idle="${PRIORART_IDLE}">${PRIORART_IDLE}</div>
-      <p class="twnote">The web shows why a shared pointer matters. Lurk shows that addressed data can sit naturally inside a proving computation. Ix shows that the address can deliberately ignore cosmetic change, letting a proof follow the object it is about. <b>Riffcat's next move is plurality:</b> one artifact can expose several useful addresses, each clear about which differences it ignores. Different tools can meet at the narrowest address that still preserves the fact they want to share.</p>`;
+      <p class="twnote">Each of these fixes one address per thing. <b>The move we are proposing is plurality:</b> one artifact exposing several useful addresses, each clear about which differences it ignores, so two tools can meet at the narrowest one that still preserves the fact they want to share.</p>`;
     const read = this.querySelector(".eqread");
     this.querySelectorAll(".pacard").forEach((card) => {
       const c = PRIORART_CARDS.find((x) => x.k === card.dataset.k);
