@@ -96,6 +96,13 @@ function chipSymbol(digest) {
   return SHAPE_SYMS[h % SHAPE_SYMS.length];
 }
 
+// Distinct glyphs per view: the i-th distinct digest present gets SHAPE_SYMS[i].
+function symMapFor(digests) {
+  const m = new Map();
+  for (const d of digests) if (d && !m.has(d)) m.set(d, SHAPE_SYMS[m.size % SHAPE_SYMS.length]);
+  return m;
+}
+
 // Compact, human label for a yul function name (the name is shown for people,
 // never folded into the fingerprint).
 function chipLabel(name) {
@@ -111,12 +118,12 @@ const DIMS = [["structure", "struct"], ["names", "names"], ["constants", "const"
 // digests (so a hover can show which dimensions a twin-network shares vs differs
 // on: the "faceted preimage signature" that explains why two differently-named
 // functions are the same shape).
-function chip(u, facet, lib) {
+function chip(u, facet, lib, syms) {
   const d = u.facets[facet];
   const dims = DIMS.map(([k]) => short(u.digests[k]).slice(0, 6)).join(",");
   return `<span class="chip ${eqKey(d)}" style="--chip:${chipColor(d)}" data-eq="${eqKey(d)}"`
     + ` data-name="${u.name}" data-fp="${short(d)}" data-dims="${dims}"${lib ? ` data-lib="${lib}"` : ""}`
-    + ` title="${u.name}">${chipSymbol(d)} ${chipLabel(u.name)}</span>`;
+    + ` title="${u.name}">${(syms && syms.get(d)) || chipSymbol(d)} ${chipLabel(u.name)}</span>`;
 }
 
 // Build the dimension breakdown for a hovered chip vs its lit network: a strip
@@ -1289,7 +1296,9 @@ customElements.define("live-dial", class extends HTMLElement {
     const count = (f) => new Set(funcs.map((u) => u.facets[f])).size;
     const ladder = FACETS.map((f) =>
       `<span class="stop ${f === this.facet ? "on" : ""}" data-facet="${f}"><b>${count(f)}</b> ${f}</span>`).join("");
-    const grid = funcs.map((u) => chip(u, this.facet)).join("");
+    const syms = symMapFor(funcs.map((u) => u.facets[this.facet]));
+    const symByEq = new Map([...syms].map(([d, g]) => [eqKey(d).slice(3), g]));
+    const grid = funcs.map((u) => chip(u, this.facet, null, syms)).join("");
     const k = count(this.facet);
     const idle = `${funcs.length} functions · <b>${k}</b> classes at ${this.facet} · ${this.mode} ·`
       + ` ${this.mode === "shape" ? "loosen the dial and the colors merge" : "identity pins every artifact, so nothing merges"}`
@@ -1309,7 +1318,7 @@ customElements.define("live-dial", class extends HTMLElement {
     this.querySelectorAll("[data-facet]").forEach((b) =>
       b.addEventListener("click", () => { if (this.facet !== b.dataset.facet) { this.facet = b.dataset.facet; this.render(); } }));
     wireHighlight(this, (c, lit) =>
-      `<span class="sw" style="background:${chipColor(c.dataset.eq.slice(3))}"></span>`
+      `<span class="sw" style="color:${chipColor(c.dataset.eq.slice(3))};background:none">${symByEq.get(c.dataset.eq.slice(3))}</span>`
       + `${c.dataset.name} · <span style="color:var(--warm)">${c.dataset.fp}</span>`
       + dimStrip(c, lit));
   }
@@ -1351,9 +1360,11 @@ customElements.define("live-xref", class extends HTMLElement {
           spread.get(d).add(x.short);
         }
       const all3 = [...spread.values()].filter((s) => s.size === 3).length;
+      const syms = symMapFor(rows.flatMap(({ funcs }) => funcs.map((u) => u.facets[F])));
+      const symByEq = new Map([...syms].map(([d, g]) => [eqKey(d).slice(3), g]));
       const gridRows = rows.map(({ x, funcs }) =>
         `<div class="eqrow"><div class="libname"><b>${x.short}</b>${funcs.length} fns</div>`
-        + `<div class="eqgrid" data-lib="${x.short}">${funcs.map((u) => chip(u, F, x.short)).join("")}</div></div>`).join("");
+        + `<div class="eqgrid" data-lib="${x.short}">${funcs.map((u) => chip(u, F, x.short, syms)).join("")}</div></div>`).join("");
       const idle = `${spread.size} distinct chunks · <b>${all3}</b> shared across all three libraries`
         + ` · hover one to trace it · ${ms} ms in your browser`;
       this.innerHTML = `${gridRows}<div class="eqread" data-idle="${idle}">${idle}</div>`;
@@ -1362,7 +1373,7 @@ customElements.define("live-xref", class extends HTMLElement {
         const where = libs.size === 3 ? "shared across <b>all three</b> libraries"
           : libs.size === 2 ? `shared across <b>two</b> (${[...libs].join(", ")})`
           : `<b>only</b> in ${[...libs][0]}`;
-        return `<span class="sw" style="background:${chipColor(c.dataset.eq.slice(3))}"></span>`
+        return `<span class="sw" style="color:${chipColor(c.dataset.eq.slice(3))};background:none">${symByEq.get(c.dataset.eq.slice(3))}</span>`
           + `${c.dataset.name} · <span style="color:var(--warm)">${c.dataset.fp}</span> · ${where}`
           + dimStrip(c, lit);
       });
@@ -1445,10 +1456,11 @@ customElements.define("facet-primer", class extends HTMLElement {
       if (!seen.has(d)) { seen.set(d, []); order.push(d); }
       seen.get(d).push(f.name);
     }
+    const syms = symMapFor(order);
     const cards = this.fns.map((f) => {
       const d = this.byName[f.name].facets[this.facet], col = chipColor(d);
-      return `<div class="fcard ${feq(d)}" data-eq="${feq(d)}" style="--chip:${col}">`
-        + `<div class="fcard-h"><span class="sw" style="background:${col}"></span>${f.name}</div>`
+      return `<div class="fcard ${feq(d)}" data-eq="${feq(d)}" data-nm="${f.name}" style="--chip:${col}">`
+        + `<div class="fcard-h"><span class="sw" style="color:${col};background:none">${syms.get(d)}</span>${f.name}</div>`
         + `<pre class="fcode">${solHi(f.src)}</pre></div>`;
     }).join("");
     const ladder = FACETS.map((f) =>
@@ -1469,8 +1481,8 @@ customElements.define("facet-primer", class extends HTMLElement {
         twins.forEach((x) => { x.classList.remove("dim"); x.classList.add("twin"); });
         const read = this.querySelector(".eqread");
         if (read) read.innerHTML = twins.length > 1
-          ? `<b>${twins.length}</b> match when we ${FACET_LABEL[this.facet]}: <b>${[...twins].map((x) => x.querySelector(".fcard-h").textContent.trim()).join(" = ")}</b>`
-          : `<b>${card.querySelector(".fcard-h").textContent.trim()}</b> has no match here`;
+          ? `<b>${twins.length}</b> match when we ${FACET_LABEL[this.facet]}: <b>${[...twins].map((x) => x.dataset.nm).join(" = ")}</b>`
+          : `<b>${card.dataset.nm}</b> has no match here`;
       });
       card.addEventListener("mouseleave", () => {
         this.querySelectorAll(".fcard").forEach((x) => x.classList.remove("dim", "twin"));
@@ -1890,6 +1902,7 @@ customElements.define("riff-dial", class extends HTMLElement {
   render() {
     const ladder = RIFF_FACETS.map(([k, label]) =>
       `<span class="stop ${k === this.facet ? "on" : ""}" data-facet="${k}">${label}</span>`).join("");
+    const syms = symMapFor(this.fp.map((r) => r.addr[this.facet]));
     const groups = new Map();
     for (const r of this.fp) {
       const a = r.addr[this.facet];
@@ -1902,7 +1915,7 @@ customElements.define("riff-dial", class extends HTMLElement {
       return `<div class="riffrow"><button class="playbtn" data-i="${i}">▶ play</button>`
         + `<span class="riffname">${r.name}</span>`
         + `<span class="nchips">${chips}</span>`
-        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="shape ${a.slice(0, 10)}">${chipSymbol(a)}</span></div>`;
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="shape ${a.slice(0, 10)}">${syms.get(a)}</span></div>`;
     }).join("");
     const n = groups.size;
     const groupTxt = [...groups.values()]
@@ -1975,6 +1988,7 @@ customElements.define("chord-fp", class extends HTMLElement {
   render() {
     const ladder = CHORD_FACETS.map(([k, label]) =>
       `<span class="stop ${k === this.facet ? "on" : ""}" data-facet="${k}">${label}</span>`).join("");
+    const syms = symMapFor(this.data.map((d) => d.fp[this.facet]));
     const groups = new Map();
     for (const d of this.data) {
       const a = d.fp[this.facet];
@@ -1992,7 +2006,7 @@ customElements.define("chord-fp", class extends HTMLElement {
         : "";
       return `<div class="riffrow"><button class="playbtn" data-i="${i}">▶ play</button>`
         + `<span class="riffname">${d.c}</span><span class="nchips">${notes}</span>${pf}`
-        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${this.facet} ${a.slice(0, 10)}">${chipSymbol(a)}</span></div>`;
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${this.facet} ${a.slice(0, 10)}">${syms.get(a)}</span></div>`;
     }).join("");
     const n = groups.size;
     const gtxt = [...groups.values()]
@@ -2317,6 +2331,7 @@ customElements.define("anchor-transport", class extends HTMLElement {
     // The anchor address each chord computes at the chosen facet. Chords that
     // share an address share an anchor; a pinned fact rides exactly those.
     const addrOf = (fp) => fp[facet.key];
+    const syms = symMapFor(this.data.map((d) => addrOf(d.fp)));
 
     // The chord we pin the fact ON: the first chord for which the fact actually
     // holds, so "pin here" is always meaningful. Its address is the anchor the
@@ -2358,7 +2373,7 @@ customElements.define("anchor-transport", class extends HTMLElement {
         : "different address";
       const subjMark = d === subject ? `<span class="ancpin" title="the claim begins here">attached here</span>` : "";
       return `<div class="ancrow anc-${state}" data-play="${d.fp.pitch_classes.join(",")}" title="click to hear this chord">`
-        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${facet.label} ${ancShort(a)}">${chipSymbol(a)}</span>`
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${facet.label} ${ancShort(a)}">${syms.get(a)}</span>`
         + `<span class="riffname">${d.c}${subjMark}</span>`
         + `<span class="nchips">${notes}</span>`
         + `<span class="ancaddr">${ancShort(a)}</span>`
