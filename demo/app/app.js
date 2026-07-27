@@ -817,6 +817,21 @@ const ARCS = {
       ["in honesty", ["the engine checks too", "what we sampled"]],
     ],
   },
+  // The presentation arc for tonight: one idea per beat, facets as the spine,
+  // the demos-trimmed variant of each shared component. No appendix: the arc
+  // ends on the ask.
+  tonight: {
+    label: "tonight",
+    appendix: false,
+    sections: [
+      ["what counts as the same", ["sameness", "on music", "names out"]],
+      ["on real code", ["recognized", "audit once", "shared machinery"]],
+      ["through the compiler", ["the compiler too", "flips vs holds", "leaves up"]],
+      ["put to work", ["the bug's shape", "edited forks", "a fact rides"]],
+      ["standing on", ["the cheap yes", "prior art"]],
+      ["honesty, and the ask", ["what we sampled", "what we need", "a shared block"]],
+    ],
+  },
 };
 const APPENDIX_LABEL = "for follow-up questions";
 const requestedArc = new URLSearchParams(location.search).get("arc");
