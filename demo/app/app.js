@@ -261,7 +261,7 @@ const CH = [
     nav: "recognized",
     kicker: "the pitch, on real mainnet code",
     title: "Recognizing known library code",
-    lede: "Ten verified contracts from Sourcify, each function colored by the library it matches. These ten are OpenZeppelin-derived, so that is nearly everything the key shows. Grey is new code; hover to read it.",
+    lede: "Ten verified contracts from Sourcify, selected as OpenZeppelin users, each function colored by the library it matches. Grey is new code; hover to read it.",
     body: `<recog-scan></recog-scan>`,
   },
   {
@@ -317,7 +317,7 @@ const CH = [
     nav: "two fingerprints",
     kicker: "two axes, not two rivals",
     title: "Two kinds of fingerprint",
-    lede: "Sourcify's metadata hash answers \"is this the identical build\" and flips on a single whitespace; the structural fingerprint answers \"is this the same code wearing different clothes\" and is built to hold when the hash moves. Edit the source and watch the axes part.",
+    lede: "Sourcify's metadata hash answers \"is this the identical build\" and flips on a single whitespace; the structural fingerprint answers \"is this the same code wearing different clothes\" and holds when the hash moves. Edit the source and watch the axes part. The hash here is a stand-in over the source text, not a recompile.",
     body: `<metadata-axes></metadata-axes>`,
   },
   {
@@ -1082,7 +1082,8 @@ customElements.define("recog-dedup", class extends HTMLElement {
       return `<div class="dduprow"><span class="ddup-n">${c.name}</span><div class="ddupbar">${bar}</div><span class="ddup-r">${known}/${c.fns.length}</span></div>`;
     }).join("");
     this.innerHTML = `
-      <div class="dduphead"><b>${s.known}</b> of <b>${s.total}</b> functions across these ${n} contracts are shapes already in OpenZeppelin, Solady, or Solmate <span class="ddup-pct">${pct}%</span></div>
+      <div class="dduphead"><b>${s.known}</b> of <b>${s.total}</b> functions across these ${n} contracts are shapes already in a known library <span class="ddup-pct">${pct}%</span></div>
+      <div class="ddupsel">These ten were selected as OpenZeppelin users with at least five library matches each, so this rate describes that sample, not the chain.</div>
       <div class="ddupbar big">${segs}</div>
       <div class="legend">${legend}</div>
       <div class="dduprows">${rows}</div>
@@ -1140,18 +1141,19 @@ customElements.define("vuln-sniff", class extends HTMLElement {
   }
   renderBody() {
     const s = this.shapes[this.sel], st = VULN_STATUS[s.status];
-    const wits = this.witnesses.filter((w) => w.shape === s.key);
-    const chips = wits.map((w) =>
-      `<a class="wchip" href="${w.url}" target="_blank" rel="noopener">${w.name}<span class="wch">${w.chainName}</span></a>`).join("");
+    // The witnesses are deliberately not named. A shape match is a candidate,
+    // not a verdict, so a public list of live deployments under this heading
+    // would assert exactly what the deck says a match cannot assert. The counts
+    // are the claim; the identities are not ours to publish.
     const match = s.reach
-      ? `riffcat matched this shape in <b>${s.reach.toLocaleString()}</b> verified vaults (an exact-source match finds ${s.exact.toLocaleString()}), for example:`
-      : `kept the name, but its shape is not the vulnerable one; these are safe:`;
+      ? `riffcat matched this shape in <b>${s.reach.toLocaleString()}</b> verified vaults, where an exact-source match finds ${s.exact.toLocaleString()}.`
+      : `kept the name, but its shape is not the vulnerable one.`;
     this.querySelector(".vbody").innerHTML =
       `<div class="vhead" style="--hue:${st.hue}"><span class="vbadge">${st.label}</span> <b>${s.label}</b> <span class="vsub">${s.sub}</span>`
       + `<span class="vfp">structure ${s.structure.slice(0, 10)}</span></div>`
       + `<p class="vrole">${VULN_ROLE[s.status]}</p>`
       + `<pre class="code">${solHi(s.src)}</pre>`
-      + `<div class="vwits"><span class="vwlabel">${match}</span>${chips}</div>`;
+      + `<div class="vwits"><span class="vwlabel">${match}</span></div>`;
   }
 });
 
@@ -1173,7 +1175,7 @@ customElements.define("fuzzy-scan", class extends HTMLElement {
     const d = this.data;
     const rows = this.variants.map((v, i) =>
       `<tr class="lxrow ${i === this.sel ? "on" : ""}" data-i="${i}">`
-      + `<td class="lx-shape">${v.name} <span class="vsub">${v.chainName}</span></td>`
+      + `<td class="lx-shape">fork ${i + 1} <span class="vsub">${v.chainName}</span></td>`
       + `<td class="lx-verd bad">none</td>`
       + `<td class="lx-n lx-reach">${Math.round(v.cwVuln * 100)}%</td></tr>`).join("");
     this.innerHTML = `
@@ -1182,7 +1184,7 @@ customElements.define("fuzzy-scan", class extends HTMLElement {
       <div class="codepanel fref"><div class="cphead">known vulnerable function <span class="vfp">address ${d.vuln.fp}</span> <span class="vsub">${d.vuln.nodes} nodes</span></div><pre class="code">${solHi(d.vuln.src)}</pre></div>
       <table class="vledger"><thead><tr><th>edited fork</th><th>whole-function match</th><th>vulnerable structure retained</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="vbody codepanel"></div>
-      <p class="vledger-cap">The coincidence floor for this shape is ~<b>${d.nullCeiling}</b> and the OZ patch scores ~<b>${d.patchedScore}</b>; both catches clear it. Sourcify-verified, a floor. Two further customized vulnerable bodies (${d.marginal.map((m) => m.name).join(", ")}) land near the floor and the score alone cannot certify them.</p>`;
+      <p class="vledger-cap">The coincidence floor for this shape is ~<b>${d.nullCeiling}</b> and the OZ patch scores ~<b>${d.patchedScore}</b>; both catches clear it. Sourcify-verified, a floor. Two further customized vulnerable bodies land near the floor and the score alone cannot certify them.</p>`;
     this.querySelectorAll(".lxrow").forEach((row) =>
       row.addEventListener("click", () => { this.sel = +row.dataset.i; this.querySelectorAll(".lxrow").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
     this.renderBody();
@@ -1190,9 +1192,8 @@ customElements.define("fuzzy-scan", class extends HTMLElement {
   renderBody() {
     const v = this.variants[this.sel];
     this.querySelector(".vbody").innerHTML =
-      `<div class="vhead" style="--hue:2"><span class="vbadge">caught, modified</span> <b>${v.name}</b> <span class="vsub">${v.chainName}, ${v.nodes} nodes</span>`
-      + `<span class="vfp">${Math.round(v.cwVuln * 100)}% of vulnerable structure retained</span>`
-      + `<a class="vsrcfy" href="https://sourcify.dev/#/lookup/${v.address}" target="_blank" rel="noopener">on sourcify ↗</a></div>`
+      `<div class="vhead" style="--hue:2"><span class="vbadge">caught, modified</span> <b>fork ${this.sel + 1}</b> <span class="vsub">${v.chainName}, ${v.nodes} nodes</span>`
+      + `<span class="vfp">${Math.round(v.cwVuln * 100)}% of vulnerable structure retained</span></div>`
       + `<p class="vrole">${v.edit}</p>`
       + `<pre class="code">${solHi(v.src)}</pre>`;
   }
@@ -2591,7 +2592,7 @@ customElements.define("metadata-axes", class extends HTMLElement {
     // claim, no more.
     const metaCard =
       `<div class="mha-card ${metaMoved ? "moved" : ""}">
-        <div class="mha-card-h">metadata hash<span class="mha-axis">Sourcify · byte-exact</span></div>
+        <div class="mha-card-h">metadata hash<span class="mha-axis">stand-in · flips on any character</span></div>
         <div class="mha-fp mha-meta">${meta}</div>
         <div class="mha-verd ${metaMoved ? "flip" : "hold"}">${metaMoved ? "flipped" : "unchanged"}</div>
         <div class="mha-q">answers: is this the identical compilation</div>
