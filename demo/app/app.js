@@ -1469,7 +1469,7 @@ customElements.define("facet-primer", class extends HTMLElement {
     const idle = `<b>${seen.size}</b> shape${seen.size === 1 ? "" : "s"} at ${this.facet} · ${FACET_GLOSS[this.facet]}`
       + ` · ${groupTxt} · ${this._ms.toFixed(0)} ms in your browser`;
     this.innerHTML = `
-      <div class="dialbar"><div class="grp"><span>comparison granularity</span><div class="ladder">${ladder}</div></div></div>
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
       <div class="fgrid">${cards}</div>
       <div class="eqread" data-idle="${idle}">${idle}</div>`;
     this.querySelectorAll("[data-facet]").forEach((s) =>
@@ -1930,7 +1930,7 @@ customElements.define("riff-dial", class extends HTMLElement {
       .map((names) => names.length > 1 ? `<b>${names.join(" = ")}</b>` : names[0]).join(" · ");
     const idle = `<b>${n}</b> group${n === 1 ? "" : "s"} under this comparison · ${groupTxt}`;
     this.innerHTML = `
-      <div class="dialbar"><div class="grp"><span>compare by</span><div class="ladder">${ladder}</div></div></div>
+      <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
       <div class="riffs">${rows}</div>
       <div class="eqread">${idle}</div>
       <p class="twnote">The same dial as the code chapters, on music. Transpose the riff and the <b>intervals</b> survive; keep the durations and the <b>rhythm</b> survives; reorder and re-octave the notes and the <b>note set</b> survives. The engine computes each with the very same facet machinery (<code>fingerprint_riff</code>).</p>`;
@@ -2402,7 +2402,7 @@ customElements.define("anchor-transport", class extends HTMLElement {
         <p class="ancsay detail-only">${fact.say}. It can safely follow the <b>${ANC_FACETS[fact.foot].label}</b> handle.</p>
       </div>
       <div class="dialbar">
-        <div class="grp"><span>attach it to</span><div class="ladder">${ladder}</div></div>
+        <div class="grp"><span>anchor facet</span><div class="ladder">${ladder}</div></div>
         <span class="ancslidehint">the broader address preserves fewer details</span>
       </div>
       <div class="ancrows">${rows}</div>
