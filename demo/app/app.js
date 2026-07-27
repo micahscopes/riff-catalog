@@ -86,6 +86,16 @@ function chipColor(digest) {
   return `oklch(72% 0.13 ${((acc * 137.508) % 360).toFixed(1)})`;
 }
 
+// A distinct SHAPE per fingerprint class, so the coding is never color-only:
+// same digest gets the same glyph as well as the same hue. Keyed off a later
+// slice of the digest than the hue, so two near hues usually differ in glyph.
+const SHAPE_SYMS = ["●","■","◆","★","▲","▼","◀","▶","✚"];
+function chipSymbol(digest) {
+  let h = 0;
+  for (let i = 6; i < 16 && i < (digest || "").length; i++) h = (h * 131 + digest.charCodeAt(i)) >>> 0;
+  return SHAPE_SYMS[h % SHAPE_SYMS.length];
+}
+
 // Compact, human label for a yul function name (the name is shown for people,
 // never folded into the fingerprint).
 function chipLabel(name) {
@@ -106,7 +116,7 @@ function chip(u, facet, lib) {
   const dims = DIMS.map(([k]) => short(u.digests[k]).slice(0, 6)).join(",");
   return `<span class="chip ${eqKey(d)}" style="--chip:${chipColor(d)}" data-eq="${eqKey(d)}"`
     + ` data-name="${u.name}" data-fp="${short(d)}" data-dims="${dims}"${lib ? ` data-lib="${lib}"` : ""}`
-    + ` title="${u.name}">${chipLabel(u.name)}</span>`;
+    + ` title="${u.name}">${chipSymbol(d)} ${chipLabel(u.name)}</span>`;
 }
 
 // Build the dimension breakdown for a hovered chip vs its lit network: a strip
@@ -657,9 +667,9 @@ const CH = [
     body: `<live-xref></live-xref>`,
   },
   {
-    nav: "same is a dial",
+    nav: "sameness",
     demosOnly: true,
-    title: "What counts as the same is a dial",
+    title: "What counts as the same is a choice",
     lede: "Loosen the dial and watch which functions merge to one shape.",
     body: `<facet-primer></facet-primer>`,
   },
@@ -788,7 +798,7 @@ const ARCS = {
     appendix: false,
     sections: [
       ["on real code", ["recognized", "audit once", "shared machinery"]],
-      ["the dial", ["same is a dial", "on music", "names out", "flips vs holds", "leaves up"]],
+      ["what counts as the same", ["sameness", "on music", "names out", "flips vs holds", "leaves up"]],
       ["put to work", ["the bug's shape", "edited forks", "a fact rides", "rides along"]],
     ],
   },
@@ -1078,9 +1088,9 @@ customElements.define("held-address", class extends HTMLElement {
       : `<b>One address.</b> The numbering is out; what is left is everything else about the function,`
         + ` and the unrelated edit cannot reach any of it. ${this.ms.toFixed(0)} ms in your browser.`;
     this.innerHTML = `
-      <div class="dialbar"><div class="grp"><span>the names</span>
-        <button data-k="1" aria-pressed="${this.keep}">kept in the address</button>
-        <button data-k="0" aria-pressed="${!this.keep}">left out</button>
+      <div class="dialbar"><div class="grp"><span>facet</span>
+        <button data-k="1" aria-pressed="${this.keep}">names in</button>
+        <button data-k="0" aria-pressed="${!this.keep}">names out</button>
       </div></div>
       <div class="gnames">${rows}</div>
       <div class="eqread">${read}</div>`;
@@ -1877,7 +1887,7 @@ customElements.define("riff-dial", class extends HTMLElement {
       return `<div class="riffrow"><button class="playbtn" data-i="${i}">▶ play</button>`
         + `<span class="riffname">${r.name}</span>`
         + `<span class="nchips">${chips}</span>`
-        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="shape ${a.slice(0, 10)}"></span></div>`;
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="shape ${a.slice(0, 10)}">${chipSymbol(a)}</span></div>`;
     }).join("");
     const n = groups.size;
     const groupTxt = [...groups.values()]
@@ -1967,7 +1977,7 @@ customElements.define("chord-fp", class extends HTMLElement {
         : "";
       return `<div class="riffrow"><button class="playbtn" data-i="${i}">▶ play</button>`
         + `<span class="riffname">${d.c}</span><span class="nchips">${notes}</span>${pf}`
-        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${this.facet} ${a.slice(0, 10)}"></span></div>`;
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${this.facet} ${a.slice(0, 10)}">${chipSymbol(a)}</span></div>`;
     }).join("");
     const n = groups.size;
     const gtxt = [...groups.values()]
@@ -2332,8 +2342,8 @@ customElements.define("anchor-transport", class extends HTMLElement {
         : state === "wrong" ? "claim would be false here"
         : "different address";
       const subjMark = d === subject ? `<span class="ancpin" title="the claim begins here">attached here</span>` : "";
-      return `<div class="ancrow anc-${state}">`
-        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${facet.label} ${ancShort(a)}"></span>`
+      return `<div class="ancrow anc-${state}" data-play="${d.fp.pitch_classes.join(",")}" title="click to hear this chord">`
+        + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${facet.label} ${ancShort(a)}">${chipSymbol(a)}</span>`
         + `<span class="riffname">${d.c}${subjMark}</span>`
         + `<span class="nchips">${notes}</span>`
         + `<span class="ancaddr">${ancShort(a)}</span>`
@@ -2373,6 +2383,8 @@ customElements.define("anchor-transport", class extends HTMLElement {
       s.addEventListener("click", () => { const i = +s.dataset.anchor; if (this.anchor !== i) { this.anchor = i; this.render(); } }));
     this.querySelectorAll("[data-fact]").forEach((b) =>
       b.addEventListener("click", () => { if (this.factKey !== b.dataset.fact) { this.factKey = b.dataset.fact; this.render(); } }));
+    this.querySelectorAll(".ancrow[data-play]").forEach((row) =>
+      row.addEventListener("click", () => { try { playChord(row.dataset.play.split(",").map(Number)); } catch (_) {} }));
   }
 });
 
@@ -2758,7 +2770,7 @@ customElements.define("forte-catalog", class extends HTMLElement {
       return `<div class="fcatcard ${cls}" data-eq="${cls}" style="--chip:${col}">`
         + `<div class="fcat-h">`
         + `<button class="playbtn" data-i="${i}">▶</button>`
-        + `<span class="shapedot" style="--chip:${col}" title="${onClass ? "Tn-type " + tnf.join(",") : "note set " + a.slice(0, 10)}"></span>`
+        + `<span class="shapedot" style="--chip:${col}" title="${onClass ? "Tn-type " + tnf.join(",") : "note set " + a.slice(0, 10)}">${chipSymbol(a)}</span>`
         + `<span class="fcat-name"><b>${shownName}</b> <span class="vsub">${d.name}</span></span>`
         + `${forteTag}</div>`
         + `<div class="fcat-notes"><span class="nchips">${notes}</span></div>`
@@ -2894,7 +2906,7 @@ customElements.define("ivf-fingerprint", class extends HTMLElement {
         + `<span class="nchips">${notes}</span>`
         + this.strip(vec, color, false)
         + `<span class="ivf-vec"><${"" }${vec.join("")}></span>`
-        + `<span class="shapedot" style="--chip:${color}" title="interval vector &lt;${vec.join("")}&gt;"></span></div>`;
+        + `<span class="shapedot" style="--chip:${color}" title="interval vector &lt;${vec.join("")}&gt;">${chipSymbol(d.fp.set_class)}</span></div>`;
     }).join("");
     const sel = this.data[this.sel];
     const svec = sel.fp.interval_vector;
@@ -3035,7 +3047,7 @@ customElements.define("three-rungs", class extends HTMLElement {
         + `<span class="nchips">${chips}</span>`
         + `${stepTag}${forteTag}`
         + `<button class="playbtn" data-i="${i}">▶ hear it</button>`
-        + `<span class="shapedot" style="--chip:${chipColor(addr)}" title="${r.key} ${addr.slice(0, 10)}"></span></div>`;
+        + `<span class="shapedot" style="--chip:${chipColor(addr)}" title="${r.key} ${addr.slice(0, 10)}">${chipSymbol(addr)}</span></div>`;
     }).join("");
     const sel = TR_RUNGS.find((r) => r.key === this.rung);
     const selForte = this.forteFor(sel.key);
