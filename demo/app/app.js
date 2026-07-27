@@ -633,6 +633,92 @@ const CH = [
     talkOnly: true,
     body: `<div class="talk-closer">A name tells you where somebody put a thing. An address tells you what the thing is.</div>`,
   },
+  // --- the demos arc ("demos") ---------------------------------------------
+  // Reframed slides for ?arc=demos only: the same live components the pool
+  // already ships, recomposed spare. Each slide is the demo, an idea-stating
+  // title, and at most one line: a verbatim tracker quote where one grounds
+  // the demo (repo-level attribution only), a plain do-this line otherwise.
+  // demosOnly keeps them out of every other arc's appendix, exactly as
+  // talkOnly does for the talk deck. The recognition slide is the pool's
+  // "recognized" chapter itself: recog-scan deep-links pin under #recognized,
+  // so that nav must stay the chapter's.
+  {
+    nav: "audit once",
+    demosOnly: true,
+    title: "One audit, many contracts",
+    lede: "Pick a shape to see every contract that carries it.",
+    body: `<recog-twins></recog-twins>`,
+  },
+  {
+    nav: "shared machinery",
+    demosOnly: true,
+    title: "Three authors, the same shapes",
+    lede: "Hover a chip to light the same shape in all three libraries.",
+    body: `<live-xref></live-xref>`,
+  },
+  {
+    nav: "same is a dial",
+    demosOnly: true,
+    title: "What counts as the same is a dial",
+    lede: "Loosen the dial and watch which functions merge to one shape.",
+    body: `<facet-primer></facet-primer>`,
+  },
+  {
+    nav: "on music",
+    demosOnly: true,
+    title: "The same dial, on music",
+    lede: "Press play on each variant, then change what counts as the same.",
+    body: `<riff-dial></riff-dial>`,
+  },
+  {
+    nav: "names out",
+    demosOnly: true,
+    title: "Two builds, one address",
+    lede: "“This results in the Yul identifiers to differ if AST IDs differ!” (solidity #14535)",
+    body: `<held-address></held-address>`,
+  },
+  {
+    nav: "flips vs holds",
+    demosOnly: true,
+    title: "The hash that flips, the shape that holds",
+    lede: "“Since the metadata contains the name of the input file, the hash of it will differ.” (solidity #1644)",
+    body: `<metadata-axes></metadata-axes>`,
+  },
+  {
+    nav: "leaves up",
+    demosOnly: true,
+    title: "An address built from the leaves up",
+    lede: "Step the fold, then drop a dimension and watch every address change.",
+    body: `<fold-merkle></fold-merkle>`,
+  },
+  {
+    nav: "the bug's shape",
+    demosOnly: true,
+    title: "A bug is a shape",
+    lede: "“That means the compilation is not reproducible.” (sourcify #1054)",
+    body: `<vuln-sniff></vuln-sniff>`,
+  },
+  {
+    nav: "edited forks",
+    demosOnly: true,
+    title: "An edited fork still carries the shape",
+    lede: "Click a fork that exact match and text search both miss.",
+    body: `<fuzzy-scan></fuzzy-scan>`,
+  },
+  {
+    nav: "a fact rides",
+    demosOnly: true,
+    title: "A fact that rides the address",
+    lede: "Pick a claim, then broaden the anchor and watch where it rides wrong.",
+    body: `<anchor-transport></anchor-transport>`,
+  },
+  {
+    nav: "rides along",
+    demosOnly: true,
+    title: "Provenance rides along, the address holds still",
+    lede: "Toggle the origin edges, then compare two lowerings.",
+    body: `<provenance-rides></provenance-rides>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -693,6 +779,19 @@ const ARCS = {
       ["in honesty, and the ask", ["what we sampled", "what we need"]],
     ],
   },
+  // Interactive demos only: every slide is a live component that fingerprints,
+  // filters, or steps in this browser and answers hover/click/toggle with a
+  // readout. No connective slides, no appendix: the arc ends where the demos
+  // end, and the idea on each slide is in the interaction.
+  demos: {
+    label: "demos",
+    appendix: false,
+    sections: [
+      ["on real code", ["recognized", "audit once", "shared machinery"]],
+      ["the dial", ["same is a dial", "on music", "names out", "flips vs holds", "leaves up"]],
+      ["put to work", ["the bug's shape", "edited forks", "a fact rides", "rides along"]],
+    ],
+  },
   // The storybook order the deck grew up in: domain-coherent rather than causal,
   // useful for browsing everything that exists.
   storybook: {
@@ -734,17 +833,22 @@ const SECTIONS = [];
     });
   };
   for (const [label, navs] of ARC.sections) place(label, navs);
-  // Everything the arc did not name lands in the appendix, except the talk
-  // deck's staging slides (talkOnly): they serve exactly one arc, and letting
-  // them pad the other arcs would also change those arcs' arrow-key behavior
-  // through their reveal steps.
-  place(APPENDIX_LABEL, [...pool.values()].filter((c) => !c.talkOnly).map((c) => c.nav));
+  // Everything the arc did not name lands in the appendix, except chapters
+  // that serve exactly one arc (talkOnly, demosOnly): letting them pad the
+  // other arcs would also change those arcs' arrow-key behavior through their
+  // reveal steps. An arc may opt out of the appendix entirely (appendix:
+  // false); the demos arc does, so it ends where its demos end.
+  if (ARC.appendix !== false)
+    place(APPENDIX_LABEL, [...pool.values()].filter((c) => !c.talkOnly && !c.demosOnly).map((c) => c.nav));
   CH.length = 0;
   CH.push(...ordered);
 }
 
 customElements.define("tour-app", class extends HTMLElement {
   connectedCallback() {
+    // The active arc, readable from CSS: the demos arc uses this to trim the
+    // slide chrome (kickers, long in-component captions) it composes without.
+    document.body.classList.add("arc-" + ARC_KEY);
     // Relative hrefs, so this works at a subpath and from a local server alike.
     // No hash, so switching arcs lands on that arc's first chapter.
     document.getElementById("arcs").innerHTML =
