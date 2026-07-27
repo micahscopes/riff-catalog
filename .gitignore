@@ -6,3 +6,21 @@ demo/corpus/
 target-drift/
 demo/double.yul
 /target-wasm
+
+# Working notes: planning, campaign, and measurement-research docs, kept
+# locally (and archived in full in misc/riff-catalog) but not published.
+# The public docs are the READMEs, BUILD.md, and demo/MEASUREMENTS.md.
+/PLAN.md
+/DEMO_PLAN.md
+/SHARE_READINESS_*.md
+/demo/ARCS.md
+/demo/ARC_V2.md
+/demo/runsheet.md
+/demo/fe-origin-overhaul-and-riffcat-library-*.md
+/demo/ix-content-addressing-*.md
+/demo/music-review-*.md
+/demo/riffcat-into-fe-origin-tracing-draft-*.md
+/demo/riffcat-similarity-experiments-*.md
+/demo/sourcify-similarity-pipeline-*.md
+/demo/vuln-clone-candidates-*.md
+/demo/vuln-reach-*.md
