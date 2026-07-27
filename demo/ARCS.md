@@ -32,6 +32,11 @@ an illustration with no data behind it, honest as setup, never as evidence.
 | many forms | solc and fe pipelines side by side, plus model, trace, verified source | drawn |
 | stranded | four findings, each pinned to the one form it came from | drawn |
 | broken reference | a proof naming IR node 184, then the node is gone | drawn |
+| generated names | the same helper compiled next to three libraries, three names | live |
+| an address | ask, receive, hash it yourself, with a real address from the fixtures | live |
+| two builds | the four reasons two builds of one program differ | drawn |
+| resolution | resolving by address instead of by name, not built, Unison has | drawn |
+| the cubical prototype | what the Agda prototype checks: facet, address, transport | cited |
 | facets | five small functions; loosen the facet and watch them merge | live |
 | the riff | a motif and its variants, then chords parsed from real notation | live |
 | address it | keep structure/types/origins, derive one address | drawn |
@@ -79,6 +84,10 @@ honest limits), `possibility-grid` (four short possibilities), `lockin-visual`,
 - **talk** (default): problem, the choice, on real code, through the compiler,
   from match to knowledge, honesty and the ask. Every payoff beat is live or
   real; the three drawn slides are setup only.
+- **names** (`?arc=names`): the naming arc. One defect (we point with names, names
+  move), one tool (an address you can check), two payoffs (across authors, across
+  compilers), one boundary, one ask. Recognition comes before the compiler beat on
+  purpose: the first payoff should be the one that lands without effort.
 - **short** (`?arc=short`): the same spine in ten beats, for a short slot. One
   problem slide, one mechanism, two payoffs, the compiler beat, the boundary, the
   ask. Everything else is one click away in the appendix.
