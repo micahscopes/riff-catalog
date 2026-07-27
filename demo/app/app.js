@@ -417,7 +417,7 @@ const CH = [
     nav: "what we sampled",
     kicker: "the honest numbers, and the ones we owe you",
     title: "What we measured, and what we didn't",
-    lede: "Every number in this deck is a Sourcify-floor count over distinct source files, plus one null calibration. None of it is precision or recall against a baseline. Below: exactly what each number is, and the measurement we still owe you.",
+    lede: "Every number here is an exact floor count over Sourcify's verified sources. Click a row to see how it was made.",
     body: `<sampled-ledger></sampled-ledger>`,
   },
   {
@@ -1250,10 +1250,12 @@ customElements.define("live-xref", class extends HTMLElement {
 // recognition is precomputed (fingerprint + catalog lookup), so this view needs
 // no engine at runtime.
 // keyed by the catalog's lowercase library id; n = display name, h = hue.
+// Each library carries a distinct shape (sym) as well as a hue, so the coding is
+// legible to colorblind viewers: the symbol, not just the color, tells them apart.
 const LIB = {
-  openzeppelin: { n: "OpenZeppelin", h: 210 },
-  solady: { n: "Solady", h: 145 },
-  solmate: { n: "Solmate", h: 32 },
+  openzeppelin: { n: "OpenZeppelin", h: 210, sym: "●" },
+  solady: { n: "Solady", h: 145, sym: "▲" },
+  solmate: { n: "Solmate", h: 32, sym: "■" },
 };
 
 // Minimal, safe Solidity highlighter: tokenize comments/strings out first, then
@@ -1373,9 +1375,10 @@ customElements.define("recog-scan", class extends HTMLElement {
       const chips = c.fns.map((f, fi) => {
         const cls = f.lib ? "chip rec" : "chip novel";
         const hue = f.lib && LIB[f.lib] ? `style="--chip:oklch(72% 0.15 ${LIB[f.lib].h})"` : "";
+        const sym = f.lib && LIB[f.lib] ? LIB[f.lib].sym + " " : "";
         const label = f.fn === "constructor" ? "constructor" : f.fn;
         return `<span class="${cls} eq-${f.nb}" data-eq="eq-${f.nb}" data-ci="${ci}" data-fi="${fi}"`
-          + ` data-anchor="${encodeURIComponent(c.name + "." + f.fn)}" ${hue} title="${c.name}.${f.fn}">${label}</span>`;
+          + ` data-anchor="${encodeURIComponent(c.name + "." + f.fn)}" ${hue} title="${c.name}.${f.fn}">${sym}${label}</span>`;
       }).join("");
       return `<div class="eqrow recogrow">
         <div class="libname"><b>${c.name}</b><span class="ver">${c.version}</span>
@@ -1396,7 +1399,7 @@ customElements.define("recog-scan", class extends HTMLElement {
       }
     const legend = `<div class="legend">`
       + [...seen.entries()].sort((a, b) => b[1] - a[1])
-        .map(([k, n]) => `<span><i style="background:hsl(${(LIB[k] || {}).h || 0} 70% 55%)"></i>${(LIB[k] || {}).n || k} <b>${n}</b></span>`).join("")
+        .map(([k, n]) => `<span><i style="background:hsl(${(LIB[k] || {}).h || 0} 70% 55%)"></i>${(LIB[k] || {}).sym || ""} ${(LIB[k] || {}).n || k} <b>${n}</b></span>`).join("")
       + `<span><i class="novel"></i>no library match <b>${novel}</b></span></div>`;
     // codedock reserves a constant height; the panel inside sizes to content.
     // Keeping the dock height fixed means hovering never changes the page
@@ -1447,7 +1450,7 @@ customElements.define("recog-scan", class extends HTMLElement {
     const c = this.contracts[+chip.dataset.ci], f = c.fns[+chip.dataset.fi];
     const inN = this.spread.get(f.nb)?.size || 1;
     const verdict = f.lib && LIB[f.lib]
-      ? `recognized as <span class="reclib" style="color:hsl(${LIB[f.lib].h} 70% 62%)">${LIB[f.lib].n} ${f.canon}</span>`
+      ? `recognized as <span class="reclib" style="color:hsl(${LIB[f.lib].h} 70% 62%)">${LIB[f.lib].sym} ${LIB[f.lib].n} ${f.canon}</span>`
       : `<span class="recnovel">no library match</span>`;
     const also = inN > 1 ? ` · same shape in <b>${inN}</b> of these contracts` : "";
     return `<div class="cphead"><b>${c.name}.${f.fn}</b> · ${verdict} · <span class="fp">${f.nb.slice(0, 8)}</span>${also}`
@@ -1522,7 +1525,7 @@ customElements.define("recog-dedup", class extends HTMLElement {
     const libOrder = Object.entries(s.byLib).sort((a, b) => b[1] - a[1]);
     const segs = libOrder.map(([lib, k]) => `<span style="flex:${k};background:hsl(${LIB[lib].h} 58% 46%)" title="${LIB[lib].n} ${k}"></span>`).join("")
       + `<span class="seg-novel" style="flex:${s.novel}" title="novel ${s.novel}"></span>`;
-    const legend = libOrder.map(([lib, k]) => `<span><i style="background:hsl(${LIB[lib].h} 58% 46%)"></i>${LIB[lib].n} ${k}</span>`).join("")
+    const legend = libOrder.map(([lib, k]) => `<span><i style="background:hsl(${LIB[lib].h} 58% 46%)"></i>${LIB[lib].sym} ${LIB[lib].n} ${k}</span>`).join("")
       + `<span><i class="novel"></i>novel ${s.novel}</span>`;
     const rows = this.contracts.map((c) => {
       const seg = {}; for (const f of c.fns) { const key = (f.lib && LIB[f.lib]) ? f.lib : "novel"; seg[key] = (seg[key] || 0) + 1; }
@@ -3466,15 +3469,9 @@ customElements.define("sampled-ledger", class extends HTMLElement {
       + `<td class="lx-verd sampled-pend">not measured</td>`
       + `<td class="lx-n sampled-pendn">pending</td></tr>`).join("");
     this.innerHTML = `
-      <p class="vlead">Two columns of numbers stand behind this demo. The first column exists: exact counts over distinct Sourcify source files, plus one null-floor calibration. The second column does not exist yet: precision and recall against a naive baseline, which needs a labelled slice we have not built. We keep them apart on purpose.</p>
-      <div class="sampled-cap">measured, and a floor</div>
       <table class="vledger sampled-table"><thead><tr><th>what the number is</th><th>counted over</th><th>kind</th><th>value</th></tr></thead><tbody>${mRows}</tbody></table>
-      <p class="vledger-cap">Every value above is exact within Sourcify's verified corpus and a floor on the true population, never a per-contract crawl of the whole chain. Click a row for how it was produced. One source_hash is one exact file, so classifying one witness per variant classifies all of its compilations exactly.</p>
-      <div class="sampled-cap sampled-cap-pend">not measured yet, owed</div>
-      <table class="vledger sampled-table sampled-pending"><thead><tr><th>the measurement we owe</th><th>needs</th><th>status</th><th>value</th></tr></thead><tbody>${pRows}</tbody></table>
-      <p class="vledger-cap">These two rows are blank on purpose. A reach gain over exact match is not recall, and a clean shape is not precision, until a labelled slice exists to score against. We would rather show the empty cells than fill them with a number we cannot stand behind.</p>
       <div class="vbody codepanel"></div>
-      <p class="twnote">This narrows what to read; it does not decide what is true. The measured column is honest about being a floor; the pending column is honest about being empty. Same shape, and here are the parts that match: the sentence stops where the evidence does.</p>`;
+      <p class="vledger-cap">Not done: precision and recall against a labelled baseline. Blank on purpose, we would rather owe it than fake it.</p>`;
     this.querySelectorAll(".sampled-mrow").forEach((row) =>
       row.addEventListener("click", () => {
         this.sel = +row.dataset.i;
