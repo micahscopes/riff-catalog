@@ -4290,8 +4290,9 @@ function foldLayers(nodes) {
   };
   nodes.forEach((n) => visit(n.id));
   const maxD = Math.max(...nodes.map((n) => depth.get(n.id)));
-  // layer index in reveal order: deepest nodes first (layer 0), root last.
-  const layerOf = (n) => maxD - depth.get(n.id);
+  // layer index in reveal order: leaves first (layer 0), root last, matching the
+  // engine's bottom-up fold (a parent digest folds its children's tree digests).
+  const layerOf = (n) => depth.get(n.id);
   return { layerOf, layerCount: maxD + 1, byId, kids };
 }
 
