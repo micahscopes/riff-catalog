@@ -111,6 +111,43 @@
   pre.cmd .c { color: var(--ink-faint); }
   .say { border-left: 2px solid var(--a-dim); padding: 2px 0 2px 14px; margin: 12px 0; color: var(--ink); font-size: 14.5px; }
 
+  /* Sub-slide reveals (the talk arc's build steps). A chapter body may mark
+     elements with class "reveal" and data-at="N"; they stay hidden until
+     tour-app's step reaches N. Hidden means display:none, so a reveal takes no
+     space and revealing it grows the slide downward without reflowing what is
+     already shown. Chapters without reveals behave exactly as before. */
+  .reveal:not(.shown) { display: none; }
+
+  /* talk-deck slides */
+  .talk-mt { margin-top: 16px; }
+  .talk-cite { color: var(--ink-faint); font-size: 11.5px; margin-left: 10px; }
+  .talk-jaw { font-size: 17px; }
+  .talk-sum { font-size: 18px; line-height: 1.6; color: var(--ink); margin: 26px 0 8px; }
+  .talk-count { font-size: 14px; color: var(--ink-dim); margin: 2px 0 12px; }
+  .talk-count b { color: var(--rose); }
+  .talk-title { font-size: 34px; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); text-align: center; margin: 56px 0 40px; }
+  .talk-closer { font-size: 26px; line-height: 1.7; font-weight: 700; color: var(--ink); text-align: center; max-width: 680px; margin: 110px auto 70px; }
+  .compiler-path.talk-pipe { grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr auto 1fr; }
+  .result-attachments.talk-pins { margin-top: 30px; }
+  .talk-pins > div { min-height: 0; }
+  .talk-pins b { margin-bottom: 12px; }
+  /* the cold open: a code panel with a fixed gutter, a review note pinned
+     beside line 118, and a before/after swap staged by the first reveal step.
+     Both panels carry the highlighted line at the same row index, so one
+     margin keeps the note's arrow on line 118 through the swap. */
+  .co-wrap { display: flex; gap: 26px; align-items: stretch; margin: 26px 0 8px; }
+  .co-wrap > .reveal.shown { display: contents; }
+  .co-wrap:has(> .reveal.shown) > .co-before { display: none; }
+  .co-code { flex: 1; min-width: 0; border: 1px solid var(--line-bright); background: var(--bg); padding: 12px 0; font-size: 12.5px; line-height: 1.7; overflow-x: auto; }
+  .co-line { display: flex; gap: 14px; padding: 0 14px; white-space: pre; }
+  .co-line .co-n { flex: none; width: 30px; text-align: right; color: var(--ink-faint); user-select: none; }
+  .co-line.co-hl { background: rgba(255,138,160,.10); box-shadow: inset 3px 0 0 var(--rose); }
+  .co-line.co-add { background: rgba(93,242,166,.07); }
+  .co-line.co-add .co-n { color: var(--a); }
+  .co-note { flex: 0 0 216px; align-self: flex-start; margin-top: 226px; position: relative; border: 1px solid var(--line-bright); border-left: 3px solid var(--warm); background: rgba(255,180,84,.05); padding: 10px 12px; font-size: 12.5px; color: var(--ink); }
+  .co-note::before { content: "◄"; position: absolute; left: -19px; top: 50%; transform: translateY(-50%); color: var(--warm); font-size: 11px; }
+  .co-note .co-note-k { display: block; color: var(--ink-faint); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 6px; }
+
   /* live dial */
   .dial { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin: 14px 0 4px; }
   .dial .grp { display: flex; gap: 4px; align-items: center; }
@@ -1267,6 +1304,6 @@
 <script src="fuzzydata.js"></script>
 <script src="namesdata.js"></script>
 <script src="nameladder.js"></script>
-<script type="module" src="app.js?v=names-20260727b"></script>
+<script type="module" src="app.js?v=talk-20260727a"></script>
 </body>
 </html>

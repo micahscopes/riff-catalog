@@ -156,11 +156,12 @@ function wireHighlight(host, describe) {
   });
 }
 
-// The talk. Three setup slides establish the problem, then every payoff beat
-// runs on real material: verified Sourcify sources, the Yul a contract compiles
-// to, an ingested fe origin bundle, live engine calls. Nothing on a spine slide
-// is a hand-drawn stand-in for something the engine can compute. Chapters past
-// the ask are the appendix: built, honest, and there for follow-up questions.
+// The chapter pool. Every payoff beat runs on real material: verified Sourcify
+// sources, the Yul a contract compiles to, an ingested fe origin bundle, live
+// engine calls. Nothing on a spine slide is a hand-drawn stand-in for something
+// the engine can compute (the talk's cold open is the one staged enactment,
+// and it says so on the slide). Chapters an arc does not name become its
+// appendix: built, honest, and there for follow-up questions.
 const CH = [
   {
     nav: "many forms",
@@ -510,6 +511,128 @@ const CH = [
     lede: "Take one chord up three rungs: the literal notes; the same set packed tight, with the key forgotten; then the prime form, which also folds mirror images together. Each rung forgets one more thing.",
     body: `<three-rungs></three-rungs>`,
   },
+  // --- the talk deck ("A name you can check") ------------------------------
+  // Staging slides for ?arc=talk only. talkOnly keeps them out of every other
+  // arc's appendix, so those arcs keep today's chapter list and arrow-key
+  // behavior exactly. Sub-slide builds are .reveal[data-at] blocks that
+  // tour-app's arrow keys walk before changing chapters. The live slides
+  // (one address, recognized, sniff it out) are the existing pool chapters,
+  // named by the arc rather than duplicated here. Every solc-derived number is
+  // read from nameladder.js at render time; the maintainer quotes are verbatim
+  // from the trackers and attributed at repo level only.
+  {
+    nav: "cold open",
+    talkOnly: true,
+    body: `<talk-cold-open></talk-cold-open>`,
+  },
+  {
+    nav: "where knowledge lives",
+    talkOnly: true,
+    title: "Where knowledge lives",
+    body: `<div class="compiler-paths"><div class="compiler-path talk-pipe">
+        <span>source</span><i>→</i><span>AST</span><i>→</i><span>Yul</span><i>→</i><span>bytecode</span><i>→</i><span>trace</span><i>→</i><span>proof</span>
+      </div></div>
+      <div class="reveal" data-at="1"><div class="result-attachments talk-pins">
+        <div><b>finding</b><span>file:line</span></div>
+        <div><b>proof</b><span>IR node id</span></div>
+        <div><b>trace</b><span>program counter</span></div>
+        <div><b>verdict</b><span>bytecode hash</span></div>
+      </div></div>`,
+  },
+  {
+    nav: "names people choose",
+    talkOnly: true,
+    title: "Names people choose",
+    body: `<talk-names-chosen></talk-names-chosen>`,
+  },
+  {
+    nav: "edits that change nothing",
+    talkOnly: true,
+    title: "Edits that change nothing",
+    body: `<talk-quiet-edits></talk-quiet-edits>`,
+  },
+  {
+    nav: "names nobody chose",
+    talkOnly: true,
+    title: "Generated names",
+    lede: "Don't touch the function, add one unrelated function above it.",
+    body: `<talk-generated-names></talk-generated-names>`,
+  },
+  {
+    nav: "the two jaws",
+    talkOnly: true,
+    title: "The trap has two jaws",
+    body: `<p class="say talk-jaw">“That means the compilation is not reproducible.”<span class="talk-cite">sourcify #1054</span></p>
+      <div class="reveal" data-at="1">
+        <p class="say talk-jaw">25 compilations of a Pancake contract, all labelled as the Curve contract. None labelled Pancake.<span class="talk-cite">sourcify #2858</span></p>
+        <p class="talk-sum">too sensitive (a path moves it), too blunt (two contracts collapse into one)</p>
+      </div>`,
+  },
+  {
+    nav: "choose the hash",
+    talkOnly: true,
+    title: "Choose what goes into the hash",
+    lede: "You already content-address.",
+    body: `<div class="identity-boundary identity-three">
+        <div><b>the metadata hash</b></div>
+        <div><b>the bytecode hash</b></div>
+        <div><b>this morning's git commit</b></div>
+      </div>
+      <div class="reveal" data-at="1">
+        <p class="talk-sum">both hash the wrong thing</p>
+        <div class="identity-boundary">
+          <div><span>the metadata hash</span><b>swallows the file path</b></div>
+          <div><span>the bytecode hash</span><b>swallows optimizer accidents, drops source</b></div>
+        </div>
+      </div>`,
+  },
+  {
+    nav: "a facet is the choice",
+    talkOnly: true,
+    title: "A facet is the choice",
+    body: `<div class="identity-boundary">
+        <div><span>keep every byte</span><b>a checksum</b><small>the choice failing us</small></div>
+        <div><span>drop names, AST ids, offsets; keep structure and types</span><b>the two builds are one address</b></div>
+      </div>
+      <div class="reveal" data-at="1">
+        <p class="talk-sum">merklize: every function, every subtree, its own address</p>
+      </div>`,
+  },
+  {
+    nav: "knowledge that rides",
+    talkOnly: true,
+    title: "Knowledge that rides",
+    body: `<anchor-transport></anchor-transport>
+      <div class="reveal" data-at="1"><div class="figure talk-mt"><div class="cap">prior art</div><table>
+        <tr><td class="n">Unison</td><td>the hash is the definition</td></tr>
+        <tr><td class="n">Nix</td><td>identity is the build plan</td></tr>
+        <tr><td class="n">git</td><td></td></tr>
+      </table></div></div>
+      <div class="reveal" data-at="2"><p class="say">The spec holds: the Lean spec and the Rust engine agree byte for byte, 254 checks (<code>lake exe check</code>), and the transport theorem is proved (<code>transport_respects</code>).</p></div>`,
+  },
+  {
+    nav: "the honest edge",
+    talkOnly: true,
+    title: "The honest edge",
+    body: `<p class="talk-sum">A facet match is not semantic equivalence.</p>
+      <p class="talk-sum">The address names the residual obligation: same up to this facet, here is what is left to prove.</p>`,
+  },
+  {
+    nav: "the ask",
+    talkOnly: true,
+    title: "The ask",
+    lede: "One per team.",
+    body: `<div class="plain-ask">
+        <div><span>solc / fe</span>expose provenance: origin edges through lowering</div>
+        <div><span>Sourcify</span>a structural-fingerprint column beside the bytecode hash</div>
+        <div><span>verifiers</span>pin the proof to the address, the facet as its scope</div>
+      </div>`,
+  },
+  {
+    nav: "closer",
+    talkOnly: true,
+    body: `<div class="talk-closer">A name tells you where somebody put a thing. An address tells you what the thing is.</div>`,
+  },
 ];
 
 // The URL hash deep-links the storybook: "#<chapter>" selects a chapter, and a
@@ -524,15 +647,19 @@ const slugify = (s) => s.replace(/\s+/g, "-");
 // chapter. Writing a new arc means adding one entry to ARCS; ?arc=<key> selects
 // it. See demo/ARCS.md for the pool inventory and how to draft one.
 const ARCS = {
+  // The 20-minute talk, "A name you can check": a cold open, the receipts read
+  // back in order, the turn, three live proofs plus the anchor payoff, then
+  // the honest edge, the ask, and one closing line. The slides marked talkOnly
+  // in the pool stage this arc's builds; everything else the pool holds lands
+  // in the appendix for follow-up questions, exactly as before.
   talk: {
     label: "talk",
     sections: [
-      ["the problem", ["many forms", "stranded", "broken reference"]],
-      ["the choice", ["facets", "the riff", "address it"]],
-      ["on real code", ["recognized", "twins", "dedup", "sniff it out", "modified"]],
-      ["through the compiler", ["the compiler too", "provenance", "two fingerprints"]],
-      ["from match to knowledge", ["prove it", "anchors", "prior art"]],
-      ["in honesty, and the ask", ["locality runs out", "what we sampled", "what we need"]],
+      ["the hook", ["cold open", "where knowledge lives"]],
+      ["the receipts", ["names people choose", "edits that change nothing", "names nobody chose", "the two jaws"]],
+      ["the turn", ["choose the hash", "a facet is the choice"]],
+      ["proof", ["one address", "recognized", "sniff it out", "knowledge that rides"]],
+      ["the ask", ["the honest edge", "the ask", "closer"]],
     ],
   },
   // The naming arc, built around one escalating question: what's in a name?
@@ -607,7 +734,11 @@ const SECTIONS = [];
     });
   };
   for (const [label, navs] of ARC.sections) place(label, navs);
-  place(APPENDIX_LABEL, [...pool.keys()]); // everything the arc did not name
+  // Everything the arc did not name lands in the appendix, except the talk
+  // deck's staging slides (talkOnly): they serve exactly one arc, and letting
+  // them pad the other arcs would also change those arcs' arrow-key behavior
+  // through their reveal steps.
+  place(APPENDIX_LABEL, [...pool.values()].filter((c) => !c.talkOnly).map((c) => c.nav));
   CH.length = 0;
   CH.push(...ordered);
 }
@@ -636,8 +767,8 @@ customElements.define("tour-app", class extends HTMLElement {
       b.addEventListener("click", () => this.go(+b.dataset.k)));
     document.addEventListener("keydown", (e) => {
       if (e.target.closest("live-dial") || e.target.closest("recog-scan")) return; // let those keep focus
-      if (e.key === "ArrowRight") this.go(this.i + 1);
-      if (e.key === "ArrowLeft") this.go(this.i - 1);
+      if (e.key === "ArrowRight") this.next();
+      if (e.key === "ArrowLeft") this.prev();
       if (e.key.toLowerCase() === "d") setDetails(!document.body.classList.contains("details"));
     });
     this.i = this.chapterFromHash();
@@ -661,8 +792,36 @@ customElements.define("tour-app", class extends HTMLElement {
       if (location.hash !== h) location.hash = h;
     }
   }
+  // --- sub-slide reveals ---------------------------------------------------
+  // Opt-in build steps within one chapter: the body may mark elements with
+  // class "reveal" and data-at="1" (2, 3, ...). They start hidden (CSS in
+  // index.html). ArrowRight walks this.step up to the largest data-at in the
+  // stage before leaving the chapter; ArrowLeft walks it back down before
+  // leaving. Visibility is applied by toggling .shown only, never by
+  // re-rendering, so live components in the stage survive a reveal untouched.
+  // A chapter with no .reveal elements has maxStep 0 and the arrows behave
+  // exactly as before. The reveal set is queried live, so a component that
+  // renders its reveals inside connectedCallback is picked up too.
+  reveals() { return this.querySelectorAll(".stage .reveal[data-at]"); }
+  maxStep() {
+    let m = 0;
+    this.reveals().forEach((el) => { m = Math.max(m, +el.dataset.at || 0); });
+    return m;
+  }
+  applyStep() {
+    this.reveals().forEach((el) => el.classList.toggle("shown", (+el.dataset.at || 0) <= this.step));
+  }
+  next() {
+    if (this.step < this.maxStep()) { this.step += 1; this.applyStep(); }
+    else this.go(this.i + 1);
+  }
+  prev() {
+    if (this.step > 0) { this.step -= 1; this.applyStep(); }
+    else this.go(this.i - 1);
+  }
   render() {
     const c = CH[this.i];
+    this.step = 0; // every chapter entry starts before its first reveal
     document.querySelectorAll("#nav button").forEach((b, k) =>
       b.setAttribute("aria-current", k === this.i ? "true" : "false"));
     // Pager rides above the stage so the only thing below the content is the
@@ -675,8 +834,8 @@ customElements.define("tour-app", class extends HTMLElement {
         <button data-d="1" ${this.i === CH.length - 1 ? "disabled" : ""}>next →</button>
       </div>
       <div class="stage">
-        <div class="kicker">${c.kicker}</div>
-        <h1>${c.title}</h1>
+        ${c.kicker ? `<div class="kicker">${c.kicker}</div>` : ""}
+        ${c.title ? `<h1>${c.title}</h1>` : ""}
         ${c.lede ? `<p class="lede">${c.lede}</p>` : ""}
         ${c.body}
       </div>`;
@@ -826,6 +985,123 @@ customElements.define("held-address", class extends HTMLElement {
         const keep = btn.dataset.k === "1";
         if (keep !== this.keep) { this.keep = keep; this.render(); }
       }));
+  }
+});
+
+// --- the talk deck's staging components -----------------------------------
+// Slides for ?arc=talk. The evidence components read every solc-derived value
+// out of nameladder.js at render time, the same source the name-ladder
+// chapters above use; nothing here types a number by hand. Sub-slide builds
+// are .reveal[data-at] blocks driven by tour-app's arrow keys.
+
+// The cold open: a staged enactment on clearly-illustrative synthetic code,
+// never presented as a real audit. A review note pins a real bug to line 118.
+// Reveal 1 drops two imports in at the top of the file: the code shifts down
+// two lines, gutter line 118 is now blank, and the note points at nothing.
+// Reveal 2 is the title card.
+const CO_BEFORE = [
+  [1, `pragma solidity ^0.8.24;`],
+  [2, `import "./IVault.sol";`],
+  null, // fold
+  [110, `        balances[to] += amount;`],
+  [111, `    }`],
+  [112, ``],
+  [113, `    function sweep(address to, uint256 amount) external {`],
+  [114, `        // residual funds may only be swept by the owner`],
+  [115, `        uint256 fee = (amount * FEE_BPS) / 10_000;`],
+  [116, ``],
+  [117, `        // the owner check`],
+  [118, `        require(msg.sender != owner, "unauthorized");`, "hl"],
+  [119, `        _payout(to, amount - fee);`],
+  [120, `    }`],
+];
+const CO_IMPORTS = [`import "./SafeCast.sol";`, `import "./ReentrancyGuard.sol";`];
+function coPanel(lines, cls) {
+  const rows = lines.map((l) => l === null
+    ? `<div class="co-line co-fold"><span class="co-n">⋮</span><span class="co-c"></span></div>`
+    : `<div class="co-line${l[2] ? ` co-${l[2]}` : ""}"><span class="co-n">${l[0]}</span><span class="co-c">${solHi(l[1])}</span></div>`).join("");
+  return `<div class="co-code ${cls}">${rows}</div>`;
+}
+customElements.define("talk-cold-open", class extends HTMLElement {
+  connectedCallback() {
+    // The after state is derived, not hand-copied: the two imports go in at
+    // lines 3 and 4, every later line moves down two, and whatever now sits
+    // at gutter line 118 (the blank old line 116) inherits the highlight.
+    const after = [
+      CO_BEFORE[0], CO_BEFORE[1],
+      [3, CO_IMPORTS[0], "add"], [4, CO_IMPORTS[1], "add"],
+      null,
+      ...CO_BEFORE.slice(3).map(([n, src]) => [n + 2, src, n + 2 === 118 ? "hl" : ""]),
+    ];
+    this.innerHTML = `
+      <div class="co-wrap">
+        ${coPanel(CO_BEFORE, "co-before")}
+        <div class="reveal" data-at="1">${coPanel(after, "co-after")}</div>
+        <aside class="co-note"><span class="co-note-k">review note</span>owner check on line 118 is inverted</aside>
+      </div>
+      <div class="reveal" data-at="2"><div class="talk-title">A name you can check</div></div>
+      <p class="twnote">A staged enactment on illustrative code, not a real audit.</p>`;
+  }
+});
+
+// Names people choose: rename withdraw and the four wire bytes move. Reveal 1:
+// two unrelated signatures share one selector. Reveal 2: solc's own refusal,
+// verbatim. All of it from nameladder.js.
+customElements.define("talk-names-chosen", class extends HTMLElement {
+  connectedCallback() {
+    const d = NL();
+    if (!d) { this.innerHTML = NL_MISSING; return; }
+    const ren = d.selector.rows.map((r, i) =>
+      `<div class="gnrow"><span class="gnwhere">${r.label}</span><code>${r.sig}</code>`
+      + `<code class="gnname">${i === 0 ? `<b>${r.sel}</b>` : `<i class="moved">${r.sel}</i>`}</code></div>`).join("");
+    const col = d.collision.rows.map((r) =>
+      `<div class="gnrow"><span class="gnwhere"><code>${r.sig}</code></span>`
+      + `<code class="gnname"><b>${r.sel}</b></code></div>`).join("");
+    this.innerHTML = `<div class="gnames">${ren}</div>
+      <div class="reveal" data-at="1"><div class="gnames talk-mt">${col}</div></div>
+      <div class="reveal" data-at="2"><pre class="cmd">${escText(d.collision.error)}</pre></div>`;
+  }
+});
+
+// Edits that change nothing: one contract, three edits. Reveal 1: the code
+// bytes identical all three times, four different metadata hashes, and the
+// tracker's own explanation.
+customElements.define("talk-quiet-edits", class extends HTMLElement {
+  connectedCallback() {
+    const d = NL();
+    if (!d) { this.innerHTML = NL_MISSING; return; }
+    const edits = d.quiet.rows.slice(1).map((r) => `<tr><td class="n">${r.label}</td></tr>`).join("");
+    const builds = d.quiet.rows.map((r, i) =>
+      `<tr><td class="n">${r.label}</td>`
+      + `<td>${i === 0 ? `${d.quiet.codeBytes} bytes` : `the same ${d.quiet.codeBytes} bytes`}</td>`
+      + `<td class="fp${i === 0 ? "" : " moved"}">${r.meta}…</td></tr>`).join("");
+    this.innerHTML = `
+      <div class="figure"><div class="cap">one contract, ${d.quiet.codeBytes} bytes of code, three edits</div><table>${edits}</table></div>
+      <div class="reveal" data-at="1">
+        <div class="figure talk-mt"><div class="cap">four builds</div><table>
+          <tr><th>the edit</th><th>the code it deploys</th><th>the hash solc appends</th></tr>${builds}</table></div>
+        <p class="say">“Since the metadata contains the name of the input file, the hash of it will differ.”<span class="talk-cite">solidity #1644</span></p>
+      </div>`;
+  }
+});
+
+// Generated names: the unrelated edit above the function moves every id the
+// toolchain generated for it, with the root cause in the tracker's words.
+// Reveal 1: the bytecode consequence, same tracker.
+customElements.define("talk-generated-names", class extends HTMLElement {
+  connectedCallback() {
+    const d = NL();
+    if (!d) { this.innerHTML = NL_MISSING; return; }
+    const rows = d.ledger.rows.filter((r) => /AST|Yul/.test(r.what)).map((r) =>
+      `<tr><td class="n">${r.what}</td><td class="fp">${r.a}</td><td class="fp moved">${r.b}</td></tr>`).join("");
+    this.innerHTML = `
+      <div class="figure"><div class="cap">one function, two builds</div><table>
+        <tr><th></th><th>as written</th><th>one function added above</th></tr>${rows}</table></div>
+      <p class="talk-count"><b>${d.irlines.moved} of ${d.irlines.total}</b> IR lines of the untouched function moved.</p>
+      <p class="say">“the compiler may assign different AST-IDs in the presence of additional source files ... This results in the Yul identifiers to differ if AST IDs differ”<span class="talk-cite">solidity #14535</span></p>
+      <div class="reveal" data-at="1">
+        <p class="say">“Bytecodes are expected to be equal, however they have a pretty big diff”<span class="talk-cite">solidity #14829, adding an empty <code>contract DummyContract {}</code></span></p>
+      </div>`;
   }
 });
 
