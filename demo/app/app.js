@@ -441,8 +441,8 @@ const CH = [
     nav: "where we're headed",
     tonightOnly: true,
     kicker: "the vision, plainly",
-    title: "One address, many tools",
-    lede: "Each of these tools has to decide when two pieces of code are the same.",
+    title: "Faceted addresses, many tools",
+    lede: "Each of these tools has to decide when two pieces of code count as the same, and a facet is exactly that choice.",
     body: `<div class="vh-conv">
     <div class="vh-row"><span class="vh-w">compilers</span><span class="vh-h">pin facts to the shape, not the build</span></div>
     <div class="vh-row"><span class="vh-w">verification</span><span class="vh-h">carry a proof's scope with it</span></div>
@@ -456,9 +456,9 @@ const CH = [
       <line x1="0" y1="154" x2="64" y2="110"/>
       <line x1="0" y1="198" x2="64" y2="110"/>
     </svg>
-    <div class="vh-hub"><b>one address</b></div>
+    <div class="vh-hub"><b>faceted addresses</b></div>
   </div>
-  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. The engine is content-blind over labelled graphs, so one address can serve all of them.</p>`,
+  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. The engine is content-blind over labelled graphs, so the same faceted addresses serve all of them.</p>`,
   },
   {
     nav: "what we need",
