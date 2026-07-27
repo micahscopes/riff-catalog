@@ -269,7 +269,8 @@
   .riffname { font-size: 12px; color: var(--ink-dim); min-width: 168px; }
   .nchips { display: flex; gap: 3px; }
   .nchip { font-size: 11px; color: var(--ink); background: var(--bg-chip); border: 1px solid var(--line); border-radius: 3px; padding: 2px 6px; min-width: 22px; text-align: center; }
-  .shapedot { width: 13px; height: 13px; border-radius: 50%; background: var(--chip); border: 1px solid color-mix(in oklch, var(--chip) 55%, var(--bg)); margin-left: auto; }
+  .shapedot { width: 14px; height: 14px; border-radius: 50%; background: var(--chip); border: 1px solid color-mix(in oklch, var(--chip) 55%, var(--bg)); margin-left: auto; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1; font-weight: 700; color: color-mix(in oklch, var(--chip) 22%, #000); }
+  .ancrow[data-play] { cursor: pointer; }
 
   /* the facet lattice (structure vs meaning) */
   .lattice { width: 100%; height: auto; max-width: 720px; margin: 10px auto 4px; display: block; }
@@ -1314,6 +1315,6 @@
 <script src="fuzzydata.js"></script>
 <script src="namesdata.js"></script>
 <script src="nameladder.js"></script>
-<script type="module" src="app.js?v=demos-declutter-20260727"></script>
+<script type="module" src="app.js?v=symbols-20260727"></script>
 </body>
 </html>
