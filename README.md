@@ -30,54 +30,47 @@ compiler's origin keys at the boundary.
 | `riff-catalog-sourcify` | fetch + cache verified contracts, reconstruct standard-json, recompile locally |
 | `riff-catalog-cli` | the `riffcat` binary |
 
-## Quick demo (rosetta corpus, real measured output)
+## Quickstart (runnable examples, real measured output)
+
+Three scripts under [`examples/`](examples/) run against real
+Sourcify-verified mainnet contracts; [`examples/README.md`](examples/README.md)
+walks through their actual output.
 
 ```console
-$ riffcat ingest examples/erc20/sol/ERC20.sol examples/math/sol/SolidityFullMath.sol \
-    examples/amm/sol/SoliditySimpleAmm.sol
+$ cargo build --release -p riff-catalog-cli
+$ export PATH="$PWD/target/release:$PATH"
 
-$ riffcat bucket --unit yul-fn --mode shape --facet all
-# 536 yul-fn graphs -> 216 classes (59.7% dedup): solc's generated helpers
-# (allocate_unbounded, revert_error_*, abi_decode_*) collide across all
-# contracts. At --facet structure: 84 classes, 84.3% dedup.
+$ examples/01-offline-yul.sh
+# First success with no network and no solc: riffcat's own Yul parser
+# ingests examples/twins.yul; 3 yul-fn graphs -> 2 classes at the
+# names-blind facet (sum_to and total_upto are one shape under two
+# names), -> 3 classes once names count.
 
-$ riffcat overlap "ERC20.sol" "SoliditySimpleAmm" --unit yul-fn --facet names-blind
-# 36 shared classes, Jaccard 0.434 — external_fun_balanceOf structurally
-# twins external_fun_swapAForB.
+$ examples/02-same-function-across-contracts.sh
+# Two unrelated Sourcify-verified mainnet deployments (MerkleDistributor
+# and Airdrop, both exact_match, both solc 0.8.28), fetched and
+# recompiled with the pinned compiler. Needs network. At sol-fn
+# names-blind: 12 shared classes, their OpenZeppelin vocabulary matched
+# function by function. At yul-fn: 49 shared classes, Jaccard 0.318,
+# including one class holding fun_rescue and fun_transferOwnership from
+# one codebase and fun_setBeneficiary and fun_setReleaseCaller from the
+# other: the same shape under four names.
 
-$ riffcat diff "yulir:ERC20.sol:ERC20:ir:noopt" "yulir:ERC20.sol:ERC20:iropt:noopt" \
-    --unit yul-fn --name fun_transfer
-# per-dimension survival matrix: what the optimizer preserved, per facet.
-
-$ riffcat conformance examples/
-# level 0: parse(ir text) == deserialize(irAst JSON)
-# level 1: both paths hash identical on every digest, both view modes
-# level 2: Solidity→yulCFGJson  vs  ir text→solc-as-Yul→yulCFGJson
-# GREEN over the corpus; nonzero exit on any drift.
-
-$ riffcat claim add --left "ERC20:ir:noopt::=fun_transfer_72" \
-    --right "SoliditySimpleAmm:ir:noopt::=fun_swapAForB_69" \
-    --facet structure --witness-kind note --witness "reason=demo"
-$ riffcat bucket --unit yul-fn --facet structure --claims
-# classes 84 -> 83: the (deliberately bogus) claim merged two genuinely
-# different functions. Claims are inputs, not discoveries — validity is the
-# witness auditor's problem; `riffcat claim list` keeps it attributable.
-
-$ riffcat attest add --subject "ERC20:ir:noopt::=fun_transfer_72" \
-    --property verified-total --witness-kind lean-proof --witness theorem=transfer_total
-$ riffcat bucket --unit yul-fn --facet structure --require verified-total
-# 534 rows correctly excluded: guarantees gate, structure stays silent.
-
-$ riffcat ingest --sourcify 1:0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63
-# ENS PublicResolver (exact_match, 0.8.17) fetched, recompiled, ingested:
-# 3331 records. Second run is fully offline (cache).
-$ riffcat overlap ":sf" "yulir:ERC20" --unit yul-fn --facet names-blind
-# 39 shared classes between a mainnet-verified contract and a local build.
+$ examples/03-shared-shape-census.sh
+# Five deployments, one census. 321 sol-fn graphs -> 215 classes at the
+# strict facet (33.0% dedup), -> 180 names-blind (43.9%); the standout
+# names-blind class merges Ownable.onlyOwner with Pausable.whenNotPaused
+# and Pausable.whenPaused. Whole vendored contracts (Context, IERC20)
+# collapse to one class each across all five. `riffcat root` closes with
+# one order-independent commitment over the corpus.
 ```
 
-Direct Yul (`riffcat ingest demo.yul`) works too — through our own parser
-at the `yul-ast` level and through solc's `yulCFGJson` at the SSA level
-(this is the ingestion path for fe-emitted Yul).
+Local `.sol` files ingest too (`riffcat ingest Contract.sol`, needs solc
+on PATH or `--solc`), as does direct Yul at the SSA level via solc's
+`yulCFGJson` (the ingestion path for fe-emitted Yul). Witnessed claims
+and attestations live under `riffcat claim --help` and
+`riffcat attest --help`; `riffcat conformance` runs the dual-path and
+SSA-round-trip drift detectors over local `.sol` files.
 
 ## Where this came from
 
