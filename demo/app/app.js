@@ -441,14 +441,14 @@ const CH = [
     nav: "where we're headed",
     tonightOnly: true,
     kicker: "the vision, plainly",
-    title: "One substrate, five worlds",
-    lede: "Each of these tools hand-rolls its own answer to when code counts as the same; a faceted address is that answer, built once and shared.",
+    title: "One address, many tools",
+    lede: "Each of these tools has to decide when two pieces of code are the same.",
     body: `<div class="vh-conv">
     <div class="vh-row"><span class="vh-w">compilers</span><span class="vh-h">pin facts to the shape, not the build</span></div>
-    <div class="vh-row"><span class="vh-w">verification</span><span class="vh-h">a proof travels with its scope attached</span></div>
+    <div class="vh-row"><span class="vh-w">verification</span><span class="vh-h">carry a proof's scope with it</span></div>
     <div class="vh-row"><span class="vh-w">debugging</span><span class="vh-h">a breakpoint that survives every pass</span></div>
-    <div class="vh-row"><span class="vh-w">reuse</span><span class="vh-h">audit a shape once, recognize it everywhere</span></div>
-    <div class="vh-row"><span class="vh-w">naming</span><span class="vh-h">resolve to content, let names ride</span></div>
+    <div class="vh-row"><span class="vh-w">reuse</span><span class="vh-h">recognize a shape you already audited</span></div>
+    <div class="vh-row"><span class="vh-w">naming</span><span class="vh-h">resolve names to content</span></div>
     <svg class="vh-fan" viewBox="0 0 64 220" preserveAspectRatio="none" aria-hidden="true">
       <line x1="0" y1="22" x2="64" y2="110"/>
       <line x1="0" y1="66" x2="64" y2="110"/>
@@ -456,43 +456,42 @@ const CH = [
       <line x1="0" y1="154" x2="64" y2="110"/>
       <line x1="0" y1="198" x2="64" y2="110"/>
     </svg>
-    <div class="vh-hub"><b>one index</b><small>every part a shape, every shape an address, facts riding along</small></div>
+    <div class="vh-hub"><b>one address</b></div>
   </div>
-  <p class="vh-punch">Every tool keeps its own rigor. <b>The address is what they share.</b></p>
-  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. The engine is content-blind over labelled graphs, which is why five worlds can land in one index.</p>`,
+  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. The engine is content-blind over labelled graphs, so one address can serve all of them.</p>`,
   },
   {
     nav: "what we need",
-    kicker: "the invitation",
-    title: "Bring your rigor, share the substrate",
-    lede: "riffcat points at a part, a compiler can remember where it came from, a verifier can decide what it does; nobody closes that loop alone.",
+    kicker: "co-design, not a handoff",
+    title: "Where we would need help",
+    lede: "riffcat gives a piece of code an address from its structure. The next two jobs are not ours.",
     body: `<div class="wn-loop">
-    <div class="wn-row wn-riffcat"><span class="wn-who">riffcat <i class="wn-state">built</i></span>
-      <span class="wn-brings">one address for a part, across representations</span>
-      <span class="wn-q">What must an address never forget before your tool would trust it?</span></div>
-    <div class="wn-row wn-compiler"><span class="wn-who">a compiler <i class="wn-state">open seat</i></span>
-      <span class="wn-brings">lowers the program, and can carry origins through every pass</span>
-      <span class="wn-q">If origins rode along, what would you build first?</span></div>
-    <div class="wn-row wn-verifier"><span class="wn-who">a verifier <i class="wn-state">open seat</i></span>
-      <span class="wn-brings">makes checkable claims about what the code does</span>
-      <span class="wn-q">What would make a shape match worth your solver's time?</span></div>
+    <div class="wn-row wn-riffcat"><span class="wn-who">riffcat</span>
+      <span class="wn-brings">gives a piece of code an address from its structure, the same across its representations</span>
+      <span class="wn-q">Which differences must that address keep for your tool?</span></div>
+    <div class="wn-row wn-compiler"><span class="wn-who">a compiler</span>
+      <span class="wn-brings">produces those representations, and could carry each piece's origin through its passes</span>
+      <span class="wn-q">What would carrying those origins cost, and where would you want them?</span></div>
+    <div class="wn-row wn-verifier"><span class="wn-who">a verifier</span>
+      <span class="wn-brings">proves what the code does, or gives a counterexample</span>
+      <span class="wn-q">What would you need before a match is worth checking?</span></div>
   </div>
-  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. riffcat triages, it does not adjudicate: a match is a candidate, handed to the seat we leave open.</p>`,
+  <p class="twnote">A facet is the choice of what to forget; a shape is the structure left at that facet; an address is the content hash of that shape. riffcat only narrows the search: a match is a candidate for a verifier, not a decision.</p>`,
   },
   {
     nav: "a shared block",
     kicker: "co-design, not a handoff",
     title: "A shared building block",
-    lede: "The offer is small on purpose: a library of three verbs, a thin CLI, and a schema that has not hardened yet.",
+    lede: "A small library: three verbs, a thin CLI, and a schema that is not fixed yet.",
     body: `<div class="sb2-verbs">
-    <div><b>fingerprint</b><small>a stable handle for exactly what you chose to keep</small></div>
+    <div><b>fingerprint</b><small>a handle for what you chose to keep</small></div>
     <div><b>recognize</b><small>find a known shape, point at the parts that match</small></div>
     <div><b>similar</b><small>catch edited versions that still carry it</small></div>
   </div>
-  <p class="sb2-cli">behind a thin CLI: <code>ingest</code> · <code>query by shape</code> · <code>diff</code></p>
+  <p class="sb2-cli">the CLI: <code>ingest</code> · <code>query by shape</code> · <code>diff</code></p>
   <p class="sb2-close"><span class="sb2-setup">An address format hardens the day tools start depending on it.</span>
   <span class="sb2-punch">This one is not fixed yet.</span></p>
-  <p class="twnote">fe gave us a compiler where provenance could be built in from the start: an existence proof for the producer seat, not a dependency. riffcat works with the code and data teams already have; the open question is what the shared handle must carry for your tool.</p>`,
+  <p class="twnote">fe let us build provenance in from the start, so the producer side is real; it is not something you have to adopt.</p>`,
   },
   {
     nav: "structure vs meaning",
