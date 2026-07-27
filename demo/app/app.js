@@ -399,7 +399,7 @@ const CH = [
     nav: "anchors",
     kicker: "a fact rides an address",
     title: "How a fact rides an address",
-    lede: "Pin a fact to an address and it rides, free, to every shape that shares it, but stays true only while the anchor keeps every dimension the fact needs. Loosen the anchor and watch where it starts to ride wrong.",
+    lede: "Pin a fact to an address and it rides to every shape that shares it; loosen the anchor and watch where it rides wrong.",
     body: `<anchor-transport></anchor-transport>`,
   },
   {
@@ -475,7 +475,7 @@ const CH = [
     nav: "the cheap yes",
     kicker: "generalizing a fast path hevm already ships",
     title: "When structure can skip the solver",
-    lede: "hevm opens its equivalence check with a syntactic cheap yes: if two bytecodes are byte-identical it returns equivalent and never calls a solver. riffcat generalizes that exact-equality check to a facet, so the yes fires on more pairs. Loosen it and watch where the yes stays sound, where it is only a candidate, and the one place it must not fire.",
+    lede: "hevm's byte-identical fast path, generalized to a facet: loosen it and watch where the yes stays sound.",
     body: `<cy-cheap-yes></cy-cheap-yes>`,
   },
   {
@@ -809,7 +809,7 @@ const CH = [
     nav: "a fact rides",
     demosOnly: true,
     title: "A fact that rides the address",
-    lede: "Pick a claim, then broaden the anchor and watch where it rides wrong.",
+    lede: "Pick a fact, then broaden the anchor and watch where it rides wrong.",
     body: `<anchor-transport></anchor-transport>`,
   },
   {
@@ -1823,7 +1823,7 @@ customElements.define("vuln-sniff", class extends HTMLElement {
       <p class="vbug">${this.data.bug}</p>
       <p class="vlead">All four rows are functions named <code>convertToShares</code>. Across Sourcify's verified ERC-4626 vaults, an exact-source match flags <b>${r.exactVuln.toLocaleString()}</b> as the vulnerable file; matching the <b>shape</b> flags <b>${r.shapeVuln.toLocaleString()}</b>, the same bug in <b>${r.extra}</b> more vaults (${r.variants} source variants) an exact match treats as unrelated.</p>
       <table class="vledger"><thead><tr><th>shape</th><th>structure</th><th>riffcat</th><th>Sourcify exact</th><th>riffcat shape</th></tr></thead><tbody>${rows}</tbody></table>
-      <p class="vledger-cap">These counts classify the distinct source files (one exact file is one shape), so they are exact within Sourcify's corpus and a floor, not a per-contract crawl. Click a row for its source and real deployed examples. Solady (last row) keeps the function name a text search would flag, but its shape is the safe one.</p>
+      <p class="vledger-cap">Counts are exact over distinct Sourcify source files and an undercount; Solady's look-alike keeps the flagged name but not the shape.</p>
       <div class="vbody codepanel"></div>`;
     this.querySelectorAll(".lxrow").forEach((row) =>
       row.addEventListener("click", () => { this.sel = +row.dataset.i; this.querySelectorAll(".lxrow").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
@@ -1874,7 +1874,7 @@ customElements.define("fuzzy-scan", class extends HTMLElement {
       <div class="codepanel fref"><div class="cphead">known vulnerable function <span class="vfp">address ${d.vuln.fp}</span> <span class="vsub">${d.vuln.nodes} nodes</span></div><pre class="code">${solHi(d.vuln.src)}</pre></div>
       <table class="vledger"><thead><tr><th>edited fork</th><th>whole-function match</th><th>vulnerable structure retained</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="vbody codepanel"></div>
-      <p class="vledger-cap">The coincidence floor for this shape is ~<b>${d.nullCeiling}</b> and the OZ patch scores ~<b>${d.patchedScore}</b>; both catches clear it. Sourcify-verified, a floor. Two further customized vulnerable bodies land near the floor and the score alone cannot certify them.</p>`;
+      <p class="vledger-cap">The chance baseline for this shape is ~<b>${d.nullCeiling}</b> and the OZ patch scores ~<b>${d.patchedScore}</b>; both catches clear it, and two customized bodies land near the baseline where the score alone cannot certify them.</p>`;
     this.querySelectorAll(".lxrow").forEach((row) =>
       row.addEventListener("click", () => { this.sel = +row.dataset.i; this.querySelectorAll(".lxrow").forEach((x, i) => x.classList.toggle("on", i === this.sel)); this.renderBody(); }));
     this.renderBody();
@@ -2019,7 +2019,7 @@ customElements.define("riff-dial", class extends HTMLElement {
       <div class="dialbar"><div class="grp"><span>facet</span><div class="ladder">${ladder}</div></div></div>
       <div class="riffs">${rows}</div>
       <div class="eqread">${idle}</div>
-      <p class="twnote">The same dial as the code chapters, on music. Transpose the riff and the <b>intervals</b> survive; keep the durations and the <b>rhythm</b> survives; reorder and re-octave the notes and the <b>note set</b> survives. The engine computes each with the very same facet machinery (<code>fingerprint_riff</code>).</p>`;
+      <p class="twnote">The same facet machinery as the code chapters (<code>fingerprint_riff</code>): transpose and the intervals survive, keep durations and the rhythm survives, reorder and the note set survives.</p>`;
     this.querySelectorAll("[data-facet]").forEach((s) =>
       s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
     this.querySelectorAll(".playbtn").forEach((btn) =>
@@ -2462,10 +2462,10 @@ customElements.define("anchor-transport", class extends HTMLElement {
       const ok = fact.holds(d.fp);
       const state = !isRider ? "out" : ok ? "sound" : "wrong";
       const notes = d.fp.pitch_classes.map((pc) => `<span class="nchip">${NOTE_NAMES[pc]}</span>`).join("");
-      const tag = state === "sound" ? "claim applies"
-        : state === "wrong" ? "claim would be false here"
+      const tag = state === "sound" ? "fact holds here"
+        : state === "wrong" ? "fact would be false here"
         : "different address";
-      const subjMark = d === subject ? `<span class="ancpin" title="the claim begins here">attached here</span>` : "";
+      const subjMark = d === subject ? `<span class="ancpin" title="the fact is pinned here">attached here</span>` : "";
       return `<div class="ancrow anc-${state}" data-play="${d.fp.pitch_classes.join(",")}" title="click to hear this chord">`
         + `<span class="shapedot" style="--chip:${chipColor(a)}" title="${facet.label} ${ancShort(a)}">${syms.get(a)}</span>`
         + `<span class="riffname">${d.c}${subjMark}</span>`
@@ -2475,15 +2475,15 @@ customElements.define("anchor-transport", class extends HTMLElement {
     }).join("");
 
     const soundLine = covers
-      ? `<span class="anc-ok">safe to reuse</span>: <b>${facet.label}</b> preserves everything this claim depends on.`
-      : `<span class="anc-bad">not safe to reuse</span>: <b>${facet.label}</b> omits information the claim depends on. The claim would be false for ${wrong.map((d) => d.c).join(", ") || "at least one match"}.`;
+      ? `<span class="anc-ok">safe to reuse</span>: <b>${facet.label}</b> preserves everything this fact depends on.`
+      : `<span class="anc-bad">not safe to reuse</span>: <b>${facet.label}</b> omits information the fact depends on. The fact would be false for ${wrong.map((d) => d.c).join(", ") || "at least one match"}.`;
 
-    const idle = `The claim <b>${fact.label}</b> is attached to <b>${subject.c}</b> using its <b>${facet.label}</b> address.`
+    const idle = `The fact <b>${fact.label}</b> is attached to <b>${subject.c}</b> using its <b>${facet.label}</b> address.`
       + ` <b>${riders.length}</b> chord${riders.length === 1 ? "" : "s"} share that address.`;
 
     this.innerHTML = `
       <div class="ancfacts">
-        <div class="anclabel">choose a claim</div>
+        <div class="anclabel">choose a fact</div>
         ${factPills}
         <p class="ancsay detail-only">${fact.say}. It can safely follow the <b>${ANC_FACETS[fact.foot].label}</b> handle.</p>
       </div>
@@ -2494,13 +2494,13 @@ customElements.define("anchor-transport", class extends HTMLElement {
       <div class="ancrows">${rows}</div>
       <div class="anccover ${covers ? "ok" : "bad"}">${soundLine}</div>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">Address equality is decidable by lookup, so reusing an attached claim is inexpensive. The soundness condition is explicit: the address must preserve every input on which the claim depends. Choosing a broader address does not make the claim more general. It can make the claim false.</p>
+      <p class="twnote">Reuse is a lookup, and the soundness condition is explicit: the address must preserve every input the fact depends on, so a broader address can make the fact false.</p>
       <div class="ancfv detail-only">
         <div class="anclabel">the same condition, on code (stated, not computed here)</div>
         ${ANC_FV.map((e) => `<div class="ancfvrow"><span class="ancfvfact">${e.fact}</span>`
           + `<span class="ancfvhome">home facet: <b>${e.home}</b></span>`
           + `<span class="ancfvnote">${e.note}</span></div>`).join("")}
-        <p class="twnote">We can prove the transport theorem and check the cover condition. We cannot prove a human's footprint is declared correctly; that residual trust sits with the auditor. riffcat is the anchor a proof attaches to, and it can state precisely the scope a transported proof stays sound in. It narrows what to read; it does not decide what is true.</p>
+        <p class="twnote">We can prove transport and check the cover condition; whether a human declared the footprint correctly stays with the auditor.</p>
       </div>`;
 
     this.querySelectorAll("[data-anchor]").forEach((s) =>
@@ -2583,7 +2583,7 @@ customElements.define("prior-art", class extends HTMLElement {
       <div class="paline" aria-hidden="true"></div>
       <div class="pagrid">${cards}</div>
       <div class="eqread" data-idle="${PRIORART_IDLE}">${PRIORART_IDLE}</div>
-      <p class="twnote">Each of these fixes one address per thing. <b>The move we are proposing is plurality:</b> one artifact exposing several useful addresses, each clear about which differences it ignores, so two tools can meet at the narrowest one that still preserves the fact they want to share.</p>`;
+      <p class="twnote">Each fixes one address per thing; we propose several per artifact, each explicit about which differences it ignores.</p>`;
     const read = this.querySelector(".eqread");
     this.querySelectorAll(".pacard").forEach((card) => {
       const c = PRIORART_CARDS.find((x) => x.k === card.dataset.k);
@@ -3321,8 +3321,8 @@ customElements.define("metadata-axes", class extends HTMLElement {
         <div class="mha-cards">${metaCard}<div class="mha-vs">vs</div>${structCard}</div>
       </div>
       <div class="eqread">${read}</div>
-      <p class="twnote">Two axes, not two rivals. The metadata hash is the exact-identity fingerprint, and its sensitivity is the point: it gives a cryptographic guarantee that the whole compilation, whitespace included, is the original. The structural fingerprint is the deliberately insensitive counterpart: it dials out the names, constants, and formatting, so it survives the edits that move the metadata hash but keep the shape. One answers &ldquo;is this the identical build,&rdquo; the other &ldquo;is this the same construction in different clothes.&rdquo; riffcat rides the recompilation Sourcify already does; it does not replace the hash, it sits beside it.</p>
-      <p class="twnote mha-honest">This panel is an illustration: the right-hand digest is a stand-in computed over the literal text, so it flips on any character the way the real metadata hash does, and the structural fingerprint is shown as the shape the engine resolves this function to. The structural fingerprint is computed live, on real code, in the &ldquo;drive the dial&rdquo; chapter.</p>`;
+      <p class="twnote">Two axes, not rivals: the exact-identity hash beside a deliberately insensitive one, and riffcat sits beside Sourcify's hash, not in place of it.</p>
+      <p class="twnote mha-honest">The metadata hash here is a stand-in computed over the literal text, not a recompile; the structural fingerprint is the shape the engine resolves this function to.</p>`;
 
     this.querySelectorAll(".mha-tab").forEach((b) =>
       b.addEventListener("click", () => {
@@ -3558,18 +3558,18 @@ const SAMPLED_MEASURED = [
     what: "ERC-4626 vulnerable shape, exact-source reach",
     unit: "distinct source files",
     n: "741",
-    kind: "floor",
+    kind: "under",
     how: "The largest single Sourcify source_hash for each of two vulnerable convertToShares shapes (OZ 153, solmate 588). One source_hash is one exact file content, so this is the count an exact-source match keyed on the dominant file already groups together. Exact within the ERC4626.sol population, and a floor: flattened and oddly-vendored files were not classified.",
   },
   {
     what: "ERC-4626 vulnerable shape, structure reach",
     unit: "distinct source files",
     n: "1,344",
-    kind: "floor",
+    kind: "under",
     how: "The same two vulnerable structure fingerprints, summed across every source variant that carries them (OZ 228 over 8 variants, solmate 1,116 over 27). 100% of the ERC4626.sol-named OZ and solmate populations were classified, so within that corpus this is the full count, not a sample. It is a floor for the same reason as the exact number, and the shape-minus-exact gap (+603) is itself a floor: more variants only widen it.",
   },
   {
-    what: "Multicall fuzzy match, coincidence floor",
+    what: "Multicall fuzzy match, chance baseline",
     unit: "null calibration",
     n: "score",
     kind: "null",
@@ -3598,7 +3598,7 @@ customElements.define("sampled-ledger", class extends HTMLElement {
   render() {
     const mRows = this.measured.map((r, i) => {
       const hue = r.kind === "null" ? 38 : 145;
-      const tag = r.kind === "null" ? "null floor" : "floor";
+      const tag = r.kind === "null" ? "chance baseline" : "undercount";
       return `<tr class="lxrow sampled-mrow ${i === this.sel ? "on" : ""}" data-i="${i}" style="--hue:${hue}">`
         + `<td class="lx-shape">${r.what}</td>`
         + `<td class="sampled-unit">${r.unit}</td>`
@@ -3614,7 +3614,7 @@ customElements.define("sampled-ledger", class extends HTMLElement {
     this.innerHTML = `
       <table class="vledger sampled-table"><thead><tr><th>what the number is</th><th>counted over</th><th>kind</th><th>value</th></tr></thead><tbody>${mRows}</tbody></table>
       <div class="vbody codepanel"></div>
-      <p class="vledger-cap">Not done: precision and recall against a labelled baseline. Blank on purpose, we would rather owe it than fake it.</p>`;
+      <p class="vledger-cap">Not measured yet: precision and recall against a labelled baseline; left blank rather than faked.</p>`;
     this.querySelectorAll(".sampled-mrow").forEach((row) =>
       row.addEventListener("click", () => {
         this.sel = +row.dataset.i;
@@ -3626,7 +3626,7 @@ customElements.define("sampled-ledger", class extends HTMLElement {
   renderBody() {
     const r = this.measured[this.sel];
     const hue = r.kind === "null" ? 38 : 145;
-    const badge = r.kind === "null" ? "null floor" : "floor";
+    const badge = r.kind === "null" ? "chance baseline" : "undercount";
     this.querySelector(".vbody").innerHTML =
       `<div class="vhead" style="--hue:${hue}"><span class="vbadge">${badge}</span> <b>${r.what}</b>`
       + `<span class="vsub">${r.unit}</span><span class="vfp">${r.n}</span></div>`
@@ -3761,7 +3761,7 @@ customElements.define("cy-cheap-yes", class extends HTMLElement {
       <div class="cy-cond ${condClass}"><span class="cy-cond-f">${F.label}</span> forgets ${F.forgets} &middot; ${condWord}</div>
       <div class="cy-pairs">${rows}</div>
       <div class="eqread cy-read">${F.note}</div>
-      <p class="twnote">hevm already proves the floor: byte-identical bytecode is surely equivalent, with no solver, in <b>EVM/SymExec.hs</b>. riffcat does not invent that fast-path; it generalizes the exact <b>==</b> to a facet, so the same cheap yes can fire on pairs that are not byte-identical. The win that is honest end to end is <b>forget metadata</b>: the trailing solc tail is bytes hevm also ignores, so two builds of one source share an address and the yes stays sound, where hevm's own == misses them because the tail differs. The condition is sharp and stated out loud: a cheap yes is a sound discharge <b>only at a facet that forgets nothing hevm observes</b> (return value, storage, success). Forget constants and that breaks: <b>PUSH1 3</b> and <b>PUSH1 4</b> share an address there but return different values, so a coarse facet can only <b>partition and prioritize</b> the verifier's work, never discharge it. The open ask to verification teams: riffcat does not yet <b>certify</b> that a given facet is footprint-covering. Until it does, every yes above the metadata case is a candidate, and the certificate is the thing worth building together.</p>`;
+      <p class="twnote">hevm's == already proves the byte-identical floor; the facet generalization stays a sound discharge only where the facet forgets nothing hevm observes (return, storage, success), and everywhere coarser it only partitions and prioritizes.</p>`;
 
     this.querySelectorAll("[data-facet]").forEach((s) =>
       s.addEventListener("click", () => { if (this.facet !== s.dataset.facet) { this.facet = s.dataset.facet; this.render(); } }));
@@ -4463,7 +4463,7 @@ customElements.define("fold-merkle", class extends HTMLElement {
         ${graphSvg}
       </svg>
       <div class="eqread" data-idle="${idle}">${idle}</div>
-      <p class="twnote">A facet address is not read off the source, it is <b>folded</b>. First each node is hashed alone: <code>node.local</code> is its own content for the kept dimensions, and nothing else (invariant I3, no context). Then the addresses snap in <b>bottom-up</b>: a node's <code>node.tree</code> is its local content folded with its children's tree digests in skeleton order, so a parent can only settle once its whole subtree has. The last fold is <code>graph.full</code>, the whole-graph digest. A <b>facet</b> is just a chosen subset of the five dimensions, and <em>equal at a facet</em> means equal on exactly those dimensions: slide the dial and the same graph produces a different address as a dimension drops out of every fold. Equal subtrees collide on purpose, that is the overlap the catalog is built on. What a bottom-up fold cannot see is anything non-local: the context a node was resolved in never enters its digest, by construction.${prov}</p>`;
+      <p class="twnote">Each node is hashed alone first (invariant I3, no context), then a parent folds its own content with its children's tree digests, leaves first, root last, and graph.full lands at the end.${prov}</p>`;
 
     this.read = this.querySelector(".eqread");
     this.querySelectorAll("[data-facet]").forEach((s) =>
