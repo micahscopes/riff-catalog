@@ -704,7 +704,7 @@ const CH = [
   {
     nav: "the bug's shape",
     demosOnly: true,
-    title: "A bug is a shape",
+    title: "The shape of a bug",
     lede: "“That means the compilation is not reproducible.” (sourcify #1054)",
     body: `<vuln-sniff></vuln-sniff>`,
   },
@@ -3196,7 +3196,7 @@ customElements.define("metadata-axes", class extends HTMLElement {
         </div>
         <div class="mha-cards">${metaCard}<div class="mha-vs">vs</div>${structCard}</div>
       </div>
-      <div class="eqread" data-idle="${read}">${read}</div>
+      <div class="eqread">${read}</div>
       <p class="twnote">Two axes, not two rivals. The metadata hash is the exact-identity fingerprint, and its sensitivity is the point: it gives a cryptographic guarantee that the whole compilation, whitespace included, is the original. The structural fingerprint is the deliberately insensitive counterpart: it dials out the names, constants, and formatting, so it survives the edits that move the metadata hash but keep the shape. One answers &ldquo;is this the identical build,&rdquo; the other &ldquo;is this the same construction in different clothes.&rdquo; riffcat rides the recompilation Sourcify already does; it does not replace the hash, it sits beside it.</p>
       <p class="twnote mha-honest">This panel is an illustration: the right-hand digest is a stand-in computed over the literal text, so it flips on any character the way the real metadata hash does, and the structural fingerprint is shown as the shape the engine resolves this function to. The structural fingerprint is computed live, on real code, in the &ldquo;drive the dial&rdquo; chapter.</p>`;
 
