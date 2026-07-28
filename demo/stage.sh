@@ -1,23 +1,20 @@
 #!/usr/bin/env bash
 # Stage the lightning-demo corpus. Idempotent; safe on a borrowed laptop.
-# Usage: demo/stage.sh [path-to-rosetta-examples]
-#   The rosetta examples dir may also be given via $ROSETTA_EXAMPLES; otherwise
-#   a sibling ../rosetta-fe/examples checkout is auto-detected.
+# Usage: demo/stage.sh [sources-dir]
+#   sources-dir is a flat directory of .sol files; it defaults to the vendored,
+#   self-contained fixtures (tracked under tests/fixtures/solidity/) so this
+#   runs on any machine, and may be overridden with an argument or
+#   $RIFFCAT_FIXTURES.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Resolve the rosetta examples directory without a hard-coded personal path.
-ROSETTA="${1:-${ROSETTA_EXAMPLES:-}}"
-if [ -z "$ROSETTA" ]; then
-    for candidate in ../rosetta-fe/examples ../../rosetta-fe/examples; do
-        if [ -d "$candidate" ]; then ROSETTA="$candidate"; break; fi
-    done
-fi
-if [ -z "$ROSETTA" ] || [ ! -d "$ROSETTA" ]; then
-    echo "error: rosetta examples dir not found." >&2
-    echo "  pass it as an argument or set ROSETTA_EXAMPLES:" >&2
-    echo "    demo/stage.sh /path/to/rosetta-fe/examples" >&2
+# Solidity sources for the corpus. Defaults to the vendored fixtures, so no
+# personal checkout is needed; override with an argument or $RIFFCAT_FIXTURES.
+SOURCES="${1:-${RIFFCAT_FIXTURES:-tests/fixtures/solidity}}"
+if [ ! -d "$SOURCES" ]; then
+    echo "error: sources dir '$SOURCES' not found." >&2
+    echo "  pass a flat directory of .sol files as an argument or set RIFFCAT_FIXTURES." >&2
     exit 1
 fi
 
@@ -37,8 +34,8 @@ git apply -R demo/drift.patch
 echo "== staging corpus at $CORPUS =="
 rm -rf "$CORPUS"
 
-sol_files=$(find "$ROSETTA" -path '*/sol/*.sol' | sort)
-[ -n "$sol_files" ] || { echo "no rosetta sources under $ROSETTA"; exit 1; }
+sol_files=$(find "$SOURCES" -maxdepth 1 -name '*.sol' | sort)
+[ -n "$sol_files" ] || { echo "no .sol sources under $SOURCES"; exit 1; }
 # shellcheck disable=SC2086
 "$RIFFCAT" --corpus "$CORPUS" ingest $sol_files --units fn,object,ssa,evm
 
@@ -64,7 +61,7 @@ echo "== sourcify: Seaport 1.6 (cache-first; needs network + pinned solc 0.8.24 
     echo "WARN: sourcify fetch failed (offline?) — Act III falls back to the recording"
 
 echo "== warming the conformance cache (Act II timing) =="
-"$RIFFCAT" conformance "$ROSETTA/math" --optimize off > /dev/null
+"$RIFFCAT" conformance "$SOURCES" --optimize off > /dev/null
 
 echo
 echo "staged. Dry-run the show with: demo/runsheet.md"

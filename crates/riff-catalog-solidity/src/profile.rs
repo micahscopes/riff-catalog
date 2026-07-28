@@ -3,8 +3,8 @@
 //! `nameLocation`, selectors, `isSimpleCounterLoop`, …) drop out by
 //! construction.
 //!
-//! Covers the verified rosetta-corpus inventory plus rows certain to appear
-//! in real-world (sourcify) contracts. Yul nodes appear too: InlineAssembly
+//! Covers the nodeType inventory of the vendored fixtures plus rows certain to
+//! appear in real-world (sourcify) contracts. Yul nodes appear too: InlineAssembly
 //! embeds a YulBlock under its `AST` key, walked by the same machinery.
 
 /// Where a node starts a new graph unit.

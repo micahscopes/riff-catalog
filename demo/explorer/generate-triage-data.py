@@ -33,7 +33,7 @@ for path in sorted(glob.glob(os.path.join(corpus_dir, "*.jsonl"))):
                 })
     rows_by_file[os.path.basename(path)] = rows
 
-# label a row's home for twin-evidence chips: rosetta owners look like
+# label a row's home for twin-evidence chips: local-build owners look like
 # "yulir:ERC20.sol:ERC20:ir:noopt", sourcify ones end ":sf"
 sf_labels = {fname: label for label, fname in subjects}
 extra_sf = {"sf_1_poolmanager.jsonl": "PoolManager", "sf_1_permit2.jsonl": "Permit2",

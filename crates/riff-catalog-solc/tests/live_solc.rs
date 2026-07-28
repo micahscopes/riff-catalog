@@ -1,40 +1,35 @@
-//! M6 gate: drive the real solc against a rosetta contract and assert every
-//! output we depend on is present. Skips (with a note) when solc or the
-//! rosetta corpus is missing, so offline CI stays green.
+//! M6 gate: drive the real solc against a vendored fixture contract and assert
+//! every output we depend on is present. Skips (with a note) when solc is
+//! missing, so offline CI stays green; the fixture source is vendored, so no
+//! network and no personal checkout are needed.
 
 use std::collections::BTreeMap;
 
 use riff_catalog_solc::*;
 
-const ROSETTA_ERC20: &str = concat!(
-    env!("HOME"),
-    "/hacker-stuff-2023/fe-stuff/rosetta-fe/examples/erc20/sol/SolidityERC20.sol"
+/// A vendored, self-contained Solidity fixture (a flattened Sourcify
+/// exact_match mainnet deployment under the workspace's
+/// `tests/fixtures/solidity/`), read via a `CARGO_MANIFEST_DIR`-relative path
+/// so this gate runs on any machine: no `$HOME`, no network, no personal
+/// checkout. It compiles via IR and exercises every output we depend on.
+const FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tests/fixtures/solidity/merkle_distributor.sol"
 );
 
 fn solc_available() -> bool {
     SolcRunner::locate(None).version().is_ok()
 }
 
-fn erc20_source() -> Option<(String, String)> {
-    // The rosetta layout keeps Solidity sources under examples/*/sol/.
-    let candidates = [
-        ROSETTA_ERC20.to_string(),
-        format!(
-            "{}/hacker-stuff-2023/fe-stuff/rosetta-fe/examples/erc20/sol/ERC20.sol",
-            env!("HOME")
-        ),
-    ];
-    for path in candidates {
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            let name = std::path::Path::new(&path)
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
-            return Some((name, content));
-        }
-    }
-    None
+fn fixture_source() -> (String, String) {
+    let content = std::fs::read_to_string(FIXTURE)
+        .unwrap_or_else(|error| panic!("fixture {FIXTURE} unreadable: {error}"));
+    let name = std::path::Path::new(FIXTURE)
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    (name, content)
 }
 
 #[test]
@@ -54,10 +49,7 @@ fn solidity_via_ir_produces_all_outputs() {
         eprintln!("skipping: no solc on PATH");
         return;
     }
-    let Some((name, content)) = erc20_source() else {
-        eprintln!("skipping: rosetta corpus not found");
-        return;
-    };
+    let (name, content) = fixture_source();
     let sources: BTreeMap<String, String> = [(name.clone(), content)].into();
     let output = SolcRunner::locate(None)
         .compile(&solidity_input(&sources, &CompileOptions::default()))
