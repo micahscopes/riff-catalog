@@ -1,6 +1,6 @@
 //! The shared Yul AST. Field names and serde attributes match solc's
-//! `irAst`/`irOptimizedAst` JSON exactly (verified against solc 0.8.31-pre
-//! over the rosetta corpus); the text parser constructs the same types.
+//! `irAst`/`irOptimizedAst` JSON exactly (verified against solc's irAst over
+//! the vendored fixture contracts); the text parser constructs the same types.
 //!
 //! Normalizations baked into the type so both front doors agree (derived
 //! `PartialEq` is conformance level 0):

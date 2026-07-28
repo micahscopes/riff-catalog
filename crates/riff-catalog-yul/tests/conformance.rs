@@ -6,8 +6,9 @@
 //! Level 1: lowering both ASTs (identical owner) and hashing under both view
 //! modes must produce identical digests for every graph, every dimension.
 //!
-//! Runs over every rosetta contract × {ir, irOptimized} × optimizer {on,off}.
-//! Skips cleanly when solc or the corpus is missing.
+//! Runs over every vendored fixture contract × {ir, irOptimized} × optimizer
+//! {on,off}. Requires solc on PATH (skips cleanly without it); the fixture
+//! sources are vendored, so no network and no personal checkout are needed.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -17,21 +18,23 @@ use riff_catalog_solc::{CompileOptions, SolcRunner, solidity_input};
 use riff_catalog_yul::lower::{LowerOptions, YUL_AST_LEVEL, lower_object};
 use riff_catalog_yul::{from_solc_value, parse_object};
 
-fn rosetta_sources() -> Vec<PathBuf> {
-    let root = PathBuf::from(env!("HOME")).join("hacker-stuff-2023/fe-stuff/rosetta-fe/examples");
+/// The vendored, self-contained Solidity fixtures: flattened Sourcify
+/// exact_match mainnet deployments committed under the workspace's
+/// `tests/fixtures/solidity/`. Read via a `CARGO_MANIFEST_DIR`-relative path so
+/// the sweep runs on any machine: no `$HOME`, no network, no personal checkout.
+/// The fixtures are tracked in the repo, so a missing directory is a hard
+/// error, not a skip.
+fn fixture_sources() -> Vec<PathBuf> {
+    let root = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/solidity"
+    ));
     let mut sources = Vec::new();
-    let Ok(examples) = std::fs::read_dir(&root) else {
-        return sources;
-    };
-    for example in examples.flatten() {
-        let sol_dir = example.path().join("sol");
-        let Ok(files) = std::fs::read_dir(&sol_dir) else {
-            continue;
-        };
-        for file in files.flatten() {
-            if file.path().extension().is_some_and(|ext| ext == "sol") {
-                sources.push(file.path());
-            }
+    let entries = std::fs::read_dir(&root)
+        .unwrap_or_else(|error| panic!("fixtures dir {} unreadable: {error}", root.display()));
+    for file in entries.flatten() {
+        if file.path().extension().is_some_and(|ext| ext == "sol") {
+            sources.push(file.path());
         }
     }
     sources.sort();
@@ -44,16 +47,13 @@ fn solc() -> Option<SolcRunner> {
 }
 
 #[test]
-fn dual_path_conformance_over_rosetta() {
+fn dual_path_conformance_over_fixtures() {
     let Some(solc) = solc() else {
         eprintln!("skipping: no solc on PATH");
         return;
     };
-    let sources = rosetta_sources();
-    if sources.is_empty() {
-        eprintln!("skipping: rosetta corpus not found");
-        return;
-    }
+    let sources = fixture_sources();
+    assert!(!sources.is_empty(), "no vendored .sol fixtures found");
 
     let mut checked_objects = 0usize;
     let mut checked_graphs = 0usize;
@@ -167,11 +167,11 @@ fn solc_helpers_dedupe_across_contracts() {
         eprintln!("skipping: no solc on PATH");
         return;
     };
-    let sources = rosetta_sources();
-    if sources.len() < 2 {
-        eprintln!("skipping: need at least two rosetta contracts");
-        return;
-    }
+    let sources = fixture_sources();
+    assert!(
+        sources.len() >= 2,
+        "helper-dedup smoke needs at least two fixture contracts"
+    );
 
     let policy = HashPolicy::new(
         YUL_AST_LEVEL,
@@ -195,6 +195,15 @@ fn solc_helpers_dedupe_across_contracts() {
             continue;
         }
         for (source, contract) in output.contract_names() {
+            // Interfaces and abstract contracts compile to empty IR (no
+            // functions to dedup); skip them like the dual-path sweep does,
+            // otherwise from_solc_value chokes on the empty irAst.
+            let Ok(ir_text) = output.ir(&source, &contract) else {
+                continue;
+            };
+            if ir_text.trim().is_empty() {
+                continue;
+            }
             let Ok(ir_ast) = output.ir_ast(&source, &contract) else {
                 continue;
             };
