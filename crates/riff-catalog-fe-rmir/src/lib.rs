@@ -29,6 +29,11 @@ pub const FE_RMIR_MATERIALIZATION_LEVEL: &str = "fe-rmir-materialization/1";
 /// observable without retaining complete function bodies.
 pub const FE_RMIR_CALL_LEVEL: &str = "fe-rmir-call/1";
 
+/// One complete function body plus structurally fingerprinted direct callees.
+/// This view makes post-erasure helper equivalence queryable without copying
+/// every reachable callee body into every unit.
+pub const FE_RMIR_FUNCTION_LEVEL: &str = "fe-rmir-function/1";
+
 #[derive(Debug, Error)]
 pub enum LowerError {
     #[error(transparent)]
@@ -55,6 +60,13 @@ pub struct LoweredRmir {
     pub call_count: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct LoweredRmirFunction {
+    pub symbol: String,
+    pub instance: String,
+    pub lowered: LoweredRmir,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShapeClass {
     pub digest: Digest,
@@ -64,6 +76,15 @@ pub struct ShapeClass {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StructureCensus {
     pub nodes: usize,
+    pub distinct_shapes: usize,
+    pub repeated_occurrences: usize,
+    pub largest_class: usize,
+    pub classes: Vec<ShapeClass>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FunctionShapeCensus {
+    pub functions: usize,
     pub distinct_shapes: usize,
     pub repeated_occurrences: usize,
     pub largest_class: usize,
@@ -122,6 +143,65 @@ pub fn materialization_structure_census(
 
 pub fn call_structure_census(lowered: &LoweredRmir) -> Result<StructureCensus, LowerError> {
     structure_census_at_level(lowered, FE_RMIR_CALL_LEVEL)
+}
+
+pub fn function_structure_census(
+    functions: &[LoweredRmirFunction],
+) -> Result<FunctionShapeCensus, LowerError> {
+    let mut counts = BTreeMap::<Digest, usize>::new();
+    for function in functions {
+        *counts
+            .entry(function_graph_structure_digest(&function.lowered)?)
+            .or_default() += 1;
+    }
+    let mut classes = counts
+        .into_iter()
+        .map(|(digest, occurrences)| ShapeClass {
+            digest,
+            occurrences,
+        })
+        .collect::<Vec<_>>();
+    classes.sort_by(|left, right| {
+        right
+            .occurrences
+            .cmp(&left.occurrences)
+            .then_with(|| left.digest.cmp(&right.digest))
+    });
+    let functions = functions.len();
+    let distinct_shapes = classes.len();
+    Ok(FunctionShapeCensus {
+        functions,
+        distinct_shapes,
+        repeated_occurrences: functions.saturating_sub(distinct_shapes),
+        largest_class: classes.first().map_or(0, |class| class.occurrences),
+        classes,
+    })
+}
+
+fn function_graph_structure_digest(lowered: &LoweredRmir) -> Result<Digest, LowerError> {
+    Ok(*function_graph_digests(lowered, &[Dimension::Structure])?
+        .get(&Dimension::Structure)
+        .expect("the requested structure digest must be present"))
+}
+
+fn function_graph_digests(
+    lowered: &LoweredRmir,
+    dimensions: &[Dimension],
+) -> Result<BTreeMap<Dimension, Digest>, LowerError> {
+    let policy = HashPolicy::new(
+        FE_RMIR_FUNCTION_LEVEL,
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    )?;
+    let result = digest_graph(
+        &DigestRequest::new(
+            lowered.graph_key.clone(),
+            policy,
+            dimensions.iter().copied(),
+        )?,
+        &lowered.graph,
+    )?;
+    Ok(result.hashes.graph.values)
 }
 
 fn structure_census_at_level(
@@ -1098,6 +1178,168 @@ pub fn project_call_package(owner: &str, lowered: &LoweredRmir) -> Result<Lowere
     project_selected_package(owner, source, selected, "fe.rmir.call", "call")
 }
 
+/// Split a checked package observation into independently hashable function
+/// bodies. Direct callees are retained as lightweight stubs annotated with the
+/// anonymous digest of their complete body in every facet dimension. This
+/// preserves call semantics for equivalence analysis without recursively
+/// copying every callee body into every caller unit.
+pub fn project_function_packages(
+    owner: &str,
+    lowered: &LoweredRmir,
+) -> Result<Vec<LoweredRmirFunction>, LowerError> {
+    let source = &lowered.graph;
+    let source_root = NodeKey::entity(source.graph_key.owner.clone());
+    let package_policy = HashPolicy::new(
+        FE_RMIR_LEVEL,
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    )?;
+    let package_hashes = digest_graph(
+        &DigestRequest::all_dimensions(lowered.graph_key.clone(), package_policy),
+        source,
+    )?
+    .hashes;
+    let mut function_children = source
+        .children
+        .iter()
+        .filter(|child| child.parent == source_root && child.label.as_str() == "function")
+        .collect::<Vec<_>>();
+    function_children.sort_by_key(|child| child.ordinal);
+
+    let mut functions = Vec::with_capacity(function_children.len());
+    for child in function_children {
+        let function_key = &child.child;
+        let function_node = source
+            .nodes
+            .get(function_key)
+            .expect("a package function child must name a node");
+        let symbol = text_field(function_node, Dimension::Names, "symbol")
+            .unwrap_or("<anonymous>")
+            .to_string();
+        let instance = text_field(function_node, Dimension::Names, "instance")
+            .unwrap_or("<anonymous>")
+            .to_string();
+        let function_owner = function_key.owner();
+        let mut selected = source
+            .nodes
+            .keys()
+            .filter(|key| key.owner() == function_owner)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let callee_stubs = source
+            .edges
+            .iter()
+            .filter(|edge| edge.role == EdgeRole::Call && selected.contains(&edge.source))
+            .filter_map(|edge| (!selected.contains(&edge.target)).then_some(edge.target.clone()))
+            .collect::<BTreeSet<_>>();
+        selected.extend(callee_stubs.iter().cloned());
+
+        let projection_owner = EntityKey::new(
+            "fe.rmir.function_view",
+            owner,
+            format!("function:{}", child.ordinal),
+        )?;
+        let graph_key = GraphKey::new(projection_owner.clone(), "function")?;
+        let root = NodeKey::entity(projection_owner);
+        let mut graph = Graph::new(graph_key.clone());
+        graph.add_node(root.clone(), "fe.rmir.function_view")?;
+        graph.add_field(&root, Dimension::Names, "symbol", symbol.clone())?;
+        graph.add_field(&root, Dimension::Names, "instance", instance.clone())?;
+
+        for key in &selected {
+            let node = source
+                .nodes
+                .get(key)
+                .expect("a projected function node must remain in the source graph");
+            graph.nodes.insert(key.clone(), node.clone());
+        }
+        for stub in &callee_stubs {
+            let hashes = package_hashes
+                .nodes
+                .get(stub)
+                .expect("a direct callee must have package digests");
+            for dimension in Dimension::ALL {
+                let digest = hashes
+                    .tree
+                    .get(dimension)
+                    .expect("all requested callee dimensions must be present");
+                graph.add_field(stub, dimension, "callee_body", digest.to_hex())?;
+            }
+        }
+        graph.add_child(&root, "body", 0, function_key)?;
+        graph.children.extend(
+            source
+                .children
+                .iter()
+                .filter(|edge| {
+                    selected.contains(&edge.parent)
+                        && selected.contains(&edge.child)
+                        && !callee_stubs.contains(&edge.parent)
+                })
+                .cloned(),
+        );
+        graph.edges.extend(
+            source
+                .edges
+                .iter()
+                .filter(|edge| selected.contains(&edge.source) && selected.contains(&edge.target))
+                .cloned(),
+        );
+        graph.validate()?;
+
+        let block_count = graph
+            .nodes
+            .values()
+            .filter(|node| node.kind.as_str() == "fe.rmir.block")
+            .count();
+        let statement_count = graph
+            .nodes
+            .values()
+            .filter(|node| {
+                matches!(
+                    node.kind.as_str(),
+                    "fe.rmir.statement" | "fe.rmir.terminator"
+                )
+            })
+            .count();
+        let call_count = graph
+            .edges
+            .iter()
+            .filter(|edge| edge.role == EdgeRole::Call)
+            .count();
+        functions.push(LoweredRmirFunction {
+            symbol,
+            instance,
+            lowered: LoweredRmir {
+                graph_key,
+                graph,
+                function_count: 1,
+                block_count,
+                statement_count,
+                call_count,
+            },
+        });
+    }
+    Ok(functions)
+}
+
+fn text_field<'a>(
+    node: &'a riff_catalog_core::Node,
+    dimension: Dimension,
+    name: &str,
+) -> Option<&'a str> {
+    node.fields.iter().find_map(|field| {
+        if field.dimension == dimension && field.name.as_str() == name {
+            match &field.value {
+                riff_catalog_core::Value::Text(value) => Some(value.as_str()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    })
+}
+
 fn include_direct_data_neighbors(
     source: &Graph,
     frontier: &BTreeSet<NodeKey>,
@@ -1319,6 +1561,112 @@ mod tests {
                 })
         }));
         assert!(call_structure_census(&views.calls).is_ok());
+    }
+
+    #[test]
+    fn function_projection_keeps_one_body_and_fingerprints_direct_callees() {
+        let lowered = parse_and_lower_analysis_views("fixture", &snapshot(BODY))
+            .expect("snapshot should lower")
+            .package;
+        let functions =
+            project_function_packages("fixture", &lowered).expect("function bodies should project");
+        assert_eq!(functions.len(), 2);
+        let helper = functions
+            .iter()
+            .find(|function| function.symbol == "helper")
+            .expect("helper projection");
+        assert_eq!(helper.lowered.block_count, 1);
+        assert_eq!(helper.lowered.call_count, 0);
+        assert!(operations(&helper.lowered).contains("checked_Add"));
+
+        let main = functions
+            .iter()
+            .find(|function| function.symbol == "main")
+            .expect("main projection");
+        assert_eq!(main.lowered.block_count, 2);
+        assert_eq!(main.lowered.call_count, 1);
+        assert!(operations(&main.lowered).contains("checked_Mul"));
+        assert!(!operations(&main.lowered).contains("checked_Add"));
+        let callee = main
+            .lowered
+            .graph
+            .nodes
+            .values()
+            .find(|node| {
+                node.kind.as_str() == "fe.rmir.function"
+                    && text_field(node, Dimension::Names, "symbol") == Some("helper")
+            })
+            .expect("main should retain a helper stub");
+        assert!(
+            text_field(callee, Dimension::Structure, "callee_body").is_some(),
+            "the direct callee stub must carry its complete structural body digest"
+        );
+    }
+
+    #[test]
+    fn function_shapes_ignore_names_but_distinguish_operations() {
+        let project_helper = |owner: &str, body: &str| {
+            let lowered = parse_and_lower_analysis_views(owner, &snapshot(body))
+                .expect("snapshot should lower")
+                .package;
+            project_function_packages(owner, &lowered)
+                .expect("function bodies should project")
+                .into_iter()
+                .find(|function| function.symbol != "main")
+                .expect("helper projection")
+        };
+        let original = project_helper("original", BODY);
+        let renamed_body = BODY.replace("helper", "doubler");
+        let renamed = project_helper("renamed", &renamed_body);
+        let changed_body = BODY.replace("checked_Add", "checked_Mul");
+        let changed = project_helper("changed", &changed_body);
+
+        assert_eq!(
+            function_graph_structure_digest(&original.lowered).unwrap(),
+            function_graph_structure_digest(&renamed.lowered).unwrap()
+        );
+        assert_ne!(
+            function_graph_structure_digest(&original.lowered).unwrap(),
+            function_graph_structure_digest(&changed.lowered).unwrap()
+        );
+        let census = function_structure_census(&[original, renamed, changed]).unwrap();
+        assert_eq!(census.functions, 3);
+        assert_eq!(census.distinct_shapes, 2);
+        assert_eq!(census.repeated_occurrences, 1);
+        assert_eq!(census.largest_class, 2);
+    }
+
+    #[test]
+    fn caller_fingerprints_retain_callee_constants() {
+        let helper_with_constant = BODY.replacen("checked_Add %0, %0", "uint32(0x07)", 1);
+        let changed_constant = helper_with_constant.replacen("uint32(0x07)", "uint32(0x08)", 1);
+        let project_main = |owner: &str, body: &str| {
+            let lowered = parse_and_lower_analysis_views(owner, &snapshot(body))
+                .expect("snapshot should lower")
+                .package;
+            project_function_packages(owner, &lowered)
+                .expect("function bodies should project")
+                .into_iter()
+                .find(|function| function.symbol == "main")
+                .expect("main projection")
+        };
+        let left = project_main("left", &helper_with_constant);
+        let right = project_main("right", &changed_constant);
+        assert_eq!(
+            function_graph_digests(&left.lowered, &[Dimension::Structure]).unwrap(),
+            function_graph_digests(&right.lowered, &[Dimension::Structure]).unwrap(),
+            "constant-only changes remain outside the structure facet"
+        );
+        assert_ne!(
+            function_graph_digests(&left.lowered, &[Dimension::Structure, Dimension::Constants])
+                .unwrap(),
+            function_graph_digests(
+                &right.lowered,
+                &[Dimension::Structure, Dimension::Constants]
+            )
+            .unwrap(),
+            "a caller must inherit its direct callee's constant distinction"
+        );
     }
 
     #[test]

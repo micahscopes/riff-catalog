@@ -64,8 +64,8 @@ enum Command {
         sourcify: Vec<String>,
         #[arg(long, default_value = "both")]
         optimize: String,
-        /// Units to emit: fn,object,ssa,evm (sol-contract/sol-fn and
-        /// sona-module and rmir-package are always on for their respective inputs).
+        /// Units to emit: fn,object,ssa,evm,rmir-function (sol-contract/sol-fn,
+        /// sona-module, and package-level RMIR views are always on for their inputs).
         #[arg(long, default_value = "fn,object,ssa")]
         units: String,
         /// Error on unknown Solidity node types instead of tagging them.
