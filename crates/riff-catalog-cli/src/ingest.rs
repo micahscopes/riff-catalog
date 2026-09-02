@@ -12,8 +12,9 @@ use riff_catalog_core::{
 };
 use riff_catalog_evm::{BytecodeKind, EVM_LEVEL, lower_bytecode};
 use riff_catalog_fe_rmir::{
-    FE_RMIR_AGGREGATE_LEVEL, FE_RMIR_LEVEL, aggregate_structure_census,
-    parse_and_lower_views as parse_and_lower_rmir_views, structure_census as rmir_structure_census,
+    FE_RMIR_AGGREGATE_LEVEL, FE_RMIR_CALL_LEVEL, FE_RMIR_LEVEL, FE_RMIR_MATERIALIZATION_LEVEL,
+    aggregate_structure_census, call_structure_census, materialization_structure_census,
+    parse_and_lower_analysis_views, structure_census as rmir_structure_census,
 };
 use riff_catalog_solc::{CachedSolc, CompileOptions, Pipeline, SolcOutput, SolcRunner};
 use riff_catalog_solidity::{SOL_AST_LEVEL, WalkOptions, lower_source_unit};
@@ -123,10 +124,16 @@ fn ingest_fe_rmir(
 ) -> Result<()> {
     let owner = format!("rmir:{name}");
     let artifact = artifact_id(&owner, origin, false);
-    let (lowered, aggregate) = parse_and_lower_rmir_views(&owner, content)
+    let views = parse_and_lower_analysis_views(&owner, content)
         .with_context(|| format!("parsing and lowering {name}"))?;
+    let lowered = &views.package;
+    let aggregate = &views.aggregate;
+    let materialization = &views.materialization;
+    let calls = &views.calls;
     let census = rmir_structure_census(&lowered)?;
     let aggregate_census = aggregate_structure_census(&aggregate)?;
+    let materialization_census = materialization_structure_census(materialization)?;
+    let call_census = call_structure_census(calls)?;
     let mut records = vec![artifact_record(
         &artifact, &owner, origin, "fe-rmir", false, None, args,
     )];
@@ -150,6 +157,26 @@ fn ingest_fe_rmir(
         &aggregate.graph_key,
         &aggregate.graph,
     )?;
+    emit_unit(
+        &mut records,
+        &artifact,
+        &owner,
+        FE_RMIR_MATERIALIZATION_LEVEL,
+        "rmir-materialization",
+        name,
+        &materialization.graph_key,
+        &materialization.graph,
+    )?;
+    emit_unit(
+        &mut records,
+        &artifact,
+        &owner,
+        FE_RMIR_CALL_LEVEL,
+        "rmir-call",
+        name,
+        &calls.graph_key,
+        &calls.graph,
+    )?;
 
     let stem = format!(
         "{}-{}",
@@ -158,7 +185,7 @@ fn ingest_fe_rmir(
     );
     corpus.replace(&stem, &records)?;
     println!(
-        "ingested {name}: {} records, {} functions, {} blocks, {} statements, {} calls, {} structural shapes across {} nodes ({} repeated occurrences, largest class {}); aggregate projection: {} functions, {} blocks, {} statements, {} shapes across {} nodes ({} repeated occurrences, largest class {})",
+        "ingested {name}: {} records, {} functions, {} blocks, {} statements, {} calls, {} structural shapes across {} nodes ({} repeated occurrences, largest class {}); aggregate slice: {} functions, {} blocks, {} statements, {} shapes across {} nodes ({} repeated occurrences, largest class {}); materialization frontier: {} statements, {} shapes across {} nodes ({} repeated occurrences, largest class {}); call frontier: {} calls, {} shapes across {} nodes ({} repeated occurrences, largest class {})",
         records.len(),
         lowered.function_count,
         lowered.block_count,
@@ -175,6 +202,16 @@ fn ingest_fe_rmir(
         aggregate_census.nodes,
         aggregate_census.repeated_occurrences,
         aggregate_census.largest_class,
+        materialization.statement_count,
+        materialization_census.distinct_shapes,
+        materialization_census.nodes,
+        materialization_census.repeated_occurrences,
+        materialization_census.largest_class,
+        calls.call_count,
+        call_census.distinct_shapes,
+        call_census.nodes,
+        call_census.repeated_occurrences,
+        call_census.largest_class,
     );
     Ok(())
 }

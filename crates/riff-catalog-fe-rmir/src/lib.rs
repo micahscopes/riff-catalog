@@ -19,6 +19,16 @@ pub const FE_RMIR_LEVEL: &str = "fe-rmir/1";
 /// Aggregate construction, projection, materialization, and its data slice.
 pub const FE_RMIR_AGGREGATE_LEVEL: &str = "fe-rmir-aggregate/1";
 
+/// Direct aggregate and memory-materialization operations with their immediate
+/// typed values. Unlike the aggregate data slice, this view does not retain
+/// transitive producers, so it exposes where representation pressure enters.
+pub const FE_RMIR_MATERIALIZATION_LEVEL: &str = "fe-rmir-materialization/1";
+
+/// Call sites, immediate typed values, and callee relationships. This view
+/// makes helper fan-out and potential inlining amplification independently
+/// observable without retaining complete function bodies.
+pub const FE_RMIR_CALL_LEVEL: &str = "fe-rmir-call/1";
+
 #[derive(Debug, Error)]
 pub enum LowerError {
     #[error(transparent)]
@@ -60,15 +70,40 @@ pub struct StructureCensus {
     pub classes: Vec<ShapeClass>,
 }
 
+/// All independently useful projections derived from one checked snapshot.
+/// Keeping them together guarantees that every view describes the same input
+/// bytes and avoids reparsing multi-megabyte compiler observations.
+#[derive(Clone, Debug)]
+pub struct RmirViews {
+    pub package: LoweredRmir,
+    pub aggregate: LoweredRmir,
+    pub materialization: LoweredRmir,
+    pub calls: LoweredRmir,
+}
+
 /// Parse once, then derive the complete package graph and aggregate projection.
 pub fn parse_and_lower_views(
     owner: &str,
     source: &str,
 ) -> Result<(LoweredRmir, LoweredRmir), LowerError> {
+    let views = parse_and_lower_analysis_views(owner, source)?;
+    Ok((views.package, views.aggregate))
+}
+
+/// Parse once, then derive the complete package plus focused pressure and call
+/// frontiers. The older two-view API remains available for existing callers.
+pub fn parse_and_lower_analysis_views(owner: &str, source: &str) -> Result<RmirViews, LowerError> {
     let package = parse_snapshot(source)?;
     let lowered = lower_package(owner, &package)?;
     let aggregate = project_aggregate_package(owner, &lowered)?;
-    Ok((lowered, aggregate))
+    let materialization = project_materialization_package(owner, &lowered)?;
+    let calls = project_call_package(owner, &lowered)?;
+    Ok(RmirViews {
+        package: lowered,
+        aggregate,
+        materialization,
+        calls,
+    })
 }
 
 pub fn structure_census(lowered: &LoweredRmir) -> Result<StructureCensus, LowerError> {
@@ -77,6 +112,16 @@ pub fn structure_census(lowered: &LoweredRmir) -> Result<StructureCensus, LowerE
 
 pub fn aggregate_structure_census(lowered: &LoweredRmir) -> Result<StructureCensus, LowerError> {
     structure_census_at_level(lowered, FE_RMIR_AGGREGATE_LEVEL)
+}
+
+pub fn materialization_structure_census(
+    lowered: &LoweredRmir,
+) -> Result<StructureCensus, LowerError> {
+    structure_census_at_level(lowered, FE_RMIR_MATERIALIZATION_LEVEL)
+}
+
+pub fn call_structure_census(lowered: &LoweredRmir) -> Result<StructureCensus, LowerError> {
+    structure_census_at_level(lowered, FE_RMIR_CALL_LEVEL)
 }
 
 fn structure_census_at_level(
@@ -974,11 +1019,6 @@ pub fn project_aggregate_package(
     lowered: &LoweredRmir,
 ) -> Result<LoweredRmir, LowerError> {
     let source = &lowered.graph;
-    let aggregate_owner = EntityKey::new("fe.rmir.aggregate", owner, "package")?;
-    let graph_key = GraphKey::new(aggregate_owner.clone(), "aggregate")?;
-    let root = NodeKey::entity(aggregate_owner);
-    let source_root = NodeKey::entity(source.graph_key.owner.clone());
-
     let mut selected = BTreeSet::new();
     let mut work = VecDeque::new();
     for (key, node) in &source.nodes {
@@ -1002,6 +1042,81 @@ pub fn project_aggregate_package(
             }
         }
     }
+    include_ancestry(source, &mut selected);
+    project_selected_package(owner, source, selected, "fe.rmir.aggregate", "aggregate")
+}
+
+/// Retain only direct aggregate and memory-materialization operations, their
+/// immediate typed input and result values, and ancestry. This is deliberately
+/// thinner than [`project_aggregate_package`]: producers do not enter merely
+/// because their result eventually feeds a materialization.
+pub fn project_materialization_package(
+    owner: &str,
+    lowered: &LoweredRmir,
+) -> Result<LoweredRmir, LowerError> {
+    let source = &lowered.graph;
+    let frontier = source
+        .nodes
+        .iter()
+        .filter_map(|(key, node)| {
+            operation(node)
+                .is_some_and(is_aggregate_operation)
+                .then_some(key.clone())
+        })
+        .collect::<BTreeSet<_>>();
+    let mut selected = frontier.clone();
+    include_direct_data_neighbors(source, &frontier, &mut selected);
+    include_ancestry(source, &mut selected);
+    project_selected_package(
+        owner,
+        source,
+        selected,
+        "fe.rmir.materialization",
+        "materialization",
+    )
+}
+
+/// Retain call sites, their immediate typed values, callee nodes, and ancestry.
+/// This is a compact view of helper fan-out and call-boundary representation.
+pub fn project_call_package(owner: &str, lowered: &LoweredRmir) -> Result<LoweredRmir, LowerError> {
+    let source = &lowered.graph;
+    let call_edges = source
+        .edges
+        .iter()
+        .filter(|edge| edge.role == EdgeRole::Call)
+        .collect::<Vec<_>>();
+    let frontier = call_edges
+        .iter()
+        .map(|edge| edge.source.clone())
+        .collect::<BTreeSet<_>>();
+    let mut selected = frontier.clone();
+    for edge in call_edges {
+        selected.insert(edge.target.clone());
+    }
+    include_direct_data_neighbors(source, &frontier, &mut selected);
+    include_ancestry(source, &mut selected);
+    project_selected_package(owner, source, selected, "fe.rmir.call", "call")
+}
+
+fn include_direct_data_neighbors(
+    source: &Graph,
+    frontier: &BTreeSet<NodeKey>,
+    selected: &mut BTreeSet<NodeKey>,
+) {
+    for edge in source
+        .edges
+        .iter()
+        .filter(|edge| edge.role == EdgeRole::Data)
+    {
+        if frontier.contains(&edge.source) || frontier.contains(&edge.target) {
+            selected.insert(edge.source.clone());
+            selected.insert(edge.target.clone());
+        }
+    }
+}
+
+fn include_ancestry(source: &Graph, selected: &mut BTreeSet<NodeKey>) {
+    let source_root = NodeKey::entity(source.graph_key.owner.clone());
     loop {
         let mut changed = false;
         for child in &source.children {
@@ -1013,9 +1128,21 @@ pub fn project_aggregate_package(
             break;
         }
     }
+}
 
+fn project_selected_package(
+    owner: &str,
+    source: &Graph,
+    selected: BTreeSet<NodeKey>,
+    namespace: &str,
+    variant: &str,
+) -> Result<LoweredRmir, LowerError> {
+    let projection_owner = EntityKey::new(namespace, owner, "package")?;
+    let graph_key = GraphKey::new(projection_owner.clone(), variant)?;
+    let root = NodeKey::entity(projection_owner);
+    let source_root = NodeKey::entity(source.graph_key.owner.clone());
     let mut graph = Graph::new(graph_key.clone());
-    graph.add_node(root.clone(), "fe.rmir.aggregate")?;
+    graph.add_node(root.clone(), namespace)?;
     for key in &selected {
         let node = source
             .nodes
@@ -1159,6 +1286,39 @@ mod tests {
         assert!(operations.contains("aggregate_make"));
         assert!(operations.contains("extract_value"));
         assert!(!operations.contains("checked_Mul"));
+    }
+
+    #[test]
+    fn materialization_frontier_does_not_pull_transitive_producers() {
+        let views = parse_and_lower_analysis_views("fixture", &snapshot(BODY))
+            .expect("snapshot should lower");
+        let operations = operations(&views.materialization);
+        assert!(operations.contains("aggregate_make"));
+        assert!(operations.contains("extract_value"));
+        assert!(!operations.contains("const_scalar"));
+        assert!(!operations.contains("call"));
+        assert!(!operations.contains("checked_Mul"));
+        assert!(materialization_structure_census(&views.materialization).is_ok());
+    }
+
+    #[test]
+    fn call_frontier_keeps_sites_and_callees_without_function_bodies() {
+        let views = parse_and_lower_analysis_views("fixture", &snapshot(BODY))
+            .expect("snapshot should lower");
+        let operations = operations(&views.calls);
+        assert_eq!(views.calls.call_count, 1);
+        assert!(operations.contains("call"));
+        assert!(!operations.contains("checked_Add"));
+        assert!(!operations.contains("checked_Mul"));
+        assert!(views.calls.graph.nodes.values().any(|node| {
+            node.kind.as_str() == "fe.rmir.function"
+                && node.fields.iter().any(|field| {
+                    field.dimension == Dimension::Names
+                        && field.name.as_str() == "symbol"
+                        && field.value == riff_catalog_core::Value::Text("helper".to_string())
+                })
+        }));
+        assert!(call_structure_census(&views.calls).is_ok());
     }
 
     #[test]
