@@ -2,7 +2,7 @@
 //! files. Every line is one self-contained record.
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -112,17 +112,21 @@ impl Corpus {
 
     fn write(&self, file_stem: &str, records: &[Record], append: bool) -> Result<()> {
         let path = self.dir.join(format!("{file_stem}.jsonl"));
-        let mut file = std::fs::OpenOptions::new()
+        let file = std::fs::OpenOptions::new()
             .create(true)
             .append(append)
             .write(true)
             .truncate(!append)
             .open(&path)
             .with_context(|| format!("opening {}", path.display()))?;
+        let mut writer = BufWriter::new(file);
         for record in records {
-            serde_json::to_writer(&mut file, record)?;
-            file.write_all(b"\n")?;
+            serde_json::to_writer(&mut writer, record)?;
+            writer.write_all(b"\n")?;
         }
+        writer
+            .flush()
+            .with_context(|| format!("flushing {}", path.display()))?;
         Ok(())
     }
 
@@ -264,4 +268,49 @@ pub fn matches_selector(row: &DigestRow, selector: &str) -> bool {
     row.owner.contains(selector)
         || row.name.contains(selector)
         || row.artifact_id.contains(selector)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn artifact(id: &str) -> Record {
+        Record::Artifact {
+            artifact_id: id.to_owned(),
+            owner: format!("owner:{id}"),
+            origin: format!("origin:{id}"),
+            pipeline: "test".to_owned(),
+            optimize: false,
+            compiler: None,
+            label: None,
+        }
+    }
+
+    #[test]
+    fn buffered_replace_and_append_are_fully_persisted() {
+        let directory =
+            std::env::temp_dir().join(format!("riffcat-buffered-corpus-{}", std::process::id()));
+        if directory.exists() {
+            std::fs::remove_dir_all(&directory).unwrap();
+        }
+        let corpus = Corpus::open(&directory).unwrap();
+        corpus.replace("records", &[artifact("first")]).unwrap();
+        corpus.append("records", &[artifact("second")]).unwrap();
+
+        let text = std::fs::read_to_string(directory.join("records.jsonl")).unwrap();
+        let records = text
+            .lines()
+            .map(|line| serde_json::from_str::<Record>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 2);
+        assert!(matches!(
+            &records[0],
+            Record::Artifact { artifact_id, .. } if artifact_id == "first"
+        ));
+        assert!(matches!(
+            &records[1],
+            Record::Artifact { artifact_id, .. } if artifact_id == "second"
+        ));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }
