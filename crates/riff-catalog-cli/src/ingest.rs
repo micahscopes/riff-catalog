@@ -13,6 +13,7 @@ use riff_catalog_core::{
 use riff_catalog_evm::{BytecodeKind, EVM_LEVEL, lower_bytecode};
 use riff_catalog_solc::{CachedSolc, CompileOptions, Pipeline, SolcOutput, SolcRunner};
 use riff_catalog_solidity::{SOL_AST_LEVEL, WalkOptions, lower_source_unit};
+use riff_catalog_sonatina::{SONATINA_IR_LEVEL, parse_and_lower_module, structure_census};
 use riff_catalog_sourcify::{ContractId, SourcifyClient};
 use riff_catalog_yul::lower::{LowerOptions, YUL_AST_LEVEL, lower_object};
 use riff_catalog_yul::ssa::{YUL_SSA_LEVEL, lower_yul_cfg};
@@ -88,7 +89,9 @@ pub fn run(corpus: &Corpus, args: &IngestArgs) -> Result<()> {
     }
 
     for (origin, name, content) in &sources {
-        if name.ends_with(".yul") {
+        if name.ends_with(".sona") {
+            ingest_sonatina(corpus, args, origin, name, content)?;
+        } else if name.ends_with(".yul") {
             ingest_yul(corpus, &solc, args, origin, name, content)?;
         } else {
             ingest_solidity(corpus, &solc, args, origin, name, content)?;
@@ -99,6 +102,59 @@ pub fn run(corpus: &Corpus, args: &IngestArgs) -> Result<()> {
         ingest_sourcify(corpus, args, spec)?;
     }
 
+    Ok(())
+}
+
+fn ingest_sonatina(
+    corpus: &Corpus,
+    args: &IngestArgs,
+    origin: &str,
+    name: &str,
+    content: &str,
+) -> Result<()> {
+    let owner = format!("sona:{name}");
+    let artifact = artifact_id(&owner, origin, false);
+    let lowered = parse_and_lower_module(&owner, content)
+        .with_context(|| format!("parsing and lowering {name}"))?;
+    let census = structure_census(&lowered)?;
+    let mut records = vec![artifact_record(
+        &artifact,
+        &owner,
+        origin,
+        "sonatina-ir",
+        false,
+        None,
+        args,
+    )];
+    emit_unit(
+        &mut records,
+        &artifact,
+        &owner,
+        SONATINA_IR_LEVEL,
+        "sona-module",
+        name,
+        &lowered.graph_key,
+        &lowered.graph,
+    )?;
+
+    let stem = format!(
+        "{}-{}",
+        name.trim_end_matches(".sona").replace(['/', '\\'], "_"),
+        short_origin_hash(origin),
+    );
+    corpus.replace(&stem, &records)?;
+    println!(
+        "ingested {name}: {} records, {} functions, {} blocks, {} instructions, {} calls, {} structural shapes across {} nodes ({} repeated occurrences, largest class {})",
+        records.len(),
+        lowered.function_count,
+        lowered.block_count,
+        lowered.instruction_count,
+        lowered.call_count,
+        census.distinct_shapes,
+        census.nodes,
+        census.repeated_occurrences,
+        census.largest_class,
+    );
     Ok(())
 }
 
