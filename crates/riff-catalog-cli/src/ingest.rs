@@ -13,7 +13,10 @@ use riff_catalog_core::{
 use riff_catalog_evm::{BytecodeKind, EVM_LEVEL, lower_bytecode};
 use riff_catalog_solc::{CachedSolc, CompileOptions, Pipeline, SolcOutput, SolcRunner};
 use riff_catalog_solidity::{SOL_AST_LEVEL, WalkOptions, lower_source_unit};
-use riff_catalog_sonatina::{SONATINA_IR_LEVEL, parse_and_lower_module, structure_census};
+use riff_catalog_sonatina::{
+    SONATINA_IR_LEVEL, SONATINA_MEMORY_LEVEL, memory_structure_census, parse_and_lower_views,
+    structure_census,
+};
 use riff_catalog_sourcify::{ContractId, SourcifyClient};
 use riff_catalog_yul::lower::{LowerOptions, YUL_AST_LEVEL, lower_object};
 use riff_catalog_yul::ssa::{YUL_SSA_LEVEL, lower_yul_cfg};
@@ -114,9 +117,10 @@ fn ingest_sonatina(
 ) -> Result<()> {
     let owner = format!("sona:{name}");
     let artifact = artifact_id(&owner, origin, false);
-    let lowered = parse_and_lower_module(&owner, content)
+    let (lowered, memory) = parse_and_lower_views(&owner, content)
         .with_context(|| format!("parsing and lowering {name}"))?;
     let census = structure_census(&lowered)?;
+    let memory_census = memory_structure_census(&memory)?;
     let mut records = vec![artifact_record(
         &artifact,
         &owner,
@@ -136,6 +140,16 @@ fn ingest_sonatina(
         &lowered.graph_key,
         &lowered.graph,
     )?;
+    emit_unit(
+        &mut records,
+        &artifact,
+        &owner,
+        SONATINA_MEMORY_LEVEL,
+        "sona-memory",
+        name,
+        &memory.graph_key,
+        &memory.graph,
+    )?;
 
     let stem = format!(
         "{}-{}",
@@ -144,7 +158,7 @@ fn ingest_sonatina(
     );
     corpus.replace(&stem, &records)?;
     println!(
-        "ingested {name}: {} records, {} functions, {} blocks, {} instructions, {} calls, {} structural shapes across {} nodes ({} repeated occurrences, largest class {})",
+        "ingested {name}: {} records, {} functions, {} blocks, {} instructions, {} calls, {} structural shapes across {} nodes ({} repeated occurrences, largest class {}); memory projection: {} functions, {} blocks, {} instructions, {} shapes across {} nodes ({} repeated occurrences, largest class {})",
         records.len(),
         lowered.function_count,
         lowered.block_count,
@@ -154,6 +168,13 @@ fn ingest_sonatina(
         census.nodes,
         census.repeated_occurrences,
         census.largest_class,
+        memory.function_count,
+        memory.block_count,
+        memory.instruction_count,
+        memory_census.distinct_shapes,
+        memory_census.nodes,
+        memory_census.repeated_occurrences,
+        memory_census.largest_class,
     );
     Ok(())
 }
@@ -362,13 +383,11 @@ fn ingest_contract_ir(
                 // so parse it through riffcat's other front door. Conformance
                 // guarantees the text and JSON paths produce the same AST.
                 match text_result {
-                    Ok(text) if !text.trim().is_empty() => {
-                        parse_object(text).map_err(|error| {
-                            anyhow::anyhow!(
-                                "parsing {variant} IR text for {source}:{contract}: {error}"
-                            )
-                        })?
-                    }
+                    Ok(text) if !text.trim().is_empty() => parse_object(text).map_err(|error| {
+                        anyhow::anyhow!(
+                            "parsing {variant} IR text for {source}:{contract}: {error}"
+                        )
+                    })?,
                     _ => {
                         eprintln!(
                             "WARN: {source}:{contract}: no {variant} IR (neither AST \

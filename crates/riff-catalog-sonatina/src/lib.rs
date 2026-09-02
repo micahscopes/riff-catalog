@@ -5,7 +5,7 @@
 //! call structure without depending on arena numbering. This is intentionally
 //! a read-only adapter: Sonatina and Fe do not depend on riffcat.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use riff_catalog_core::{
     CatalogError, CyclePolicy, Digest, DigestRequest, Dimension, EdgeRole, EntityKey, Facet, Graph,
@@ -17,6 +17,11 @@ use thiserror::Error;
 /// Versioned lowering contract. A change to graph topology or field assignment
 /// requires a new level string.
 pub const SONATINA_IR_LEVEL: &str = "sonatina-ir/1";
+
+/// Versioned projection of Sonatina's explicit memory effects and the address
+/// computations that feed them. This keeps the five catalog dimensions stable
+/// while giving memory placement its own reusable analysis level.
+pub const SONATINA_MEMORY_LEVEL: &str = "sonatina-memory/1";
 
 #[derive(Debug, Error)]
 pub enum LowerError {
@@ -40,9 +45,21 @@ pub enum LowerError {
 
 /// Parse and lower one textual Sonatina module.
 pub fn parse_and_lower_module(owner: &str, source: &str) -> Result<LoweredModule, LowerError> {
+    Ok(parse_and_lower_views(owner, source)?.0)
+}
+
+/// Parse once and derive both the complete IR graph and its memory-effect
+/// projection. Large compiler snapshots should not pay for a second parse just
+/// to ask a placement question.
+pub fn parse_and_lower_views(
+    owner: &str,
+    source: &str,
+) -> Result<(LoweredModule, LoweredModule), LowerError> {
     let parsed = sonatina_parser::parse_module(source)
         .map_err(|error| LowerError::Parse(format!("{error:?}")))?;
-    lower_module(owner, &parsed.module)
+    let lowered = lower_module(owner, &parsed.module)?;
+    let memory = project_memory_module(owner, &lowered)?;
+    Ok((lowered, memory))
 }
 
 #[derive(Clone, Debug)]
@@ -208,11 +225,19 @@ pub fn snapshot_module(
 /// Count anonymous structural subtree classes inside one module graph. Unlike
 /// emitted byte size, this distinguishes novel computation from copied shape.
 pub fn structure_census(lowered: &LoweredModule) -> Result<StructureCensus, LowerError> {
-    let policy = HashPolicy::new(
-        SONATINA_IR_LEVEL,
-        ViewMode::AnonymousShape,
-        CyclePolicy::CondenseScc,
-    )?;
+    structure_census_at_level(lowered, SONATINA_IR_LEVEL)
+}
+
+/// Count anonymous structural classes inside a memory-effect projection.
+pub fn memory_structure_census(lowered: &LoweredModule) -> Result<StructureCensus, LowerError> {
+    structure_census_at_level(lowered, SONATINA_MEMORY_LEVEL)
+}
+
+fn structure_census_at_level(
+    lowered: &LoweredModule,
+    level: &str,
+) -> Result<StructureCensus, LowerError> {
+    let policy = HashPolicy::new(level, ViewMode::AnonymousShape, CyclePolicy::CondenseScc)?;
     let result = digest_graph(
         &DigestRequest::new(lowered.graph_key.clone(), policy, [Dimension::Structure])?,
         &lowered.graph,
@@ -246,6 +271,205 @@ pub fn structure_census(lowered: &LoweredModule) -> Result<StructureCensus, Lowe
         repeated_occurrences: nodes.saturating_sub(distinct_shapes),
         largest_class: classes.first().map_or(0, |class| class.occurrences),
         classes,
+    })
+}
+
+fn operation(node: &riff_catalog_core::Node) -> Option<&str> {
+    node.fields.iter().find_map(|field| {
+        if field.dimension == Dimension::Structure && field.name.as_str() == "operation" {
+            match &field.value {
+                riff_catalog_core::Value::Text(value) => Some(value.as_str()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    })
+}
+
+fn is_memory_operation(operation: &str) -> bool {
+    operation.starts_with("mem.")
+        || operation.starts_with("obj.")
+        || matches!(
+            operation,
+            "mload" | "mstore" | "memcopy" | "memzero" | "alloca"
+        )
+}
+
+fn address_operand(operation: &str, operand: usize) -> bool {
+    match operation {
+        "mem.checkpoint" => false,
+        "mem.alloc_dynamic" | "mem.rewind" | "mload" | "mstore" | "alloca" => operand == 0,
+        "memcopy" => operand <= 2,
+        "memzero" => operand <= 1,
+        operation if operation.starts_with("obj.") => operand == 0,
+        _ => true,
+    }
+}
+
+fn operand_index(label: &str) -> Option<usize> {
+    label.strip_prefix("operand:")?.parse().ok()
+}
+
+/// Project a full Sonatina graph down to explicit memory effects, their
+/// address-producing backward slices, and the containing function/block
+/// topology. Stored values are deliberately not pulled into an `mstore`
+/// address slice, otherwise ordinary arithmetic would swamp the placement
+/// question this view is meant to answer.
+pub fn project_memory_module(
+    owner: &str,
+    lowered: &LoweredModule,
+) -> Result<LoweredModule, LowerError> {
+    let source = &lowered.graph;
+    let memory_owner = EntityKey::new("sonatina.memory", owner, "module")?;
+    let graph_key = GraphKey::new(memory_owner.clone(), "memory")?;
+    let root = NodeKey::entity(memory_owner);
+    let source_root = NodeKey::entity(source.graph_key.owner.clone());
+
+    let mut selected = BTreeSet::new();
+    let mut memory_nodes = Vec::new();
+    for (key, node) in &source.nodes {
+        if operation(node).is_some_and(is_memory_operation) {
+            selected.insert(key.clone());
+            memory_nodes.push(key.clone());
+        }
+    }
+
+    let incoming_data = source
+        .edges
+        .iter()
+        .filter(|edge| edge.role == EdgeRole::Data)
+        .fold(HashMap::<NodeKey, Vec<_>>::new(), |mut by_target, edge| {
+            by_target.entry(edge.target.clone()).or_default().push(edge);
+            by_target
+        });
+    let mut address_work = VecDeque::new();
+    for key in &memory_nodes {
+        let operation = operation(
+            source
+                .nodes
+                .get(key)
+                .expect("a selected memory node must remain present"),
+        )
+        .expect("a selected memory node must carry an operation");
+        for edge in incoming_data.get(key).into_iter().flatten() {
+            if operand_index(edge.label.as_str())
+                .is_some_and(|operand| address_operand(operation, operand))
+            {
+                address_work.push_back(edge.source.clone());
+            }
+        }
+    }
+    while let Some(key) = address_work.pop_front() {
+        if !selected.insert(key.clone()) {
+            continue;
+        }
+        if operation(
+            source
+                .nodes
+                .get(&key)
+                .expect("a data-edge source must remain present"),
+        )
+        .is_some_and(is_memory_operation)
+        {
+            continue;
+        }
+        for edge in incoming_data.get(&key).into_iter().flatten() {
+            address_work.push_back(edge.source.clone());
+        }
+    }
+
+    // Retain the block/function ancestry for every selected instruction or
+    // value. This provides scope and ordering without pulling the complete IR
+    // back into the memory projection.
+    loop {
+        let mut changed = false;
+        for child in &source.children {
+            if selected.contains(&child.child) && child.parent != source_root {
+                changed |= selected.insert(child.parent.clone());
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    // Keep branch terminators between retained blocks so the projection still
+    // distinguishes straight-line, branched, and looping memory lifetimes.
+    let parent_of = source
+        .children
+        .iter()
+        .fold(HashMap::new(), |mut parents, child| {
+            parents.insert(child.child.clone(), child.parent.clone());
+            parents
+        });
+    for edge in source
+        .edges
+        .iter()
+        .filter(|edge| edge.role == EdgeRole::Control)
+    {
+        if selected.contains(&edge.target)
+            && parent_of
+                .get(&edge.source)
+                .is_some_and(|block| selected.contains(block))
+        {
+            selected.insert(edge.source.clone());
+        }
+    }
+
+    let mut graph = Graph::new(graph_key.clone());
+    graph.add_node(root.clone(), "sonatina.memory")?;
+    for key in &selected {
+        let node = source
+            .nodes
+            .get(key)
+            .expect("a projected key must remain present");
+        graph.nodes.insert(key.clone(), node.clone());
+    }
+    for child in &source.children {
+        if child.parent == source_root && selected.contains(&child.child) {
+            graph.add_child(&root, child.label.as_str(), child.ordinal, &child.child)?;
+        } else if selected.contains(&child.parent) && selected.contains(&child.child) {
+            graph.children.push(child.clone());
+        }
+    }
+    graph.edges.extend(
+        source
+            .edges
+            .iter()
+            .filter(|edge| selected.contains(&edge.source) && selected.contains(&edge.target))
+            .cloned(),
+    );
+    graph.validate()?;
+
+    let function_count = graph
+        .nodes
+        .values()
+        .filter(|node| node.kind.as_str() == "sonatina.function")
+        .count();
+    let block_count = graph
+        .nodes
+        .values()
+        .filter(|node| node.kind.as_str() == "sonatina.block")
+        .count();
+    let instruction_count = graph
+        .nodes
+        .values()
+        .filter(|node| node.kind.as_str() == "sonatina.instruction")
+        .count();
+    let call_count = graph
+        .edges
+        .iter()
+        .filter(|edge| edge.role == EdgeRole::Call)
+        .count();
+
+    Ok(LoweredModule {
+        graph_key,
+        graph,
+        function_count,
+        block_count,
+        instruction_count,
+        call_count,
     })
 }
 
@@ -502,6 +726,23 @@ func public %entry(v0.i32) -> i32 {
 }
 "#;
 
+    const MEMORY_MODULE: &str = r#"
+target = "wasm32-unknown-native"
+
+func public %memory(v0.i32) -> i32 {
+    block0:
+        v1.*i8 = mem.checkpoint;
+        v2.i32 = mem.alloc_dynamic 16.i32;
+        v3.i32 = add v2 7.i32;
+        v4.i32 = and v3 -8.i32;
+        v5.i32 = mul v0 9.i32;
+        mstore v4 v5 i32;
+        v6.i32 = mload v4 i32;
+        mem.rewind v1;
+        return v6;
+}
+"#;
+
     #[test]
     fn lowers_typed_data_control_and_call_structure() {
         let lowered = parse_and_lower_module("fixture", MODULE).expect("module should lower");
@@ -556,6 +797,79 @@ func public %entry(v0.i32) -> i32 {
             .values
         };
         assert_eq!(digest(&left), digest(&right));
+    }
+
+    #[test]
+    fn memory_projection_keeps_lifetimes_and_addresses_without_stored_arithmetic() {
+        let (_, memory) =
+            parse_and_lower_views("memory-fixture", MEMORY_MODULE).expect("module should lower");
+        let operations = memory
+            .graph
+            .nodes
+            .values()
+            .filter_map(operation)
+            .collect::<BTreeSet<_>>();
+        for expected in [
+            "mem.checkpoint",
+            "mem.alloc_dynamic",
+            "add",
+            "and",
+            "mstore",
+            "mload",
+            "mem.rewind",
+        ] {
+            assert!(
+                operations.contains(expected),
+                "missing `{expected}`: {operations:?}"
+            );
+        }
+        assert!(
+            !operations.contains("mul"),
+            "the stored value's arithmetic must not swamp the address projection",
+        );
+        assert_eq!(memory.function_count, 1);
+        assert_eq!(memory.block_count, 1);
+        assert!(memory_structure_census(&memory).is_ok());
+    }
+
+    #[test]
+    fn memory_facets_separate_topology_from_allocation_size() {
+        let (_, left) =
+            parse_and_lower_views("left-memory", MEMORY_MODULE).expect("left should lower");
+        let (_, right) = parse_and_lower_views(
+            "right-memory",
+            &MEMORY_MODULE.replace("mem.alloc_dynamic 16.i32", "mem.alloc_dynamic 32.i32"),
+        )
+        .expect("right should lower");
+        let digest = |lowered: &LoweredModule, dimensions: &[Dimension]| {
+            let policy = HashPolicy::new(
+                SONATINA_MEMORY_LEVEL,
+                ViewMode::AnonymousShape,
+                CyclePolicy::CondenseScc,
+            )
+            .unwrap();
+            digest_graph(
+                &DigestRequest::new(
+                    lowered.graph_key.clone(),
+                    policy,
+                    dimensions.iter().copied(),
+                )
+                .unwrap(),
+                &lowered.graph,
+            )
+            .unwrap()
+            .hashes
+            .graph
+            .values
+        };
+        assert_eq!(
+            digest(&left, &[Dimension::Structure]),
+            digest(&right, &[Dimension::Structure]),
+        );
+        assert_ne!(
+            digest(&left, &[Dimension::Structure, Dimension::Constants]),
+            digest(&right, &[Dimension::Structure, Dimension::Constants]),
+        );
     }
 
     #[test]

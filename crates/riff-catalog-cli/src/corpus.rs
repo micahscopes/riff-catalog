@@ -2,7 +2,7 @@
 //! files. Every line is one self-contained record.
 
 use std::collections::BTreeMap;
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 /// prefix, keeping this O(1) regardless of the graph payload's size (a single
 /// graph line can be hundreds of MB). The tag is ASCII, so a byte-level search
 /// is robust to any UTF-8 content further along the line.
-fn line_is_graph_record(line: &str) -> bool {
+fn bytes_start_graph_record(bytes: &[u8]) -> bool {
     const PREFIX: usize = 64;
     const TAG: &[u8] = b"\"record\":\"graph\"";
-    let head = &line.as_bytes()[..line.len().min(PREFIX)];
+    let head = &bytes[..bytes.len().min(PREFIX)];
     head.windows(TAG.len()).any(|window| window == TAG)
 }
 
@@ -145,16 +145,45 @@ impl Corpus {
             if path.extension().is_none_or(|ext| ext != "jsonl") {
                 continue;
             }
-            let content = std::fs::read_to_string(&path)?;
-            for (line_no, line) in content.lines().enumerate() {
+            let file = std::fs::File::open(&path)?;
+            let mut reader = BufReader::new(file);
+            let mut line_no = 0usize;
+            loop {
+                let prefix = reader.fill_buf()?;
+                if prefix.is_empty() {
+                    break;
+                }
+                line_no += 1;
+                if bytes_start_graph_record(prefix) {
+                    // Graph records can be close to a gigabyte because JSONL
+                    // stores one graph on one line. Discard the line directly
+                    // from the buffered reader instead of allocating it merely
+                    // to discover the tag and skip it.
+                    loop {
+                        let available = reader.fill_buf()?;
+                        if available.is_empty() {
+                            break;
+                        }
+                        match available.iter().position(|byte| *byte == b'\n') {
+                            Some(end) => {
+                                reader.consume(end + 1);
+                                break;
+                            }
+                            None => {
+                                let length = available.len();
+                                reader.consume(length);
+                            }
+                        }
+                    }
+                    continue;
+                }
+                let mut line = String::new();
+                reader.read_line(&mut line)?;
                 if line.trim().is_empty() {
                     continue;
                 }
-                if line_is_graph_record(line) {
-                    continue;
-                }
-                let record: Record = serde_json::from_str(line)
-                    .with_context(|| format!("parsing {}:{}", path.display(), line_no + 1))?;
+                let record: Record = serde_json::from_str(&line)
+                    .with_context(|| format!("parsing {}:{}", path.display(), line_no))?;
                 records.push(record);
             }
         }
@@ -310,6 +339,34 @@ mod tests {
         assert!(matches!(
             &records[1],
             Record::Artifact { artifact_id, .. } if artifact_id == "second"
+        ));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn non_graph_reader_stream_discards_large_graph_records() {
+        let directory =
+            std::env::temp_dir().join(format!("riffcat-streamed-corpus-{}", std::process::id()));
+        if directory.exists() {
+            std::fs::remove_dir_all(&directory).unwrap();
+        }
+        let corpus = Corpus::open(&directory).unwrap();
+        let path = directory.join("records.jsonl");
+        let mut writer = BufWriter::new(std::fs::File::create(&path).unwrap());
+        writer
+            .write_all(b"{\"record\":\"graph\",\"padding\":\"")
+            .unwrap();
+        writer.write_all(&vec![b'x'; 1024 * 1024]).unwrap();
+        writer.write_all(b"\"}\n").unwrap();
+        serde_json::to_writer(&mut writer, &artifact("after-graph")).unwrap();
+        writer.write_all(b"\n").unwrap();
+        writer.flush().unwrap();
+
+        let records = corpus.load_non_graph_records().unwrap();
+        assert_eq!(records.len(), 1);
+        assert!(matches!(
+            &records[0],
+            Record::Artifact { artifact_id, .. } if artifact_id == "after-graph"
         ));
         std::fs::remove_dir_all(directory).unwrap();
     }
