@@ -96,6 +96,12 @@ prove that a lowering preserves behavior. Call, data, and control edges stay
 in the graph's structural topology, while names and origins remain available
 for identity and provenance-sensitive views.
 
+Compiler investigations often need more than one linear before and after pair.
+[`docs/compiler-sequence-views.md`](docs/compiler-sequence-views.md) describes
+the planned ragged product of lowering-stage and compiler-world DAGs, including
+analysis projections, causal edges, build coordinates, and measurements that
+remain deliberately separate from the five semantic digest dimensions.
+
 ## Where this came from
 
 Successor to the `shape-address` prototype in the fe repo, redesigned per
