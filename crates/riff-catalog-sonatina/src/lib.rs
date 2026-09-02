@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use riff_catalog_core::{
-    CatalogError, CyclePolicy, Digest, DigestRequest, Dimension, EdgeRole, EntityKey, Graph,
+    CatalogError, CyclePolicy, Digest, DigestRequest, Dimension, EdgeRole, EntityKey, Facet, Graph,
     GraphKey, HashPolicy, NodeKey, ViewMode, digest_graph,
 };
 use sonatina_ir::{Immediate, Module, Value, ir_writer::IrWrite, module::FuncRef};
@@ -68,6 +68,141 @@ pub struct StructureCensus {
     pub repeated_occurrences: usize,
     pub largest_class: usize,
     pub classes: Vec<ShapeClass>,
+}
+
+/// A compact, content-addressed observation of one live compiler phase.
+///
+/// The digest intentionally excludes names and arena identities. It commits to
+/// structure, types, and constants, so the same computation observed under a
+/// different function name remains comparable while a semantic rewrite moves
+/// the digest.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleSnapshot {
+    pub phase: String,
+    pub anonymous_digest: Digest,
+    pub function_count: usize,
+    pub block_count: usize,
+    pub instruction_count: usize,
+    pub call_count: usize,
+    pub census: StructureCensus,
+}
+
+/// Signed changes between adjacent compiler-phase observations.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleDelta {
+    pub before: String,
+    pub after: String,
+    pub digest_changed: bool,
+    pub functions: i64,
+    pub blocks: i64,
+    pub instructions: i64,
+    pub calls: i64,
+    pub nodes: i64,
+    pub distinct_shapes: i64,
+    pub repeated_occurrences: i64,
+    pub largest_class: i64,
+}
+
+/// Ordered in-memory observations of one module as it crosses compiler phases.
+///
+/// This owns only compact measurements, not cloned IR or graphs. Compiler
+/// observers can therefore retain a complete timeline without extending the
+/// lifetime of any intermediate module.
+#[derive(Clone, Debug)]
+pub struct ModuleTimeline {
+    owner: String,
+    snapshots: Vec<ModuleSnapshot>,
+}
+
+impl ModuleTimeline {
+    pub fn new(owner: impl Into<String>) -> Self {
+        Self {
+            owner: owner.into(),
+            snapshots: Vec::new(),
+        }
+    }
+
+    pub fn observe(
+        &mut self,
+        phase: impl Into<String>,
+        module: &Module,
+    ) -> Result<&ModuleSnapshot, LowerError> {
+        self.snapshots
+            .push(snapshot_module(&self.owner, phase, module)?);
+        Ok(self
+            .snapshots
+            .last()
+            .expect("a snapshot was appended immediately above"))
+    }
+
+    pub fn snapshots(&self) -> &[ModuleSnapshot] {
+        &self.snapshots
+    }
+
+    pub fn deltas(&self) -> impl Iterator<Item = ModuleDelta> + '_ {
+        self.snapshots
+            .windows(2)
+            .map(|pair| ModuleDelta::between(&pair[0], &pair[1]))
+    }
+}
+
+impl ModuleDelta {
+    fn between(before: &ModuleSnapshot, after: &ModuleSnapshot) -> Self {
+        fn delta(before: usize, after: usize) -> i64 {
+            if after >= before {
+                i64::try_from(after - before).unwrap_or(i64::MAX)
+            } else {
+                -i64::try_from(before - after).unwrap_or(i64::MAX)
+            }
+        }
+
+        Self {
+            before: before.phase.clone(),
+            after: after.phase.clone(),
+            digest_changed: before.anonymous_digest != after.anonymous_digest,
+            functions: delta(before.function_count, after.function_count),
+            blocks: delta(before.block_count, after.block_count),
+            instructions: delta(before.instruction_count, after.instruction_count),
+            calls: delta(before.call_count, after.call_count),
+            nodes: delta(before.census.nodes, after.census.nodes),
+            distinct_shapes: delta(before.census.distinct_shapes, after.census.distinct_shapes),
+            repeated_occurrences: delta(
+                before.census.repeated_occurrences,
+                after.census.repeated_occurrences,
+            ),
+            largest_class: delta(before.census.largest_class, after.census.largest_class),
+        }
+    }
+}
+
+/// Observe a live Sonatina module without serializing it through textual IR.
+pub fn snapshot_module(
+    owner: &str,
+    phase: impl Into<String>,
+    module: &Module,
+) -> Result<ModuleSnapshot, LowerError> {
+    let lowered = lower_module(owner, module)?;
+    let census = structure_census(&lowered)?;
+    let dimensions = [Dimension::Structure, Dimension::Types, Dimension::Constants];
+    let policy = HashPolicy::new(
+        SONATINA_IR_LEVEL,
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    )?;
+    let request = DigestRequest::new(lowered.graph_key.clone(), policy, dimensions)?;
+    let facet = Facet::new(request.policy_id(), dimensions)?;
+    let result = digest_graph(&request, &lowered.graph)?;
+    let anonymous_digest = result.hashes.facet_address(&facet)?.address_digest();
+
+    Ok(ModuleSnapshot {
+        phase: phase.into(),
+        anonymous_digest,
+        function_count: lowered.function_count,
+        block_count: lowered.block_count,
+        instruction_count: lowered.instruction_count,
+        call_count: lowered.call_count,
+        census,
+    })
 }
 
 /// Count anonymous structural subtree classes inside one module graph. Unlike
@@ -421,5 +556,38 @@ func public %entry(v0.i32) -> i32 {
             .values
         };
         assert_eq!(digest(&left), digest(&right));
+    }
+
+    #[test]
+    fn records_live_phase_deltas_without_serializing_ir() {
+        let parsed = sonatina_parser::parse_module(MODULE).expect("module should parse");
+        let mut timeline = ModuleTimeline::new("pipeline-fixture");
+        let initial = timeline
+            .observe("lowered", &parsed.module)
+            .expect("initial phase should lower")
+            .clone();
+
+        let changed_source = MODULE
+            .replacen(
+                "v2.i32 = add v1 3.i32;",
+                "v2.i32 = add v1 3.i32;\n        v3.i32 = add v2 5.i32;",
+                1,
+            )
+            .replacen("return v2;", "return v3;", 1);
+        let changed =
+            sonatina_parser::parse_module(&changed_source).expect("changed module should parse");
+        let final_snapshot = timeline
+            .observe("optimized", &changed.module)
+            .expect("changed phase should lower")
+            .clone();
+
+        assert_ne!(initial.anonymous_digest, final_snapshot.anonymous_digest);
+        let deltas = timeline.deltas().collect::<Vec<_>>();
+        assert_eq!(deltas.len(), 1);
+        assert_eq!(deltas[0].before, "lowered");
+        assert_eq!(deltas[0].after, "optimized");
+        assert!(deltas[0].digest_changed);
+        assert_eq!(deltas[0].instructions, 1);
+        assert!(deltas[0].nodes > 0);
     }
 }
