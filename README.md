@@ -73,6 +73,16 @@ and attestations live under `riffcat claim --help` and
 `riffcat attest --help`; `riffcat conformance` runs the dual-path and
 SSA-round-trip drift detectors over local `.sol` files.
 
+For Sonatina snapshots, use `structure` to measure anonymous topology and
+repeated shapes, `structure+types` to include representation and ABI changes,
+`structure+constants` to include generated literal content, and
+`structure+types+constants` for the usual compiler-growth inquiry. These are
+query-time projections of the same stored digests. They are analysis facets,
+not correctness claims: a smaller repeated-shape count does not by itself
+prove that a lowering preserves behavior. Call, data, and control edges stay
+in the graph's structural topology, while names and origins remain available
+for identity and provenance-sensitive views.
+
 ## Where this came from
 
 Successor to the `shape-address` prototype in the fe repo, redesigned per
