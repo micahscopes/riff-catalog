@@ -978,6 +978,7 @@ dependencies = [
  "riff-catalog-claims",
  "riff-catalog-core",
  "riff-catalog-evm",
+ "riff-catalog-fe-rmir",
  "riff-catalog-solc",
  "riff-catalog-solidity",
  "riff-catalog-sonatina",
@@ -1005,6 +1006,15 @@ name = "riff-catalog-evm"
 version = "0.1.0"
 dependencies = [
  "riff-catalog-core",
+ "thiserror",
+]
+
+[[package]]
+name = "riff-catalog-fe-rmir"
+version = "0.1.0"
+dependencies = [
+ "riff-catalog-core",
+ "sha2",
  "thiserror",
 ]
 
