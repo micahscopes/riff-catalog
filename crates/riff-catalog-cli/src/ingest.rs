@@ -1,7 +1,7 @@
 //! `riffcat ingest`: compile artifacts and write graphs + digests into the
-//! corpus. Every unit is hashed under exactly two policies per level —
-//! identity-bound and anonymous-shape, all dimensions, CondenseScc — and
-//! query-time facets are dimension subsets (invariant I9).
+//! corpus. Every unit is hashed under exactly two policies per level:
+//! identity-bound and anonymous-shape, all dimensions, CondenseScc. Query-time
+//! facets are dimension subsets (invariant I9).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -11,6 +11,10 @@ use riff_catalog_core::{
     CyclePolicy, DigestRequest, Graph, GraphKey, HashPolicy, ViewMode, digest_graph,
 };
 use riff_catalog_evm::{BytecodeKind, EVM_LEVEL, lower_bytecode};
+use riff_catalog_fe_rmir::{
+    FE_RMIR_AGGREGATE_LEVEL, FE_RMIR_LEVEL, aggregate_structure_census,
+    parse_and_lower_views as parse_and_lower_rmir_views, structure_census as rmir_structure_census,
+};
 use riff_catalog_solc::{CachedSolc, CompileOptions, Pipeline, SolcOutput, SolcRunner};
 use riff_catalog_solidity::{SOL_AST_LEVEL, WalkOptions, lower_source_unit};
 use riff_catalog_sonatina::{
@@ -92,7 +96,9 @@ pub fn run(corpus: &Corpus, args: &IngestArgs) -> Result<()> {
     }
 
     for (origin, name, content) in &sources {
-        if name.ends_with(".sona") {
+        if name.ends_with(".rmir") {
+            ingest_fe_rmir(corpus, args, origin, name, content)?;
+        } else if name.ends_with(".sona") {
             ingest_sonatina(corpus, args, origin, name, content)?;
         } else if name.ends_with(".yul") {
             ingest_yul(corpus, &solc, args, origin, name, content)?;
@@ -105,6 +111,71 @@ pub fn run(corpus: &Corpus, args: &IngestArgs) -> Result<()> {
         ingest_sourcify(corpus, args, spec)?;
     }
 
+    Ok(())
+}
+
+fn ingest_fe_rmir(
+    corpus: &Corpus,
+    args: &IngestArgs,
+    origin: &str,
+    name: &str,
+    content: &str,
+) -> Result<()> {
+    let owner = format!("rmir:{name}");
+    let artifact = artifact_id(&owner, origin, false);
+    let (lowered, aggregate) = parse_and_lower_rmir_views(&owner, content)
+        .with_context(|| format!("parsing and lowering {name}"))?;
+    let census = rmir_structure_census(&lowered)?;
+    let aggregate_census = aggregate_structure_census(&aggregate)?;
+    let mut records = vec![artifact_record(
+        &artifact, &owner, origin, "fe-rmir", false, None, args,
+    )];
+    emit_unit(
+        &mut records,
+        &artifact,
+        &owner,
+        FE_RMIR_LEVEL,
+        "rmir-package",
+        name,
+        &lowered.graph_key,
+        &lowered.graph,
+    )?;
+    emit_unit(
+        &mut records,
+        &artifact,
+        &owner,
+        FE_RMIR_AGGREGATE_LEVEL,
+        "rmir-aggregate",
+        name,
+        &aggregate.graph_key,
+        &aggregate.graph,
+    )?;
+
+    let stem = format!(
+        "{}-{}",
+        name.trim_end_matches(".rmir").replace(['/', '\\'], "_"),
+        short_origin_hash(origin),
+    );
+    corpus.replace(&stem, &records)?;
+    println!(
+        "ingested {name}: {} records, {} functions, {} blocks, {} statements, {} calls, {} structural shapes across {} nodes ({} repeated occurrences, largest class {}); aggregate projection: {} functions, {} blocks, {} statements, {} shapes across {} nodes ({} repeated occurrences, largest class {})",
+        records.len(),
+        lowered.function_count,
+        lowered.block_count,
+        lowered.statement_count,
+        lowered.call_count,
+        census.distinct_shapes,
+        census.nodes,
+        census.repeated_occurrences,
+        census.largest_class,
+        aggregate.function_count,
+        aggregate.block_count,
+        aggregate.statement_count,
+        aggregate_census.distinct_shapes,
+        aggregate_census.nodes,
+        aggregate_census.repeated_occurrences,
+        aggregate_census.largest_class,
+    );
     Ok(())
 }
 
@@ -185,7 +256,7 @@ fn want_unit(args: &IngestArgs, unit: &str) -> bool {
 
 /// Includes the origin (full user-supplied path / sourcify ref), so
 /// src/Foo.sol and test/Foo.sol stay distinct artifacts even though their
-/// basenames — and therefore their owner strings — collide (external review
+/// basenames, and therefore their owner strings, collide (external review
 /// pass 2, P2). Owner collisions still merge IDENTITY-mode node keys; the
 /// ingester warns when that happens.
 fn artifact_id(owner: &str, origin: &str, optimize: bool) -> String {
@@ -358,8 +429,8 @@ fn ingest_contract_ir(
     // yul-ast level: unoptimized + optimized IR ASTs.
     // Interfaces/abstract contracts surface these keys as JSON null (Ok(null)),
     // which we skip quietly. A *missing* key (Err) means solc emitted no IR AST
-    // at all — typically a compiler older than irAst support (< ~0.8.21), e.g. a
-    // version-pinned sourcify contract — so warn loudly rather than silently
+    // at all, typically a compiler older than irAst support (< ~0.8.21), e.g. a
+    // version-pinned sourcify contract, so warn loudly rather than silently
     // staging a corpus with no IR units (which makes IR-level queries empty).
     for (variant, ast_result, text_result) in [
         (
@@ -379,7 +450,7 @@ fn ingest_contract_ir(
             Err(_) => {
                 // No IR-AST JSON. solc ICEs serializing it (and yulCFGJson) on
                 // some ~0.8.25–0.8.29 contracts, and it didn't exist before
-                // ~0.8.21 — but the *text* IR is clean across that whole range,
+                // ~0.8.21, but the *text* IR is clean across that whole range,
                 // so parse it through riffcat's other front door. Conformance
                 // guarantees the text and JSON paths produce the same AST.
                 match text_result {
@@ -642,7 +713,7 @@ fn ingest_sourcify(corpus: &Corpus, args: &IngestArgs, spec: &str) -> Result<()>
 
     let mut records = Vec::new();
     let origin = format!("sourcify:{}:{}", id.chain_id, id.address);
-    // The verified pin — provenance only, never folded into the shape.
+    // The verified pin is provenance only, never folded into the shape.
     let compiler = Some(contract.compiler_version.as_str());
 
     // Source ASTs for every source file in the verified bundle.

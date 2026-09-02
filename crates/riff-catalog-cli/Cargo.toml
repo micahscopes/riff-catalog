@@ -18,6 +18,7 @@ riff-catalog-yul.workspace = true
 riff-catalog-solidity.workspace = true
 riff-catalog-evm.workspace = true
 riff-catalog-sonatina.workspace = true
+riff-catalog-fe-rmir.workspace = true
 riff-catalog-sourcify.workspace = true
 clap.workspace = true
 anyhow.workspace = true

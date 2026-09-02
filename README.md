@@ -28,6 +28,7 @@ compiler's origin keys at the boundary.
 | `riff-catalog-solidity` | `sol-ast/1`: declarative nodeType-profile walker over raw AST JSON |
 | `riff-catalog-evm` | `evm/1`: opcodes → structure, PUSH immediates → constants |
 | `riff-catalog-sonatina` | `sonatina-ir/1`: typed control/data/call graphs plus anonymous structural repetition census |
+| `riff-catalog-fe-rmir` | `fe-rmir/1` and `fe-rmir-aggregate/1`: stable Fe runtime-MIR topology plus aggregate/materialization data slices |
 | `riff-catalog-sourcify` | fetch + cache verified contracts, reconstruct standard-json, recompile locally |
 | `riff-catalog-cli` | the `riffcat` binary |
 
@@ -67,9 +68,12 @@ $ examples/03-shared-shape-census.sh
 ```
 
 Local `.sol` files ingest too (`riffcat ingest Contract.sol`, needs solc
-on PATH or `--solc`), as do direct `.sona` Sonatina IR snapshots and Yul at the SSA level via solc's
-`yulCFGJson` (the ingestion path for fe-emitted Yul). Witnessed claims
-and attestations live under `riffcat claim --help` and
+on PATH or `--solc`), as do direct `.sona` Sonatina IR snapshots, Fe `.rmir`
+observations, and Yul at the SSA level via solc's `yulCFGJson` (the ingestion
+path for fe-emitted Yul). Set `FE_RUNTIME_IR_SNAPSHOT_DIR` while compiling Fe
+to emit content-addressed `.rmir` files. Their full `rmir-package` graph and
+focused `rmir-aggregate` data slice are both emitted by one ingest. Witnessed
+claims and attestations live under `riffcat claim --help` and
 `riffcat attest --help`; `riffcat conformance` runs the dual-path and
 SSA-round-trip drift detectors over local `.sol` files.
 
