@@ -27,6 +27,7 @@ compiler's origin keys at the boundary.
 | `riff-catalog-yul` | one Yul AST, two front doors (solc JSON + own zero-dep text parser); `yul-ast/1` and `yul-ssa-cfg/1` lowerings |
 | `riff-catalog-solidity` | `sol-ast/1`: declarative nodeType-profile walker over raw AST JSON |
 | `riff-catalog-evm` | `evm/1`: opcodes → structure, PUSH immediates → constants |
+| `riff-catalog-sonatina` | `sonatina-ir/1`: typed control/data/call graphs plus anonymous structural repetition census |
 | `riff-catalog-sourcify` | fetch + cache verified contracts, reconstruct standard-json, recompile locally |
 | `riff-catalog-cli` | the `riffcat` binary |
 
@@ -66,7 +67,7 @@ $ examples/03-shared-shape-census.sh
 ```
 
 Local `.sol` files ingest too (`riffcat ingest Contract.sol`, needs solc
-on PATH or `--solc`), as does direct Yul at the SSA level via solc's
+on PATH or `--solc`), as do direct `.sona` Sonatina IR snapshots and Yul at the SSA level via solc's
 `yulCFGJson` (the ingestion path for fe-emitted Yul). Witnessed claims
 and attestations live under `riffcat claim --help` and
 `riffcat attest --help`; `riffcat conformance` runs the dual-path and

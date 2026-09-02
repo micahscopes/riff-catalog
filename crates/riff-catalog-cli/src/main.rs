@@ -54,7 +54,7 @@ fn default_cache_dir() -> String {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Compile artifacts (.sol, .yul, sourcify refs) and write graphs +
+    /// Compile or parse artifacts (.sol, .yul, .sona, sourcify refs) and write graphs +
     /// digests into the corpus.
     Ingest {
         /// Files to ingest.
@@ -64,8 +64,8 @@ enum Command {
         sourcify: Vec<String>,
         #[arg(long, default_value = "both")]
         optimize: String,
-        /// Units to emit: fn,object,ssa,evm (sol-contract/sol-fn always on
-        /// for .sol inputs).
+        /// Units to emit: fn,object,ssa,evm (sol-contract/sol-fn and
+        /// sona-module are always on for their respective inputs).
         #[arg(long, default_value = "fn,object,ssa")]
         units: String,
         /// Error on unknown Solidity node types instead of tagging them.

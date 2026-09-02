@@ -19,7 +19,11 @@ riff-catalog-solc = { path = "crates/riff-catalog-solc" }
 riff-catalog-yul = { path = "crates/riff-catalog-yul" }
 riff-catalog-solidity = { path = "crates/riff-catalog-solidity" }
 riff-catalog-evm = { path = "crates/riff-catalog-evm" }
+riff-catalog-sonatina = { path = "crates/riff-catalog-sonatina" }
 riff-catalog-sourcify = { path = "crates/riff-catalog-sourcify" }
+
+sonatina-ir = { git = "https://github.com/micahscopes/sonatina", rev = "5ca2825babfc3621fb9db72cadea2e4ef59ddbcc" }
+sonatina-parser = { git = "https://github.com/micahscopes/sonatina", rev = "5ca2825babfc3621fb9db72cadea2e4ef59ddbcc" }
 
 blake3 = "1"
 serde = { version = "1", features = ["derive"] }
