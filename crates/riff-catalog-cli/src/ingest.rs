@@ -12,9 +12,10 @@ use riff_catalog_core::{
 };
 use riff_catalog_evm::{BytecodeKind, EVM_LEVEL, lower_bytecode};
 use riff_catalog_fe_rmir::{
-    FE_RMIR_AGGREGATE_LEVEL, FE_RMIR_CALL_LEVEL, FE_RMIR_LEVEL, FE_RMIR_MATERIALIZATION_LEVEL,
-    aggregate_structure_census, call_structure_census, materialization_structure_census,
-    parse_and_lower_analysis_views, structure_census as rmir_structure_census,
+    FE_RMIR_AGGREGATE_LEVEL, FE_RMIR_CALL_LEVEL, FE_RMIR_FUNCTION_LEVEL, FE_RMIR_LEVEL,
+    FE_RMIR_MATERIALIZATION_LEVEL, aggregate_structure_census, call_structure_census,
+    function_structure_census, materialization_structure_census, parse_and_lower_analysis_views,
+    project_function_packages, structure_census as rmir_structure_census,
 };
 use riff_catalog_solc::{CachedSolc, CompileOptions, Pipeline, SolcOutput, SolcRunner};
 use riff_catalog_solidity::{SOL_AST_LEVEL, WalkOptions, lower_source_unit};
@@ -134,6 +135,13 @@ fn ingest_fe_rmir(
     let aggregate_census = aggregate_structure_census(&aggregate)?;
     let materialization_census = materialization_structure_census(materialization)?;
     let call_census = call_structure_census(calls)?;
+    let functions = want_unit(args, "rmir-function")
+        .then(|| project_function_packages(&owner, lowered))
+        .transpose()?
+        .unwrap_or_default();
+    let function_census = (!functions.is_empty())
+        .then(|| function_structure_census(&functions))
+        .transpose()?;
     let mut records = vec![artifact_record(
         &artifact, &owner, origin, "fe-rmir", false, None, args,
     )];
@@ -177,6 +185,18 @@ fn ingest_fe_rmir(
         &calls.graph_key,
         &calls.graph,
     )?;
+    for function in &functions {
+        emit_unit(
+            &mut records,
+            &artifact,
+            &owner,
+            FE_RMIR_FUNCTION_LEVEL,
+            "rmir-function",
+            &format!("{name}::{}", function.symbol),
+            &function.lowered.graph_key,
+            &function.lowered.graph,
+        )?;
+    }
 
     let stem = format!(
         "{}-{}",
@@ -213,6 +233,15 @@ fn ingest_fe_rmir(
         call_census.repeated_occurrences,
         call_census.largest_class,
     );
+    if let Some(census) = function_census {
+        println!(
+            "function bodies: {} functions, {} structural classes ({} repeated occurrences, largest class {})",
+            census.functions,
+            census.distinct_shapes,
+            census.repeated_occurrences,
+            census.largest_class,
+        );
+    }
     Ok(())
 }
 

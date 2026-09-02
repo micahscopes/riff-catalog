@@ -76,8 +76,14 @@ to emit content-addressed `.rmir` files. One ingest emits the full
 `rmir-materialization` frontier, and the `rmir-call` frontier. The thin views
 separate representation pressure and helper fan-out from unrelated producer
 work, making pre-inline growth attributable without changing the five digest
-dimensions. Witnessed claims and attestations live under `riffcat claim --help` and
-`riffcat attest --help`; `riffcat conformance` runs the dual-path and
+dimensions. Add `--units rmir-function` to emit one complete-body unit per Fe
+function. Direct callees remain lightweight but carry their complete anonymous
+body digests in every facet dimension, so buckets can find post-erasure
+duplicate candidates without confusing wrappers that call different helpers.
+Use at least `structure+constants` when constants affect semantics, and retain
+independent behavior gates before changing compiler ownership. Witnessed
+claims and attestations live under `riffcat claim --help` and `riffcat attest
+--help`; `riffcat conformance` runs the dual-path and
 SSA-round-trip drift detectors over local `.sol` files.
 
 For Sonatina snapshots, use `structure` to measure anonymous topology and
