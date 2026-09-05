@@ -69,6 +69,9 @@ The read-only supplementary scripts are
   many-interval cases against masks. Logs:
   `/workspace/scratch/riffcat-census-lean-20260905.log` and
   `/workspace/scratch/riffcat-census-bridge-final-20260905.log`.
+  A deliberately wrong coverage vector also exits nonzero with `coverage vector
+  mismatch`; `/workspace/scratch/riffcat-census-bridge-negative-20260905.log`
+  records that negative control.
 
 ## Go / no-go
 
