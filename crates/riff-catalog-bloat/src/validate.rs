@@ -5,10 +5,10 @@ use anyhow::{Result, anyhow, bail};
 use crate::*;
 
 pub fn validate(file: &CaptureFile) -> Result<()> {
-    if file.schema != SCHEMA_VERSION {
+    if file.schema != SCHEMA_VERSION && file.schema != LEGACY_SCHEMA_VERSION {
         bail!("unsupported schema `{}`", file.schema);
     }
-    if file.capture_id != capture_id(&file.capture)? {
+    if file.capture_id != crate::manifest::capture_id_for_schema(&file.capture, &file.schema)? {
         bail!("capture ID does not match the immutable capture body");
     }
     nonempty("capture label", &file.capture.label)?;
@@ -19,10 +19,35 @@ pub fn validate(file: &CaptureFile) -> Result<()> {
         file.capture.artifacts.iter().map(|a| a.id.as_str()),
         "artifact",
     )?;
+    if let CaptureCompletion::Complete { producer_marker } = &file.capture.completion {
+        nonempty("capture completion marker", producer_marker)?;
+    }
+    if let CaptureCompletion::Incomplete { reason } = &file.capture.completion {
+        nonempty("incomplete capture reason", reason)?;
+    }
+    nonempty(
+        "intervention kind",
+        if file.capture.intervention.kind.is_empty() {
+            "none"
+        } else {
+            &file.capture.intervention.kind
+        },
+    )?;
     for artifact in &file.capture.artifacts {
         nonempty("artifact path", &artifact.path)?;
         if artifact.blake3.len() != 64 || !artifact.blake3.bytes().all(|b| b.is_ascii_hexdigit()) {
             bail!("artifact `{}` has an invalid blake3 digest", artifact.id);
+        }
+        for (algorithm, digest) in &artifact.producer_digests {
+            if algorithm.is_empty()
+                || digest.is_empty()
+                || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                bail!(
+                    "artifact `{}` has invalid producer digest `{algorithm}`",
+                    artifact.id
+                );
+            }
         }
     }
 
@@ -159,6 +184,51 @@ pub fn validate(file: &CaptureFile) -> Result<()> {
             bail!("conflicting inline events describe the same stage-local fact");
         }
         validate_evidence(&artifacts, &stage_ids, &event.evidence)?;
+    }
+    let mut clone_facts = BTreeSet::new();
+    for observation in &file.capture.clone_observations {
+        validate_function_ref(&stage_map, &observation.caller)?;
+        validate_function_ref(&stage_map, &observation.callee)?;
+        if !stage_ids.contains(observation.observation_stage.as_str()) {
+            bail!(
+                "clone observation references missing stage `{}`",
+                observation.observation_stage
+            );
+        }
+        if observation.callsites == 0
+            || observation.surviving_original_ids > observation.cloned_instructions
+        {
+            bail!("clone observation has invalid callsite or literal survival counts");
+        }
+        let fact = (
+            &observation.observation_stage,
+            observation.compiler_frontier,
+            &observation.compiler_stage,
+            &observation.caller,
+            &observation.callee,
+        );
+        if !clone_facts.insert(fact) {
+            bail!("duplicate structured clone observation");
+        }
+        validate_evidence(&artifacts, &stage_ids, &observation.evidence)?;
+    }
+    for decision in &file.capture.decisions {
+        if !stage_ids.contains(decision.stage.as_str()) {
+            bail!("decision references missing stage `{}`", decision.stage);
+        }
+        if let Some(subject) = &decision.subject {
+            validate_function_ref(&stage_map, subject)?;
+        }
+        validate_evidence(&artifacts, &stage_ids, &decision.evidence)?;
+    }
+    for reference in file
+        .capture
+        .intervention
+        .resolved
+        .iter()
+        .chain(&file.capture.intervention.consequential)
+    {
+        validate_function_ref(&stage_map, reference)?;
     }
     let mut compatibility_facts = BTreeSet::new();
     for observation in &file.capture.compatibility_observations {

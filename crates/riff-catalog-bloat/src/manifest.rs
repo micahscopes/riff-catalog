@@ -28,10 +28,14 @@ pub fn artifact_digest(path: &Path) -> Result<(String, u64)> {
 }
 
 pub fn capture_id(capture: &Capture) -> Result<String> {
+    capture_id_for_schema(capture, SCHEMA_VERSION)
+}
+
+pub(crate) fn capture_id_for_schema(capture: &Capture, schema: &str) -> Result<String> {
     let body = serde_json::to_vec(capture)?;
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"riff-catalog-bloat:capture-id\0");
-    hasher.update(SCHEMA_VERSION.as_bytes());
+    hasher.update(schema.as_bytes());
     hasher.update(b"\0");
     hasher.update(&body);
     Ok(hasher.finalize().to_hex().to_string())
@@ -55,7 +59,7 @@ pub fn save_capture(path: &Path, capture: Capture) -> Result<CaptureFile> {
             .with_context(|| format!("write capture {}", path.display()))?,
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             let existing = load_capture(path)?;
-            if existing != file {
+            if existing.schema != file.schema || existing.capture_id != file.capture_id {
                 bail!("refusing to overwrite immutable capture {}", path.display());
             }
         }

@@ -12,6 +12,8 @@
     "compiler_id": "synthetic-compiler-v1",
     "settings": {"inline": "example"}
   },
+  "completion": {"status": "complete", "producer_marker": "synthetic fixture is complete"},
+  "intervention": {"kind": "none", "requested": [], "resolved": [], "consequential": []},
   "artifacts": [],
   "stages": [
     {

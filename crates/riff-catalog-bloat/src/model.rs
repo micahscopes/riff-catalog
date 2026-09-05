@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA_VERSION: &str = "riff-catalog-bloat/1";
+pub const SCHEMA_VERSION: &str = "riff-catalog-bloat/2";
+pub const LEGACY_SCHEMA_VERSION: &str = "riff-catalog-bloat/1";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -18,11 +19,19 @@ pub struct Capture {
     pub label: String,
     pub provenance: Provenance,
     pub alignment: Alignment,
+    #[serde(default, skip_serializing_if = "CaptureCompletion::is_legacy_unknown")]
+    pub completion: CaptureCompletion,
+    #[serde(default, skip_serializing_if = "Intervention::is_none")]
+    pub intervention: Intervention,
     #[serde(default)]
     pub artifacts: Vec<Artifact>,
     pub stages: Vec<Stage>,
     #[serde(default)]
     pub inline_events: Vec<InlineEvent>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clone_observations: Vec<CloneObservation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<Decision>,
     #[serde(default)]
     pub compatibility_observations: Vec<CompatibilityObservation>,
 }
@@ -56,6 +65,63 @@ pub struct Artifact {
     pub path: String,
     pub blake3: String,
     pub bytes: u64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub producer_digests: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CaptureCompletion {
+    Complete {
+        producer_marker: String,
+    },
+    Failed {
+        message: String,
+        last_stage: Option<String>,
+    },
+    Incomplete {
+        reason: String,
+    },
+    #[default]
+    LegacyUnknown,
+}
+
+impl CaptureCompletion {
+    pub fn is_legacy_unknown(&self) -> bool {
+        matches!(self, Self::LegacyUnknown)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Intervention {
+    pub kind: String,
+    #[serde(default)]
+    pub requested: Vec<String>,
+    #[serde(default)]
+    pub resolved: Vec<FunctionRef>,
+    #[serde(default)]
+    pub consequential: Vec<FunctionRef>,
+}
+
+impl Intervention {
+    pub fn none() -> Self {
+        Self {
+            kind: "none".into(),
+            requested: Vec::new(),
+            resolved: Vec::new(),
+            consequential: Vec::new(),
+        }
+    }
+    pub fn is_none(&self) -> bool {
+        self.kind.is_empty() || self.kind == "none"
+    }
+}
+
+impl Default for Intervention {
+    fn default() -> Self {
+        Self::none()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,7 +235,7 @@ pub struct Measurement {
     pub evidence: Evidence,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionRef {
     pub stage: String,
@@ -190,6 +256,53 @@ pub struct InlineEvent {
     /// stage. This is not a count of rewritten descendants.
     pub surviving_original_ids: Option<u64>,
     pub evidence: Evidence,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloneObservation {
+    pub observation_stage: String,
+    pub compiler_frontier: u64,
+    pub compiler_stage: String,
+    pub caller: FunctionRef,
+    pub callee: FunctionRef,
+    pub callsites: u64,
+    pub cloned_instructions: u64,
+    pub surviving_original_ids: u64,
+    pub evidence: Evidence,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Decision {
+    pub stage: String,
+    pub subject: Option<FunctionRef>,
+    pub decision: DecisionKind,
+    pub evidence: Evidence,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DecisionKind {
+    ExactFunctionMerge {
+        candidate_functions: u64,
+        merged_functions: u64,
+        rewritten_references: u64,
+        refinement_rounds: u64,
+    },
+    BackendCallable {
+        variants: u64,
+        instructions: u64,
+        accesses_resource: bool,
+        maximum_physical_parameters: u64,
+    },
+    BackendRejected {
+        reason: String,
+    },
+    BaselineRetained,
+    FrontendRetained,
+    ForcedInline,
+    ConsequentialInline,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

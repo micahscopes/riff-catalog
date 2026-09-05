@@ -5,9 +5,9 @@ evidence. It seals a versioned JSON capture, validates its stage DAG and
 stage-local function IDs, computes module, root-body, and reachable-union
 instruction totals, and replays deterministic JSON or a short table.
 
-This first slice does not change optimization behavior. It has no Sonatina
-dependency. An adapter imports existing Fe stderr traces as explicitly weaker
-compatibility evidence.
+The toolkit has no Sonatina dependency. It imports neutral structured compiler
+events, and a compatibility adapter imports older Fe stderr traces as
+explicitly weaker evidence.
 
 See [the historical Fe pilot](docs/historical-pilot.md) for a replayed real-log
 walkthrough and its evidence limits.
@@ -94,6 +94,52 @@ separate from any producer or test-reported byte count in stderr. For example,
 `sonatina spirv: emitted wgsl, bytes=...` and a later test harness byte count are
 distinct compatibility measurements, not interchangeable artifact facts.
 
+## Import structured Fe events
+
+The instrumented Fe worktree used by this pilot can write a bounded JSONL request capture when
+`FE_BLOAT_CAPTURE_DIR` is set. It writes nothing when the variable is absent.
+Each request gets its own directory containing `events.jsonl` and exact emitted
+artifacts. The final `capture_completed` record is required for a complete
+capture. A missing marker remains explicitly incomplete, and records after a
+completion or failure marker are rejected.
+
+```sh
+cargo run -p riff-catalog-bloat -- import-events \
+  --events /workspace/scratch/fe-bloat/request-0000-main/events.jsonl \
+  --output /workspace/scratch/fe-baseline.capture.json \
+  --label scalar-helper-baseline \
+  --source-id 'blake3:SOURCE_DIGEST' \
+  --compiler-id 'fe:REVISION' \
+  --producer-revision 'FE_REVISION' \
+  --command 'cargo run -p fe-codegen --example bloat_capture_kernel -- ...' \
+  --setting target=webgpu
+
+cargo run -p riff-catalog-bloat -- replay \
+  /workspace/scratch/fe-baseline.capture.json --json
+```
+
+The importer checks event ordering, one request ID, stage and predecessor
+references, intervention name resolution, completion state, and the exact byte
+length, producer SHA-256, and independent BLAKE3 of every linked artifact.
+Artifact paths must remain inside the request directory. Graph totals are a
+static direct-function closure over captured functions and all instructions in
+their layout blocks. They are not path-feasible CFG instruction totals.
+
+The structured stream is bounded to 100,000 records and 64 MiB. Fe also limits
+each linked artifact to 256 MiB. Hitting a bound fails the compile and cannot
+produce a successful completion marker.
+
+Schema `riff-catalog-bloat/2` adds explicit completion, intervention,
+structured clone observations, and decisions. Existing version 1 capture files
+remain readable and immutable. To add version 2 facts, import or seal into a
+new filename. Do not overwrite or relabel a version 1 capture.
+
+For a controlled Fe variant, `FE_BLOAT_FORCE_INLINE_HELPERS=mix_words` accepts
+only an exact, unambiguous backend-callable helper that baseline policy would
+retain. Unknown, ambiguous, rejected, empty, and duplicate selections fail.
+Dependency-closure consequences are recorded separately, so comparison does
+not claim that only the named helper changed.
+
 ## Capture Fe stderr
 
 The currently useful Fe environment is:
@@ -154,5 +200,7 @@ after inlining is not by itself avoidable bloat.
 WL/facet equality is candidate evidence only. Exact region matching still
 needs a declared boundary, ordered operand and alias wiring, effects, and an
 appropriate checker. Port/result-lane matching, effect matching, exact region
-matching, behavior oracles, Naga/WGSL structural adapters, and profitable
-compiler interventions remain future work.
+matching, Naga/WGSL structural adapters, and profitability analysis remain
+future work. This pilot's named-helper policy is a controlled intervention, not
+a profitability claim. Its finite GPU oracle can test the selected fixture and
+driver, but it is not a general behavior-equivalence proof.

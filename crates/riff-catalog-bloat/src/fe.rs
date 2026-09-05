@@ -33,6 +33,7 @@ pub fn import_fe_trace(input: FeImport) -> Result<Capture> {
         path: trace_path.display().to_string(),
         blake3: trace_digest,
         bytes: trace_bytes,
+        producer_digests: BTreeMap::new(),
     }];
     if let Some(path) = &input.wgsl {
         let path =
@@ -44,6 +45,7 @@ pub fn import_fe_trace(input: FeImport) -> Result<Capture> {
             path: path.display().to_string(),
             blake3: digest,
             bytes,
+            producer_digests: BTreeMap::new(),
         });
     }
 
@@ -342,7 +344,10 @@ pub fn import_fe_trace(input: FeImport) -> Result<Capture> {
                 "surviving_original_ids counts literal retained instruction IDs, not rewritten descendants.".into(),
                 "The stderr trace does not prove a direct call graph, clone caller identity, removability, or semantic equivalence.".into()] },
         alignment: Alignment { source_id: input.source_id, compiler_id: input.compiler_id, settings: input.settings },
-        artifacts, stages, inline_events: Vec::new(), compatibility_observations: observations,
+        completion: CaptureCompletion::Incomplete { reason: "stderr compatibility input has no machine-readable compiler completion marker".into() },
+        intervention: Intervention::none(),
+        artifacts, stages, inline_events: Vec::new(), clone_observations: Vec::new(),
+        decisions: Vec::new(), compatibility_observations: observations,
     })
 }
 
