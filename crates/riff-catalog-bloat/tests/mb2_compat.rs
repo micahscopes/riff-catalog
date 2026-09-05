@@ -41,6 +41,7 @@ impl Drop for Request {
 
 #[test]
 fn real_complete_and_budget_partial_replay_deterministically() {
+    let mut censuses = Vec::new();
     for kind in ["complete", "partial"] {
         let request = Request::new(kind, "replay");
         let capture = request.import().unwrap();
@@ -54,6 +55,25 @@ fn real_complete_and_budget_partial_replay_deterministically() {
         let path = request.0.join("capture.json");
         let sealed = save_capture(&path, capture).unwrap();
         verify_artifacts(&path, &sealed).unwrap();
+        let census_path = request.0.join("census.json");
+        let census = save_census(
+            &census_path,
+            CensusSource::Capture {
+                path: path.clone(),
+                artifact_id: "shader.wgsl".into(),
+                regions: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            census.census.capture_context.as_ref().unwrap().completion,
+            sealed.capture.completion
+        );
+        assert_eq!(
+            replay_census(&census_path).unwrap().census_id,
+            census.census_id
+        );
+        censuses.push(census);
         let replay = || {
             let output = Command::new(env!("CARGO_BIN_EXE_riffcat-bloat"))
                 .arg("replay")
@@ -80,10 +100,15 @@ fn real_complete_and_budget_partial_replay_deterministically() {
             altered[0] ^= 1;
             fs::write(&artifact, altered).unwrap();
             assert!(verify_artifacts(&path, &sealed).is_err());
+            assert!(replay_census(&census_path).is_err());
             assert!(request.import().is_err());
             fs::write(&artifact, original).unwrap();
         }
     }
+    let comparison = compare_censuses(&censuses[0], &censuses[1]);
+    assert!(
+        render_census_comparison(&comparison, 5).contains("WARNING: right capture is not complete")
+    );
 }
 
 #[test]

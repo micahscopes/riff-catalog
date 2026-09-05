@@ -84,7 +84,7 @@ pub fn load_capture(path: &Path) -> Result<CaptureFile> {
     Ok(file)
 }
 
-fn resolve_artifact(capture_path: &Path, artifact_path: &str) -> PathBuf {
+pub(crate) fn resolve_artifact(capture_path: &Path, artifact_path: &str) -> PathBuf {
     let path = Path::new(artifact_path);
     if path.is_absolute() {
         path.to_owned()

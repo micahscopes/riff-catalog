@@ -7,6 +7,8 @@ instruction totals, and replays deterministic JSON or a short table.
 
 Start with the [diagnosis quickstart](docs/diagnose.md) for existing MB2 captures,
 growth inspection and the evidence needed for a correctness investigation.
+Use the [artifact census](docs/artifact-census.md) to rank exact emitted function
+sizes and repeated direct-copy sequences, save evidence and compare outputs.
 
 The toolkit has no Sonatina dependency. It imports neutral structured compiler
 events, and a compatibility adapter imports older Fe stderr traces as

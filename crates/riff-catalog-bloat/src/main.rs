@@ -16,6 +16,50 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Verify a saved census by recomputing it from its source.
+    CensusReplay {
+        census: PathBuf,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+    },
+    /// Replay two censuses and compare bytes using explicit alignment hints.
+    CensusCompare {
+        left: PathBuf,
+        right: PathBuf,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+    },
+    /// Census an artifact from a verified capture, preserving completion/provenance.
+    CensusCapture {
+        capture: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[arg(long, default_value = "shader.wgsl")]
+        artifact: String,
+        #[arg(long)]
+        regions: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+    },
+    /// Measure exact artifact regions and scoped textual repetition, not savings.
+    Census {
+        artifact: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Digest-bound riffcat-regions/1 manifest for arbitrary artifact formats.
+        #[arg(long)]
+        regions: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+    },
     /// Seal a compiler-independent Capture JSON body into an immutable capture.
     Seal {
         #[arg(long)]
@@ -89,6 +133,75 @@ enum Command {
 
 fn main() -> Result<()> {
     match Cli::parse().command {
+        Command::CensusReplay { census, json, top } => {
+            let file = replay_census(&census)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&file.census)?);
+            } else {
+                print!("{}", render_census(&file.census, top));
+            }
+        }
+        Command::CensusCompare {
+            left,
+            right,
+            json,
+            top,
+        } => {
+            let left = replay_census(&left)?;
+            let right = replay_census(&right)?;
+            let value = compare_censuses(&left, &right);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&value)?);
+            } else {
+                print!("{}", render_census_comparison(&value, top));
+            }
+        }
+        Command::CensusCapture {
+            capture,
+            output,
+            artifact,
+            regions,
+            json,
+            top,
+        } => {
+            let source = CensusSource::Capture {
+                path: capture,
+                artifact_id: artifact,
+                regions,
+            };
+            let value = if let Some(path) = output {
+                save_census(&path, source)?.census
+            } else {
+                source.run()?
+            };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&value)?);
+            } else {
+                print!("{}", render_census(&value, top));
+            }
+        }
+        Command::Census {
+            artifact,
+            output,
+            regions,
+            json,
+            top,
+        } => {
+            let source = CensusSource::Artifact {
+                path: artifact,
+                regions,
+            };
+            let value = if let Some(path) = output {
+                save_census(&path, source)?.census
+            } else {
+                source.run()?
+            };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&value)?);
+            } else {
+                print!("{}", render_census(&value, top));
+            }
+        }
         Command::Seal { input, output } => {
             if fs::metadata(&input)?.len() > 256 * 1024 * 1024 {
                 bail!("capture body exceeds 256 MiB limit");

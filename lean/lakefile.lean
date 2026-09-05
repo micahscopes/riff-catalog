@@ -30,3 +30,6 @@ lean_exe «check» where
 /-- Computes exact EVM top-SWAP costs and checked witnesses for riff-cat cases. -/
 lean_exe «shuffle_oracle» where
   root := `ShuffleOracleMain
+
+lean_exe «census_bridge» where
+  root := `CensusBridgeMain
