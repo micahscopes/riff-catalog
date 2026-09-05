@@ -457,6 +457,7 @@ fn raw_measurement(raw: RawMeasurement) -> Result<Measurement> {
     let quantity = match raw.unit.as_str() {
         "instructions" => Quantity::Instructions(raw.value),
         "functions" => Quantity::Functions(raw.value),
+        "callsites" => Quantity::Callsites(raw.value),
         other => bail!("unsupported Fe measurement unit `{other}`"),
     };
     Ok(Measurement {

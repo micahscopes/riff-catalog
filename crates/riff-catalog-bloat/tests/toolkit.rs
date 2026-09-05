@@ -290,6 +290,12 @@ fn structured_fe_events_import_graphs_decisions_clones_and_exact_artifacts() {
     assert_eq!(capture.intervention.resolved.len(), 1);
     assert_eq!(capture.inline_events.len(), 1);
     assert_eq!(capture.clone_observations.len(), 1);
+    assert!(capture.stages.iter().any(|stage| {
+        stage.measurements.iter().any(|measurement| {
+            measurement.name == "inliner_calls_spliced"
+                && measurement.quantity == Quantity::Callsites(1)
+        })
+    }));
     assert!(
         capture
             .decisions

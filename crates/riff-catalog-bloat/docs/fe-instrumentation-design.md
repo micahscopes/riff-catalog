@@ -1,8 +1,9 @@
 # Fe code-growth instrumentation: design and MB2 integration handoff
 
-Status: local implementation, live compiler validation still pending when this
-note was written (2026-09-05). This is not an upstream feature or a claim of
-measured optimization savings. See [live-pilot.md](live-pilot.md) for commands.
+Status: local implementation with a verified contained live pilot (2026-09-05).
+This is not an upstream feature or broad optimization recommendation. See
+[live-results.md](live-results.md) for measurements and limits, and
+[live-pilot.md](live-pilot.md) for commands.
 
 ## Purpose and boundary
 
@@ -103,6 +104,10 @@ cost of collecting clone IDs or constructing graph snapshots.
   indirect calls make attribution incomplete.
 - Inline events describe new compiler clone records at a frontier. Clone census
   rows repeatedly inspect accumulated records. Never sum census across stages.
+  These detailed records currently cover Sonatina's full inliner only. Its
+  trivial/fast path has aggregate `InlineStats` but no full-clone records. The
+  preliminary scalar pilot exercised that path, so zero detailed records did
+  not mean zero inlining. Aggregate counters must be retained alongside them.
 - Original-ID survival means those exact cloned IDs remain inserted in the
   caller. It says nothing about rewritten descendants.
 - Capture hashes commit to the serialized evidence, including provenance and
@@ -137,6 +142,9 @@ measurement sink must not acquire the ability to select optimizations.
    preserve explicit incomplete/error state either way.
 3. Add typed events at the transforms that already know the facts. Start with
    rooted inlining: distinguish new clone events from later survival observations.
+   Cover both `trivial::apply_plan` and full inlining; otherwise tiny helper
+   expansion disappears from detailed attribution. Until both paths expose
+   detailed facts, declare the coverage and preserve aggregate counters.
    Then expose exact-function-merge aliases and forwarded/dead return-lane changes
    if the transform actually provides the mappings. Missing mappings stay absent.
 4. Let Fe adapt these callbacks into the current request writer. Add capability
@@ -188,7 +196,8 @@ Source context: session `01a06e1b-f1c4-7861-a0f3-86188a264dfa`; this note was
 checked against the live local worktrees, not just earlier plans.
 
 - Fe: `/workspace/fe-worktrees/bloat-toolkit`, branch `bloat-toolkit`, base
-  `1de776e33a3d844cf723159d54c4b7f0d3b5ae8c`. The files listed above are in flight.
+  `1de776e33a3d844cf723159d54c4b7f0d3b5ae8c`, completed local instrumentation commit
+  `908116b4b0714a36fb77bb53808d2762c2f6c4e8`. The compatibility repair is separate.
 - Toolkit: `/workspace/riff-catalog-worktrees/bloat-toolkit`, branch
   `bloat-toolkit`, implementation commit `8c1ba34`, preceded by `63fad74`.
 - Existing pins: Sonatina `54c6c63307eedfffaed4c538b1049ae81683b33b`, Naga fork
@@ -201,10 +210,21 @@ Done: structured importer, schema, accounting checks, regression fixtures, and
 runbook. Full toolkit gate: `cargo nextest run --workspace`, 165 passed / 1 skipped.
 Legacy capture replay retains its original address and unknown completion status.
 
-Doing: first Fe examples build and live validation. No live size or behavior
-result is claimed here yet. Next: compile baseline/variant, verify exact outputs,
-execute the finite-domain oracle and negative control, run focused Fe regressions,
-then attach measured results and final Fe revision.
+Done live: baseline and variant captured/imported/replayed, WGSL 518 to 422 bytes,
+independent finite-domain execution passed for both, negative controls rejected,
+focused Fe regressions passed. See the results note for exact scope and evidence.
+The pilot also added aggregate counters for the fast inliner, whose detailed
+clone records are unavailable. An additional existing MB2 round-interaction
+compile test positively exercised full-inliner recording: 24 callsites, 1,246
+cloned instructions, and 546 cumulative census rows, imported and artifact-verified.
+That extra kernel received compiler validation, not an independent GPU oracle.
+Its backend artifact and outer WebBundle test report different byte counts;
+later bundle-output capture is a useful additional instrumentation boundary.
+
+Next integration work, not already implemented: agree on an optional Sonatina
+observer boundary and extend coverage without merging competing instrumentation
+changes blindly. The current Fe slice is ready for review; no implementation
+ownership transfer or push authorization is implied by this note.
 
 Later: reusable Sonatina callbacks, broader MB2 corpus, backend-internal
 attribution, structural region matching. Set aside for this slice: compiler-wide

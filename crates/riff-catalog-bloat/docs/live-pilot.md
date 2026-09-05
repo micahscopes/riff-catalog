@@ -106,6 +106,8 @@ relabeling a capture changes its content address, even with identical shaders.
 export XDG_CACHE_HOME=/workspace/.cache
 export MESA_SHADER_CACHE_DIR=/workspace/.cache/mesa
 export WGPU_BACKEND=vulkan
+# This VM's Vulkan loader. Other hosts should use their installed loader path.
+export LD_LIBRARY_PATH=/nix/store/7krvb015vp4wq7lj6v3wadjy4q9asc8q-vulkan-loader-1.4.341.0/lib
 
 "$BLOAT_EXAMPLES/bloat_gpu_oracle" \
   "$BLOAT_RUN/baseline.wgsl" \
@@ -118,6 +120,11 @@ and reports adapter details and digests of the exact shaders and output pixels.
 On this VM the available device is software Vulkan, not physical GPU hardware.
 Passing is evidence for this finite domain on that device, not general program
 equivalence or a GPU performance result.
+
+On this Nix VM, `vulkaninfo` can work while the example cannot load Vulkan:
+`vulkaninfo` has a loader RUNPATH that the Rust binary lacks. The explicit
+`LD_LIBRARY_PATH` above resolved that observed difference. This is a runtime
+configuration requirement, not a shader validation result.
 
 The negative control below must exit unsuccessfully with a pixel mismatch. It
 is valid WGSL that returns zero, so parsing alone cannot make the test pass.
