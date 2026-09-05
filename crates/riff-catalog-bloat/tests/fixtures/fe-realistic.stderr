@@ -1,0 +1,15 @@
+fe spirv exact function merge: candidates=2, merged=0, rewritten_refs=0, rounds=1, functions=2->2, instructions=10->10
+fe spirv inliner: strategy=rooted, functions=2, roots=1, preserved_helpers=1, initial_insts=10
+fe spirv rooted inliner: frontier=0, changed=true, after_inline_insts=12
+fe spirv rooted helper clones: frontier=0, stage=after_inline, callee=helper_a, callsites=1, cloned_insts=4, surviving_insts=4
+fe spirv rooted cleanup: frontier=0, pass=sccp, before_insts=12
+fe spirv rooted cleanup: frontier=0, pass=sccp, after_insts=9
+fe spirv rooted helper clones: frontier=0, stage=sccp, callee=helper_a, callsites=1, cloned_insts=4, surviving_insts=2
+fe spirv rooted inliner: frontier=0, after_cleanup_insts=9
+fe spirv exact function merge: candidates=389, merged=253, rewritten_refs=400, rounds=8, functions=389->136, instructions=7540->3771
+fe spirv inliner: strategy=rooted, functions=136, roots=1, preserved_helpers=25, initial_insts=3
+fe spirv rooted inliner: frontier=0, changed=true, after_inline_insts=595
+fe spirv rooted inliner: frontier=0, after_cleanup_insts=592
+fe spirv rooted helper clones: frontier=0, stage=cfg_cleanup, callee=sparse_helper, callsites=2, cloned_insts=40, surviving_insts=31
+sonatina spirv: emitted wgsl, bytes=408158, elapsed_ms=2, total_elapsed_ms=89
+streaming round-interaction WGSL: 408152 bytes
