@@ -29,6 +29,7 @@ compiler's origin keys at the boundary.
 | `riff-catalog-evm` | `evm/1`: opcodes → structure, PUSH immediates → constants |
 | `riff-catalog-sonatina` | `sonatina-ir/1`: typed control/data/call graphs plus anonymous structural repetition census |
 | `riff-catalog-fe-rmir` | stable Fe runtime-MIR topology with aggregate slices plus thin materialization and call frontiers |
+| `riff-catalog-bloat` | versioned compiler-growth captures, deterministic reports, comparison, and bounded Fe stderr import |
 | `riff-catalog-sourcify` | fetch + cache verified contracts, reconstruct standard-json, recompile locally |
 | `riff-catalog-cli` | the `riffcat` binary |
 

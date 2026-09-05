@@ -959,6 +959,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "riff-catalog-bloat"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "riff-catalog-claims"
 version = "0.1.0"
 dependencies = [
