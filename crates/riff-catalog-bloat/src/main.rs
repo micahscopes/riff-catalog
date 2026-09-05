@@ -46,6 +46,25 @@ enum Command {
         #[arg(long = "env", value_parser = key_value)]
         environment: Vec<(String, String)>,
     },
+    /// Import versioned machine-readable events emitted by Fe.
+    ImportEvents {
+        #[arg(long)]
+        events: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        source_id: String,
+        #[arg(long)]
+        compiler_id: String,
+        #[arg(long, default_value = "unknown")]
+        producer_revision: String,
+        #[arg(long, default_value = "unknown")]
+        command: String,
+        #[arg(long = "setting", value_parser = key_value)]
+        settings: Vec<(String, String)>,
+    },
     Report {
         capture: PathBuf,
         #[arg(long)]
@@ -100,6 +119,27 @@ fn main() -> Result<()> {
                 command,
                 settings: collect_unique(settings)?,
                 environment: collect_unique(environment)?,
+            })?;
+            println!("{}", save_capture(&output, capture)?.capture_id);
+        }
+        Command::ImportEvents {
+            events,
+            output,
+            label,
+            source_id,
+            compiler_id,
+            producer_revision,
+            command,
+            settings,
+        } => {
+            let capture = import_fe_events(FeEventsImport {
+                events,
+                label,
+                source_id,
+                compiler_id,
+                producer_revision,
+                command,
+                settings: collect_unique(settings)?,
             })?;
             println!("{}", save_capture(&output, capture)?.capture_id);
         }

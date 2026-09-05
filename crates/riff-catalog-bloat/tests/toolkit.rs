@@ -3,6 +3,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use riff_catalog_bloat::*;
@@ -23,8 +24,12 @@ fn general_capture() -> Capture {
 fn scratch(name: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     PathBuf::from("/workspace/scratch").join(format!(
-        "riffcat-bloat-test-{}-{}-{name}",
+        "riffcat-bloat-test-{}-{}-{}-{name}",
         std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ))
 }
@@ -210,6 +215,7 @@ fn sealing_and_reports_are_repeatable_and_artifact_tampering_fails() {
         path: artifact.display().to_string(),
         blake3: digest,
         bytes,
+        producer_digests: BTreeMap::new(),
     });
     let first = save_capture(&output, capture.clone()).unwrap();
     let second = save_capture(&output, capture).unwrap();
@@ -262,4 +268,102 @@ fn strict_numeric_and_duplicate_fact_validation_fails_closed() {
             .to_string()
             .contains("duplicate direct-call")
     );
+}
+
+#[test]
+fn structured_fe_events_import_graphs_decisions_clones_and_exact_artifacts() {
+    let capture = import_fe_events(FeEventsImport {
+        events: fixture("structured-request/events.jsonl"),
+        label: "structured fixture".into(),
+        source_id: "sha256:fixture-source".into(),
+        compiler_id: "fe:fixture".into(),
+        producer_revision: "fixture-revision".into(),
+        command: "fixture command".into(),
+        settings: BTreeMap::new(),
+    })
+    .unwrap();
+    assert!(matches!(
+        capture.completion,
+        CaptureCompletion::Complete { .. }
+    ));
+    assert_eq!(capture.intervention.requested, ["mix_words"]);
+    assert_eq!(capture.intervention.resolved.len(), 1);
+    assert_eq!(capture.inline_events.len(), 1);
+    assert_eq!(capture.clone_observations.len(), 1);
+    assert!(
+        capture
+            .decisions
+            .iter()
+            .any(|decision| matches!(decision.decision, DecisionKind::ForcedInline))
+    );
+    assert!(
+        capture
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.role == ArtifactRole::EmittedWgsl && artifact.bytes == 73)
+    );
+    let file = CaptureFile {
+        schema: SCHEMA_VERSION.into(),
+        capture_id: capture_id(&capture).unwrap(),
+        capture,
+    };
+    validate(&file).unwrap();
+}
+
+#[test]
+fn structured_event_import_is_fail_visible_for_truncation_and_bad_sequence() {
+    let original = fs::read_to_string(fixture("structured-request/events.jsonl")).unwrap();
+    let truncated_path = scratch("truncated-events.jsonl");
+    let mut lines = original.lines().collect::<Vec<_>>();
+    lines.pop();
+    lines.pop();
+    fs::write(&truncated_path, format!("{}\n", lines.join("\n"))).unwrap();
+    let imported = import_fe_events(FeEventsImport {
+        events: truncated_path.clone(),
+        label: "truncated".into(),
+        source_id: "fixture".into(),
+        compiler_id: "fixture".into(),
+        producer_revision: "fixture".into(),
+        command: "fixture".into(),
+        settings: BTreeMap::new(),
+    })
+    .unwrap();
+    assert!(matches!(
+        imported.completion,
+        CaptureCompletion::Incomplete { .. }
+    ));
+    let imported_file = CaptureFile {
+        schema: SCHEMA_VERSION.into(),
+        capture_id: capture_id(&imported).unwrap(),
+        capture: imported,
+    };
+    assert!(render_table(&report(&imported_file)).contains("completion\tincomplete"));
+    let mut failed_file = imported_file.clone();
+    failed_file.capture.completion = CaptureCompletion::Failed {
+        message: "fixture failure".into(),
+        last_stage: None,
+    };
+    failed_file.capture_id = capture_id(&failed_file.capture).unwrap();
+    assert!(render_table(&report(&failed_file)).contains("completion\tfailed"));
+    fs::remove_file(&truncated_path).unwrap();
+
+    let bad_path = scratch("bad-sequence-events.jsonl");
+    fs::write(
+        &bad_path,
+        original.replacen("\"sequence\":1", "\"sequence\":8", 1),
+    )
+    .unwrap();
+    assert!(
+        import_fe_events(FeEventsImport {
+            events: bad_path.clone(),
+            label: "bad".into(),
+            source_id: "fixture".into(),
+            compiler_id: "fixture".into(),
+            producer_revision: "fixture".into(),
+            command: "fixture".into(),
+            settings: BTreeMap::new()
+        })
+        .is_err()
+    );
+    fs::remove_file(bad_path).unwrap();
 }

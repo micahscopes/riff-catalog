@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CaptureFile, CompatibilityObservation, Evidence, InlineEvent, MeasurementScope, Quantity,
-    reachable_union,
+    CaptureCompletion, CaptureFile, CloneObservation, CompatibilityObservation, Decision, Evidence,
+    InlineEvent, Intervention, MeasurementScope, Quantity, reachable_union,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,10 +13,14 @@ pub struct Report {
     pub schema: String,
     pub capture_id: String,
     pub label: String,
+    pub completion: CaptureCompletion,
+    pub intervention: Intervention,
     pub stages: Vec<StageReport>,
     pub helper_observations: Vec<HelperReport>,
     pub latest_helper_observations: Vec<HelperReport>,
     pub inline_events: Vec<InlineEvent>,
+    pub clone_observations: Vec<CloneObservation>,
+    pub decisions: Vec<Decision>,
     pub unparsed_compiler_lines: usize,
     pub caveats: Vec<String>,
 }
@@ -180,10 +184,14 @@ pub fn report(file: &CaptureFile) -> Report {
         schema: "riff-catalog-bloat-report/1".into(),
         capture_id: file.capture_id.clone(),
         label: file.capture.label.clone(),
+        completion: file.capture.completion.clone(),
+        intervention: file.capture.intervention.clone(),
         stages,
         helper_observations,
         latest_helper_observations: latest.into_values().collect(),
         inline_events: file.capture.inline_events.clone(),
+        clone_observations: file.capture.clone_observations.clone(),
+        decisions: file.capture.decisions.clone(),
         unparsed_compiler_lines,
         caveats: file.capture.provenance.notes.clone(),
     }
@@ -220,7 +228,40 @@ fn helper_report(value: &CompatibilityObservation) -> Option<HelperReport> {
 }
 
 pub fn render_table(report: &Report) -> String {
-    let mut out = String::from("stage\tmeasurement\tscope\tvalue\n");
+    let completion = match &report.completion {
+        CaptureCompletion::Complete { producer_marker } => {
+            format!("complete ({producer_marker})")
+        }
+        CaptureCompletion::Failed {
+            message,
+            last_stage,
+        } => format!(
+            "failed at {} ({message})",
+            last_stage.as_deref().unwrap_or("unknown stage")
+        ),
+        CaptureCompletion::Incomplete { reason } => format!("incomplete ({reason})"),
+        CaptureCompletion::LegacyUnknown => "legacy unknown".into(),
+    };
+    let intervention = if report.intervention.is_none() {
+        "none".into()
+    } else {
+        format!(
+            "{} requested=[{}] resolved={} consequential={}",
+            report.intervention.kind,
+            report.intervention.requested.join(","),
+            report.intervention.resolved.len(),
+            report.intervention.consequential.len()
+        )
+    };
+    let mut out = format!(
+        "capture\t{}\ncompletion\t{}\nintervention\t{}\nstructured\tinline_events={} clone_observations={} decisions={} (use --json for typed rows)\nstage\tmeasurement\tscope\tvalue\n",
+        report.capture_id,
+        completion,
+        intervention,
+        report.inline_events.len(),
+        report.clone_observations.len(),
+        report.decisions.len()
+    );
     for stage in &report.stages {
         for m in &stage.recorded_measurements {
             out.push_str(&format!(
@@ -385,6 +426,17 @@ fn measurement_map(file: &CaptureFile) -> BTreeMap<String, String> {
         .expect("graph comparison evidence serializes");
         out.insert(graph_key, graph_value);
     }
+    out.insert(
+        serde_json::to_string(&("capture", "completion_and_intervention")).expect("key serializes"),
+        serde_json::to_string(&(
+            &file.capture.completion,
+            &file.capture.intervention,
+            &file.capture.decisions,
+            &file.capture.inline_events,
+            &file.capture.clone_observations,
+        ))
+        .expect("capture evidence serializes"),
+    );
     for stage in report(file).stages {
         for computed in stage.computed_scopes {
             let key = serde_json::to_string(&(
