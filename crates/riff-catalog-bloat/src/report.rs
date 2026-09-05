@@ -254,7 +254,7 @@ pub fn render_table(report: &Report) -> String {
         )
     };
     let mut out = format!(
-        "capture\t{}\ncompletion\t{}\nintervention\t{}\nstructured\tinline_events={} clone_observations={} decisions={} (use --json for typed rows)\nstage\tmeasurement\tscope\tvalue\n",
+        "capture\t{}\ncompletion\t{}\nintervention\t{}\nstructured\tfull-inliner clone-record events={} clone_observations={} decisions={} (use --json for typed rows)\nstage\tmeasurement\tscope\tvalue\n",
         report.capture_id,
         completion,
         intervention,

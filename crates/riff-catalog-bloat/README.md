@@ -14,6 +14,8 @@ walkthrough and its evidence limits.
 
 For compiler integration, see the [Fe design and MB2 handoff](docs/fe-instrumentation-design.md),
 including proposed reusable Sonatina observation hooks and migration checks.
+The [live runbook](docs/live-pilot.md) and [verified results](docs/live-results.md)
+cover the contained retained-helper versus inline experiment.
 
 ## Try the synthetic general capture
 
@@ -131,6 +133,13 @@ their layout blocks. They are not path-feasible CFG instruction totals.
 The structured stream is bounded to 100,000 records and 64 MiB. Fe also limits
 each linked artifact to 256 MiB. Hitting a bound fails the compile and cannot
 produce a successful completion marker.
+
+Every rooted frontier records aggregate inliner call and instruction counts.
+Structured caller/callee inline events and clone census rows are emitted only
+for the full-inliner path because Sonatina's trivial remove, rewrite, and splice
+paths do not expose clone-ID records. Zero detailed rows therefore does not
+mean zero inlining. Use the aggregate `inliner_calls_*` measurements to decide
+whether a frontier changed before interpreting detailed rows.
 
 Schema `riff-catalog-bloat/2` adds explicit completion, intervention,
 structured clone observations, and decisions. Existing version 1 capture files
