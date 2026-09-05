@@ -12,6 +12,9 @@ explicitly weaker evidence.
 See [the historical Fe pilot](docs/historical-pilot.md) for a replayed real-log
 walkthrough and its evidence limits.
 
+For compiler integration, see the [Fe design and MB2 handoff](docs/fe-instrumentation-design.md),
+including proposed reusable Sonatina observation hooks and migration checks.
+
 ## Try the synthetic general capture
 
 All checked-in fixtures are synthetic illustrations. They are not compiler
