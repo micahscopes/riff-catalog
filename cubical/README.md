@@ -29,6 +29,28 @@ BLAKE3 and would be huge). This is the capstone witness on the cubical-specific 
    inversion group action, the set class as a quotient, the prime form as the
    normalization, and major and minor triads landing in the same set class (Forte
    3-11, prime form `[0, 3, 7]`), as a checked example that computes.
+5. Composition is facet-safe exactly when the operation cannot observe distinctions
+   the input facets forgot. `Riffcat.Composition` constructs the descended query and
+   linker with `rec`/`rec2`; both commuting squares compute by `refl`. Its converse
+   proves the stability evidence is necessary, not decoration. A concrete two-port
+   example then shows a coarse facet losing a link-critical label and a residual
+   restoring enough information for the linker to descend.
+6. The useful kinds of linking form a small ladder. Preservation gives safe descent
+   and reuse. Reflection says the output kept every distinction in the selected
+   input observation. Both together give an exact change key. Exact reconstruction
+   is stronger again: it needs a residual and a round-trip law.
+7. Addressed documents can be modeled as bundles of named parts. A consumer declares
+   which parts it observes, so a link between two parts does not acquire accidental
+   dependencies on the rest of the document. Facet-safe links and serial queries
+   compose.
+8. Salsa 0.28.2 supplies one operational reading: dependency equality permits reuse;
+   changed dependencies may require a rerun; equal rerun output is backdated; only
+   changed output forces downstream regeneration.
+9. Cache invalidation is proof-relevant and dimension-indexed, rather than one global
+   dirty bit.  Per-facet change evidence forms an algebra, and compiler passes
+   transport that evidence while preserving empty changes and merging.  Causal cache
+   receipts add horizon-relative liveness, atomic support bundles, transitive
+   retraction, and checked hard revision filters.
 
 ## The modules
 
@@ -50,7 +72,44 @@ BLAKE3 and would be huge). This is the capstone witness on the cubical-specific 
   concrete instance (parity on the naturals) where `parity-rides : cong parityFact
   (eq/ 0 2 r) ≡ refl` holds by `refl`, and the endpoints reduce to actual booleans.
   Nothing is postulated in this module.
-- `Riffcat/Music.agda` (Deliverable 4): pitch-class sets as 12-bit characteristic
+- `Riffcat/Composition.agda` (Deliverable 4): PROOFS AS DOCUMENTATION for faceted
+  queries and linking. `QueryTransport` states the Salsa-style reuse contract;
+  `FacetLink` proves that independently faceting two inputs and then linking agrees
+  with linking first and observing the output; `FacetLinkNecessary` proves the
+  converse obligation. `Remembering` models a residual as the small saved distinction
+  a later operation still needs. `PortExample` is fully concrete: forgetting a Bool
+  port label breaks linking congruence, while remembering it restores a commuting
+  linker. The construction and path-action laws compute by `refl`.
+- `Riffcat/LinkingKinds.agda` (Deliverable 5): a checked map of the design space.
+  `Preserves`, `Reflects`, and `SameKernel` state exactly what follows from a
+  transformation; their composition laws are proved. `LosslessWithResidual`
+  separates exact reconstruction from approximate guessing. `Parts` models a
+  document as named, independently addressed parts and proves selected-part linking
+  and serial query composition.
+- `Riffcat/Salsa.agda` (Deliverable 6): the public red-green contract of Salsa
+  0.28.2, presented as one operational interpretation of the general laws. It
+  distinguishes reuse, backdating, and output change. Its concrete accumulator
+  example proves that the main value can stay equal while an auxiliary value changes,
+  motivating independently observable output ports for diagnostics and indices.
+- `Riffcat/Invalidation.agda` (Deliverable 7): replaces a global dirty bit with a
+  dimension-indexed change algebra.  Each facet chooses its own evidence type and
+  associative merge; whole change sets merge pointwise.  `InvalidationTransport`
+  preserves no-change and merge, and its checked composition law lets a pass move,
+  discard, enrich, or combine facet effects.  `InvalidationPolicy` is the explicit
+  home for richer cache logic and requires a proof for every `keep` decision.  The
+  concrete reason-bag instance shows a rename invalidating Names while Structure and
+  Types remain unchanged.  Dependent transport moves change evidence coherently along
+  facet-identification paths.  A separate concurrent-algebra boundary adds
+  commutativity and idempotence when replica arrival order and duplicate delivery must
+  not matter; reason lists alone deliberately do not claim that stronger law.
+- `Riffcat/Cache.agda` (Deliverable 8): a small causal cache and co-transaction
+  correspondence.  It distinguishes an immutable artifact from its revisable
+  receipt, models `(observed-at, judged-from)` liveness, proves all-or-nothing bundle
+  liveness and transitive retraction, and makes hard revision filters carry their
+  skip-safety proof.  Complete-support cache keys must prove that key equality
+  determines verdict equality.  Green reuse, backdating, replacement, and retraction
+  remain distinct evidence types.
+- `Riffcat/Music.agda` (Deliverable 9): pitch-class sets as 12-bit characteristic
   vectors, transposition as cyclic rotation (the Z/12 action), inversion as the mirror
   (the dihedral action), the orbit relation as the congruence, `SetClass = Pcs / ~SC`,
   and `primeForm` as the normalization, under the SAME rule as the Rust engine: the
@@ -65,7 +124,7 @@ BLAKE3 and would be huge). This is the capstone witness on the cubical-specific 
   exact case the engine's `prime_form` fix pinned. The explicit inversion generator
   `invertI` checks the demo's A/B story at the Tn level: major and minor are distinct
   transposition classes (3-11B vs 3-11A) and `invertI` maps one onto the other.
-- `Riffcat.agda`: the top module. It re-exports the four pieces and gathers the
+- `Riffcat.agda`: the top module. It re-exports the nine pieces and gathers the
   headline checked results (`transport-computes`, `music-major-equals-minor`,
   `music-major-not-augmented`). Typechecking this module green is a single green light
   over the whole prototype.
@@ -87,6 +146,19 @@ PROVED (typechecked, many by `refl`, i.e. they hold by computation):
   tower (`setClassFromTransClass↠`).
 - The transport-computes lemmas, abstract and concrete (`anchor-rides`, `addr-rides`,
   `Concrete.parity-rides`), all by `refl`.
+- Facet-sensitive query and link composition (`QueryTransport`, `FacetLink`), the
+  necessity of link congruence (`FacetLinkNecessary`), residual refinement
+  (`Remembering`), and the concrete saved-port-label composition
+  (`PortExample.saved-link-commutes`).
+- Preservation/reflection/same-kernel composition, residual round trips, selected
+  part linking, and bundle-query composition (`Riffcat.LinkingKinds`).
+- Salsa-style green/backdated/changed outcomes and the checked main-versus-auxiliary
+  counterexample (`Riffcat.Salsa`).
+- Dimension-indexed invalidation algebra laws; identity and composed invalidation
+  transports; and the checked rename-only example (`Riffcat.Invalidation`).
+- Atomic support-bundle liveness, transitive retraction, sound hard-bound skipping,
+  complete-support verdict reuse, and the artifact-versus-warrant example
+  (`Riffcat.Cache`).
 - The music instance: prime form computes to `[0, 3, 7]` for every major/minor triad,
   major equals minor as set classes, the major/augmented non-collapse, the compact
   4-26 prime form `[0, 3, 5, 8]` (the packing-rule case shared with the engine), and
@@ -114,23 +186,25 @@ TARGETS NOT BUILT HERE (named honestly, not attempted):
 ## How to typecheck it
 
 Agda 2.8.0 with the cubical library 0.9. The cubical library's prebuilt interfaces in
-the nix store are reused, so only the five prototype modules are compiled (a couple of
-seconds), not the whole cubical library.
-
-One-time library setup (already done in this environment; recorded here for
-reproducibility). Create `~/.agda/libraries` pointing at the cubical library:
-
-    /nix/store/wdmb2i9bwkhmhj6rgm0wllaj947kpfv0-cubical-0.9/cubical.agda-lib
+the Nix store are reused, so only the nine component modules and their top module are
+compiled, not the whole cubical library.
 
 This project's `cubical-riffcat.agda-lib` declares `depend: cubical` and the flags
 `--cubical --no-import-sorts --guardedness` (the `--guardedness` flag is required
 because the cubical library was built with it, and that flag is infective on import).
 
-Verify command (from this `cubical/` directory):
+Reproducible verify command from this `cubical/` directory:
 
-    /run/current-system/sw/bin/agda Riffcat.agda
+    nix shell --impure --expr \
+      'with import <nixpkgs> {}; agda.withPackages (p: [ p.cubical ])' \
+      --command agda Riffcat.agda
 
-A clean run prints the five "Checking ..." lines and exits 0, with no errors and no
+If Agda and Cubical are already registered in the active environment, the shorter
+equivalent is simply:
+
+    agda Riffcat.agda
+
+A clean run prints the module "Checking ..." lines and exits 0, with no errors and no
 warnings. To force a from-scratch recheck, remove the local `_build/` first.
 
 ## Relationship to the Lean port

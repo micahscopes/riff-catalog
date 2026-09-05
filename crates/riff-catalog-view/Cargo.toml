@@ -1,0 +1,13 @@
+[package]
+name = "riff-catalog-view"
+description = "Declarative, content-addressed graph views for riff-catalog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+riff-catalog-core.workspace = true
+blake3.workspace = true
+thiserror.workspace = true
+

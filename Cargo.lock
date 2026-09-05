@@ -681,6 +681,7 @@ dependencies = [
  "riff-catalog-solc",
  "riff-catalog-solidity",
  "riff-catalog-sourcify",
+ "riff-catalog-view",
  "riff-catalog-yul",
  "semver",
  "serde",
@@ -769,6 +770,15 @@ dependencies = [
  "sha2",
  "thiserror",
  "ureq",
+]
+
+[[package]]
+name = "riff-catalog-view"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "riff-catalog-core",
+ "thiserror",
 ]
 
 [[package]]

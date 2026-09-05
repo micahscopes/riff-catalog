@@ -2,7 +2,7 @@
 //! files. Every line is one self-contained record.
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -60,6 +60,22 @@ pub enum Record {
         digests: BTreeMap<Dimension, Digest>,
         node_count: usize,
     },
+    Observation {
+        artifact_id: String,
+        owner: String,
+        unit: String,
+        level: String,
+        name: String,
+        schema: String,
+        stage_kind: String,
+        stage: String,
+        ordinal: u64,
+        function_graph_id: u64,
+        duration_us: u64,
+        metrics: BTreeMap<String, u64>,
+        identity_address: String,
+        shape_address: String,
+    },
     Claim {
         claim: Claim,
         left_display: String,
@@ -83,6 +99,16 @@ pub struct DigestRow {
     pub mode: String,
     pub policy_id: PolicyId,
     pub digests: BTreeMap<Dimension, Digest>,
+}
+
+/// A persisted graph plus the corpus coordinates that identify it.
+#[derive(Clone, Debug)]
+pub struct GraphRow {
+    pub artifact_id: String,
+    pub unit: String,
+    pub name: String,
+    pub graph_key: GraphKey,
+    pub graph: Graph,
 }
 
 pub struct Corpus {
@@ -112,17 +138,19 @@ impl Corpus {
 
     fn write(&self, file_stem: &str, records: &[Record], append: bool) -> Result<()> {
         let path = self.dir.join(format!("{file_stem}.jsonl"));
-        let mut file = std::fs::OpenOptions::new()
+        let file = std::fs::OpenOptions::new()
             .create(true)
             .append(append)
             .write(true)
             .truncate(!append)
             .open(&path)
             .with_context(|| format!("opening {}", path.display()))?;
+        let mut file = BufWriter::new(file);
         for record in records {
             serde_json::to_writer(&mut file, record)?;
             file.write_all(b"\n")?;
         }
+        file.flush()?;
         Ok(())
     }
 
@@ -159,6 +187,94 @@ impl Corpus {
 
     pub fn digest_rows(&self, unit: &str, mode: &str) -> Result<Vec<DigestRow>> {
         self.digest_rows_filtered(Some(unit), Some(mode))
+    }
+
+    /// Stream graph records matching one lowering level and selector. Graph
+    /// records can be very large, so this reads one JSONL record at a time.
+    pub fn graph_rows(
+        &self,
+        level: &str,
+        selector: &str,
+        unit: Option<&str>,
+        name: Option<&str>,
+    ) -> Result<Vec<GraphRow>> {
+        let mut rows = Vec::new();
+        let level_marker = format!("\"level\":{}", serde_json::to_string(level)?);
+        let unit_marker = unit
+            .map(serde_json::to_string)
+            .transpose()?
+            .map(|unit| format!("\"unit\":{unit}"));
+        let name_marker = name
+            .map(serde_json::to_string)
+            .transpose()?
+            .map(|name| format!("\"name\":{name}"));
+        let Ok(entries) = std::fs::read_dir(&self.dir) else {
+            return Ok(rows);
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path
+                .extension()
+                .is_none_or(|extension| extension != "jsonl")
+            {
+                continue;
+            }
+            let file = std::fs::File::open(&path)
+                .with_context(|| format!("opening {}", path.display()))?;
+            for (line_no, line) in BufReader::new(file).lines().enumerate() {
+                let line =
+                    line.with_context(|| format!("reading {}:{}", path.display(), line_no + 1))?;
+                if line.trim().is_empty()
+                    || !line_is_graph_record(&line)
+                    || !line.contains(&level_marker)
+                    || unit_marker
+                        .as_ref()
+                        .is_some_and(|marker| !line.contains(marker))
+                    || name_marker
+                        .as_ref()
+                        .is_some_and(|marker| !line.contains(marker))
+                {
+                    continue;
+                }
+                let record: Record = serde_json::from_str(&line)
+                    .with_context(|| format!("parsing {}:{}", path.display(), line_no + 1))?;
+                let Record::Graph {
+                    artifact_id,
+                    unit: row_unit,
+                    level: row_level,
+                    name: row_name,
+                    graph_key,
+                    graph,
+                } = record
+                else {
+                    continue;
+                };
+                if row_level != level
+                    || unit.is_some_and(|unit| row_unit != unit)
+                    || name.is_some_and(|name| row_name != name)
+                {
+                    continue;
+                }
+                let row = GraphRow {
+                    artifact_id,
+                    unit: row_unit,
+                    name: row_name,
+                    graph_key,
+                    graph,
+                };
+                if matches_graph_selector(&row, selector) {
+                    rows.push(row);
+                }
+            }
+        }
+        rows.sort_by(|left, right| {
+            left.artifact_id
+                .cmp(&right.artifact_id)
+                .then_with(|| left.unit.cmp(&right.unit))
+                .then_with(|| left.name.cmp(&right.name))
+                .then_with(|| left.graph_key.cmp(&right.graph_key))
+        });
+        Ok(rows)
     }
 
     /// Digest rows with optional unit/mode filters (`None` = all). The
@@ -264,4 +380,16 @@ pub fn matches_selector(row: &DigestRow, selector: &str) -> bool {
     row.owner.contains(selector)
         || row.name.contains(selector)
         || row.artifact_id.contains(selector)
+}
+
+fn matches_graph_selector(row: &GraphRow, selector: &str) -> bool {
+    let owner = row.graph_key.owner.owner();
+    if let Some((owner_part, name_part)) = selector.split_once("::") {
+        let name_matches = match name_part.strip_prefix('=') {
+            Some(exact) => row.name == exact,
+            None => row.name.contains(name_part),
+        };
+        return owner.contains(owner_part) && name_matches;
+    }
+    owner.contains(selector) || row.name.contains(selector) || row.artifact_id.contains(selector)
 }

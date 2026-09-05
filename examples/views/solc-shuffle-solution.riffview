@@ -1,0 +1,10 @@
+# Address the shuffler's result stack, spill decisions, trace, and costs.
+language "riffcat-view/1"
+view "solc.shuffle-solution/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.result"
+traverse children
+traverse edges data
+
+retain structure, constants, trace_events

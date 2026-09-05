@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use riff_catalog_schema::{
-    Dimension, Digest, EdgeRole, EntityKey, Field, FingerprintRecord, Graph, GraphKey, NodeKey,
+    Digest, Dimension, EdgeRole, EntityKey, Field, FingerprintRecord, Graph, GraphKey, NodeKey,
 };
 
 fn ek(kind: &str, owner: &str, local: &str) -> EntityKey {
@@ -29,8 +29,10 @@ fn sample_graph() -> Graph {
     let lowered = NodeKey::entity(ek("mir.stmt", "pkg:token", "stmt:3"));
     g.add_node(src.clone(), "expr").unwrap();
     g.add_node(lowered.clone(), "stmt").unwrap();
-    g.add_field(&src, Dimension::Names, "ident", "amount").unwrap();
-    g.add_field(&lowered, Dimension::Structure, "op", "add").unwrap();
+    g.add_field(&src, Dimension::Names, "ident", "amount")
+        .unwrap();
+    g.add_field(&lowered, Dimension::Structure, "op", "add")
+        .unwrap();
     g.add_child(&lowered, "operand", 0, &src).unwrap();
     // Provenance: the statement came from the expression. Origin edges are
     // payload, not shape (the engine excludes them from the structural digest).
@@ -92,7 +94,10 @@ where
         panic!("read fixture {path}: {e} (run with UPDATE_FIXTURES=1 to create it)")
     });
     let want = want.trim_end_matches('\n');
-    assert_eq!(json, want, "serialized `{name}` drifted from its frozen fixture");
+    assert_eq!(
+        json, want,
+        "serialized `{name}` drifted from its frozen fixture"
+    );
     let back: T = serde_json::from_str(want).unwrap();
     assert_eq!(&back, value, "fixture `{name}` did not round-trip");
 }

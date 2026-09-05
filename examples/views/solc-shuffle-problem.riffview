@@ -1,0 +1,10 @@
+# Address the stack-shuffle problem independently of the observed solution.
+language "riffcat-view/1"
+view "solc.shuffle-problem/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.problem"
+traverse children
+traverse edges data
+
+retain structure, constants, types

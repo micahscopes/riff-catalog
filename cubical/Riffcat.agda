@@ -3,7 +3,7 @@
 {-
   Riffcat: a Cubical Agda PROTOTYPE of riffcat's core.
 
-  This is the top module. It re-exports the four pieces and collects the headline
+  This is the top module. It re-exports the nine pieces and collects the headline
   checked results in one place, so `agda Riffcat.agda` typechecking green is a single
   green light over the whole prototype.
 
@@ -25,8 +25,10 @@
 module Riffcat where
 
 open import Cubical.Foundations.Prelude using (_≡_ ; refl ; cong)
+open import Cubical.Data.Bool using (true ; false)
 open import Cubical.Relation.Nullary using (¬_)
 open import Cubical.HITs.SetQuotients using (eq/)
+  renaming ([_] to ⟦_⟧)
 
 ------------------------------------------------------------------------
 -- 1. The dimension-tagged structure + the catamorphism fold, over an abstract hash.
@@ -47,7 +49,38 @@ open import Riffcat.Facet public
 open import Riffcat.Transport public
 
 ------------------------------------------------------------------------
--- 4. The music instance: pitch-class sets, transposition/inversion action, the
+-- 4. Composition and linking: a query/link operation descends through facets exactly
+--    when it cannot notice what those facets forgot; residuals refine the observation
+--    when a later operation still needs some forgotten information.
+------------------------------------------------------------------------
+open import Riffcat.Composition public
+
+------------------------------------------------------------------------
+-- 5. Linking kinds and addressed bundles: preservation, reflection, exact keys,
+--    residual recovery, links between named parts, and serial query composition.
+------------------------------------------------------------------------
+open import Riffcat.LinkingKinds public
+
+------------------------------------------------------------------------
+-- 6. Salsa 0.28.2 as one operational reading: green reuse, rerun plus backdating,
+--    actual output change, and main results versus auxiliary outputs.
+------------------------------------------------------------------------
+open import Riffcat.Salsa public
+
+------------------------------------------------------------------------
+-- 7. Facet-indexed invalidation as algebraic data.  Change evidence merges within
+--    dimensions and transports lawfully across compiler passes.
+------------------------------------------------------------------------
+open import Riffcat.Invalidation public
+
+------------------------------------------------------------------------
+-- 8. Causal cache receipts: horizon-relative liveness, atomic support bundles,
+--    transitive retraction, hard revision bounds, and complete-support cache keys.
+------------------------------------------------------------------------
+open import Riffcat.Cache public
+
+------------------------------------------------------------------------
+-- 9. The music instance: pitch-class sets, transposition/inversion action, the
 --    set class as a quotient, prime form as normalization, and major = minor.
 ------------------------------------------------------------------------
 open import Riffcat.Music public
@@ -70,6 +103,34 @@ _ = Concrete.r0-2
 transport-computes : cong Concrete.parityFact
                        (eq/ {R = Concrete.SameParity} 0 2 Concrete.r0-2) ≡ refl
 transport-computes = Concrete.parity-rides
+
+-- Facet-aware query transport computes: applying a descended query to a quotient
+-- path reduces to the stability evidence supplied by the query author.  The generic
+-- theorem is `QueryTransport.query-path-computes`.
+
+-- Linking with a saved port-label residual commutes in the concrete two-port story.
+composition-with-residual-computes :
+  PortExample.chooseAfterRemembering
+    ⟦ true ⟧ ⟦ false ⟧
+  ≡ ⟦ PortExample.chooseLeft true false ⟧
+composition-with-residual-computes =
+  PortExample.saved-link-commutes true false
+
+-- A rename-only invalidation retains its reason in the Names dimension while the
+-- independently tracked Structure and Types dimensions remain green.
+rename-does-not-invalidate-structure :
+  UnchangedAt CompilerInvalidation rename-only Structure
+rename-does-not-invalidate-structure = rename-keeps-structure
+
+rename-does-not-invalidate-types :
+  UnchangedAt CompilerInvalidation rename-only Types
+rename-does-not-invalidate-types = rename-keeps-types
+
+-- A later horizon can retract a receipt without deleting its immutable artifact.
+retraction-does-not-delete-artifact :
+  WarrantCanExpire.artifact ≡ true
+retraction-does-not-delete-artifact =
+  WarrantCanExpire.artifact-still-exists
 
 -- The music headline: C major and A minor share a set class (Forte 3-11), by refl:
 music-major-equals-minor : Cmajor ~SC Aminor

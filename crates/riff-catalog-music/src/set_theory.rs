@@ -52,7 +52,11 @@ fn normal_order_zeroed(set: &[i32]) -> Vec<i32> {
         best = Some(match best {
             None => cand,
             Some(b) => {
-                if more_compact(&cand, &b) { cand } else { b }
+                if more_compact(&cand, &b) {
+                    cand
+                } else {
+                    b
+                }
             }
         });
     }
@@ -202,40 +206,81 @@ mod tests {
     #[test]
     fn prime_forms_match_the_published_catalog() {
         assert_eq!(prime_form(&[0, 4, 7]), vec![0, 3, 7], "major triad = 3-11");
-        assert_eq!(prime_form(&[0, 3, 7]), vec![0, 3, 7], "minor triad = 3-11 too");
-        assert_eq!(prime_form(&[9, 0, 4]), vec![0, 3, 7], "A minor is also 3-11");
+        assert_eq!(
+            prime_form(&[0, 3, 7]),
+            vec![0, 3, 7],
+            "minor triad = 3-11 too"
+        );
+        assert_eq!(
+            prime_form(&[9, 0, 4]),
+            vec![0, 3, 7],
+            "A minor is also 3-11"
+        );
         assert_eq!(prime_form(&[0, 4, 8]), vec![0, 4, 8], "augmented = 3-12");
         assert_eq!(prime_form(&[0, 3, 6]), vec![0, 3, 6], "diminished = 3-10");
-        assert_eq!(prime_form(&[0, 4, 7, 10]), vec![0, 2, 5, 8], "dominant 7th = 4-27");
-        assert_eq!(prime_form(&[0, 4, 7, 11]), vec![0, 1, 5, 8], "major 7th = 4-20");
+        assert_eq!(
+            prime_form(&[0, 4, 7, 10]),
+            vec![0, 2, 5, 8],
+            "dominant 7th = 4-27"
+        );
+        assert_eq!(
+            prime_form(&[0, 4, 7, 11]),
+            vec![0, 1, 5, 8],
+            "major 7th = 4-20"
+        );
         // 4-26, the minor seventh, is the case the lex-least shortcut got wrong:
         // the published prime form is the compact [0,3,5,8], not [0,2,5,9].
-        assert_eq!(prime_form(&[0, 4, 7, 9]), vec![0, 3, 5, 8], "minor 7th = 4-26 (compact)");
+        assert_eq!(
+            prime_form(&[0, 4, 7, 9]),
+            vec![0, 3, 5, 8],
+            "minor 7th = 4-26 (compact)"
+        );
         // half-diminished and dominant sevenths are the two faces of 4-27, so
         // they fold to the same prime form (the half-diminished side, [0,2,5,8]).
-        assert_eq!(prime_form(&[0, 3, 6, 8]), vec![0, 2, 5, 8], "dominant 7th Tn-type folds to 4-27");
-        assert_eq!(prime_form(&[0, 2, 5, 8]), vec![0, 2, 5, 8], "half-diminished is the 4-27 prime");
+        assert_eq!(
+            prime_form(&[0, 3, 6, 8]),
+            vec![0, 2, 5, 8],
+            "dominant 7th Tn-type folds to 4-27"
+        );
+        assert_eq!(
+            prime_form(&[0, 2, 5, 8]),
+            vec![0, 2, 5, 8],
+            "half-diminished is the 4-27 prime"
+        );
     }
 
     /// A set and its inversion always share one prime form (the defining
     /// property of TnI canonicalization), including the 4-26 case.
     #[test]
     fn prime_form_is_inversion_invariant() {
-        let invert = |pcs: &[i32]| -> Vec<i32> { pcs.iter().map(|x| (12 - x).rem_euclid(12)).collect() };
+        let invert =
+            |pcs: &[i32]| -> Vec<i32> { pcs.iter().map(|x| (12 - x).rem_euclid(12)).collect() };
         for set in [
             vec![0, 4, 7],
             vec![0, 4, 7, 9],
             vec![0, 4, 7, 10],
             vec![0, 1, 4, 6, 9],
         ] {
-            assert_eq!(prime_form(&set), prime_form(&invert(&set)), "prime form survives inversion: {set:?}");
+            assert_eq!(
+                prime_form(&set),
+                prime_form(&invert(&set)),
+                "prime form survives inversion: {set:?}"
+            );
         }
     }
 
     #[test]
     fn interval_vectors_match() {
-        assert_eq!(interval_vector(&[0, 4, 7]), [0, 0, 1, 1, 1, 0], "major triad <001110>");
-        assert_eq!(interval_vector(&[0, 4, 8]), [0, 0, 0, 3, 0, 0], "augmented <000300>");
+        assert_eq!(
+            interval_vector(&[0, 4, 7]),
+            [0, 0, 1, 1, 1, 0],
+            "major triad <001110>"
+        );
+        assert_eq!(
+            interval_vector(&[0, 4, 8]),
+            [0, 0, 0, 3, 0, 0],
+            "augmented <000300>"
+        );
     }
 
     /// riffcat's note-set facet, fed prime-form-canonicalized input, partitions
@@ -252,7 +297,10 @@ mod tests {
         let f_major = addr(&[5, 9, 0]); // F A C
         let augmented = addr(&[0, 4, 8]);
         let diminished = addr(&[0, 3, 6]);
-        assert_eq!(c_major, a_minor, "major and minor triads are one set class (Forte 3-11)");
+        assert_eq!(
+            c_major, a_minor,
+            "major and minor triads are one set class (Forte 3-11)"
+        );
         assert_eq!(c_major, f_major, "all major triads share the class");
         assert_ne!(c_major, augmented, "augmented (3-12) is its own class");
         assert_ne!(c_major, diminished, "diminished (3-10) is its own class");
@@ -276,12 +324,13 @@ mod tests {
             (161, 2128),
             (1041, 2208),
         ];
-        let pcs_of = |bits: u32| -> Vec<i32> { (0..12i32).filter(|i| bits & (1u32 << i) != 0).collect() };
+        let pcs_of =
+            |bits: u32| -> Vec<i32> { (0..12i32).filter(|i| bits & (1u32 << i) != 0).collect() };
         for &(b1, nf1) in catalog {
             for &(b2, nf2) in catalog {
                 let same_theirs = nf1 == nf2;
-                let same_ours =
-                    transposition_normal_form(&pcs_of(b1)) == transposition_normal_form(&pcs_of(b2));
+                let same_ours = transposition_normal_form(&pcs_of(b1))
+                    == transposition_normal_form(&pcs_of(b2));
                 assert_eq!(same_ours, same_theirs, "bits {b1} vs {b2}");
             }
         }

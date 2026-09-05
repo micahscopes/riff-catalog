@@ -1,0 +1,14 @@
+# Retain only the reachable control-flow skeleton of a yulssa function graph.
+language "riffcat-view/1"
+view "yul.reachable-cfg/1"
+input "yul-ssa-cfg/1"
+
+# The parent of an entry block is the function root.
+root child-parent "entry"
+
+# Entry containment reaches the first block. Dependency edges then follow
+# jumps. Instruction children are intentionally excluded.
+traverse children entry
+traverse edges dependency
+
+retain structure

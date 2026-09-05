@@ -44,14 +44,59 @@ fn esc(s: &str) -> String {
 /// A build op, serialized as a JSON object the Lean side replays. Node keys are
 /// always "entity" keys here (kind, owner, local); that covers the corpus.
 enum Op {
-    Node { kind: String, owner: String, local: String, node_kind: String },
-    FieldU64 { owner: String, local: String, dim: Dimension, name: String, value: u64 },
-    FieldI64 { owner: String, local: String, dim: Dimension, name: String, value: i64 },
-    FieldText { owner: String, local: String, dim: Dimension, name: String, value: String },
-    FieldBool { owner: String, local: String, dim: Dimension, name: String, value: bool },
-    FieldBytes { owner: String, local: String, dim: Dimension, name: String, value: Vec<u8> },
-    Child { p: (String, String), label: String, ordinal: u32, c: (String, String) },
-    Edge { s: (String, String), label: String, t: (String, String), role: EdgeRole },
+    Node {
+        kind: String,
+        owner: String,
+        local: String,
+        node_kind: String,
+    },
+    FieldU64 {
+        owner: String,
+        local: String,
+        dim: Dimension,
+        name: String,
+        value: u64,
+    },
+    FieldI64 {
+        owner: String,
+        local: String,
+        dim: Dimension,
+        name: String,
+        value: i64,
+    },
+    FieldText {
+        owner: String,
+        local: String,
+        dim: Dimension,
+        name: String,
+        value: String,
+    },
+    FieldBool {
+        owner: String,
+        local: String,
+        dim: Dimension,
+        name: String,
+        value: bool,
+    },
+    FieldBytes {
+        owner: String,
+        local: String,
+        dim: Dimension,
+        name: String,
+        value: Vec<u8>,
+    },
+    Child {
+        p: (String, String),
+        label: String,
+        ordinal: u32,
+        c: (String, String),
+    },
+    Edge {
+        s: (String, String),
+        label: String,
+        t: (String, String),
+        role: EdgeRole,
+    },
 }
 
 fn ek(kind: &str, owner: &str, local: &str) -> NodeKey {
@@ -61,31 +106,87 @@ fn ek(kind: &str, owner: &str, local: &str) -> NodeKey {
 impl Op {
     fn apply(&self, g: &mut Graph) {
         match self {
-            Op::Node { kind, owner, local, node_kind } => {
-                g.add_node(ek(kind, owner, local), node_kind.as_str()).unwrap();
-            }
-            Op::FieldU64 { owner, local, dim, name, value } => {
-                g.add_field(&ek("n", owner, local), *dim, name.as_str(), *value).unwrap();
-            }
-            Op::FieldI64 { owner, local, dim, name, value } => {
-                g.add_field(&ek("n", owner, local), *dim, name.as_str(), *value).unwrap();
-            }
-            Op::FieldText { owner, local, dim, name, value } => {
-                g.add_field(&ek("n", owner, local), *dim, name.as_str(), value.as_str()).unwrap();
-            }
-            Op::FieldBool { owner, local, dim, name, value } => {
-                g.add_field(&ek("n", owner, local), *dim, name.as_str(), *value).unwrap();
-            }
-            Op::FieldBytes { owner, local, dim, name, value } => {
-                g.add_field(&ek("n", owner, local), *dim, name.as_str(), value.clone()).unwrap();
-            }
-            Op::Child { p, label, ordinal, c } => {
-                g.add_child(&ek("n", &p.0, &p.1), label.as_str(), *ordinal, &ek("n", &c.0, &c.1))
+            Op::Node {
+                kind,
+                owner,
+                local,
+                node_kind,
+            } => {
+                g.add_node(ek(kind, owner, local), node_kind.as_str())
                     .unwrap();
+            }
+            Op::FieldU64 {
+                owner,
+                local,
+                dim,
+                name,
+                value,
+            } => {
+                g.add_field(&ek("n", owner, local), *dim, name.as_str(), *value)
+                    .unwrap();
+            }
+            Op::FieldI64 {
+                owner,
+                local,
+                dim,
+                name,
+                value,
+            } => {
+                g.add_field(&ek("n", owner, local), *dim, name.as_str(), *value)
+                    .unwrap();
+            }
+            Op::FieldText {
+                owner,
+                local,
+                dim,
+                name,
+                value,
+            } => {
+                g.add_field(&ek("n", owner, local), *dim, name.as_str(), value.as_str())
+                    .unwrap();
+            }
+            Op::FieldBool {
+                owner,
+                local,
+                dim,
+                name,
+                value,
+            } => {
+                g.add_field(&ek("n", owner, local), *dim, name.as_str(), *value)
+                    .unwrap();
+            }
+            Op::FieldBytes {
+                owner,
+                local,
+                dim,
+                name,
+                value,
+            } => {
+                g.add_field(&ek("n", owner, local), *dim, name.as_str(), value.clone())
+                    .unwrap();
+            }
+            Op::Child {
+                p,
+                label,
+                ordinal,
+                c,
+            } => {
+                g.add_child(
+                    &ek("n", &p.0, &p.1),
+                    label.as_str(),
+                    *ordinal,
+                    &ek("n", &c.0, &c.1),
+                )
+                .unwrap();
             }
             Op::Edge { s, label, t, role } => {
-                g.add_edge(&ek("n", &s.0, &s.1), label.as_str(), &ek("n", &t.0, &t.1), *role)
-                    .unwrap();
+                g.add_edge(
+                    &ek("n", &s.0, &s.1),
+                    label.as_str(),
+                    &ek("n", &t.0, &t.1),
+                    *role,
+                )
+                .unwrap();
             }
         }
     }
@@ -93,40 +194,113 @@ impl Op {
     fn to_json(&self) -> String {
         let dim = |d: &Dimension| esc(d.as_str());
         match self {
-            Op::Node { kind, owner, local, node_kind } => format!(
+            Op::Node {
+                kind,
+                owner,
+                local,
+                node_kind,
+            } => format!(
                 r#"{{"op":"node","kind":"{}","owner":"{}","local":"{}","node_kind":"{}"}}"#,
-                esc(kind), esc(owner), esc(local), esc(node_kind)
+                esc(kind),
+                esc(owner),
+                esc(local),
+                esc(node_kind)
             ),
-            Op::FieldU64 { owner, local, dim: d, name, value } => format!(
+            Op::FieldU64 {
+                owner,
+                local,
+                dim: d,
+                name,
+                value,
+            } => format!(
                 r#"{{"op":"field","owner":"{}","local":"{}","dim":"{}","name":"{}","vkind":"u64","value":"{}"}}"#,
-                esc(owner), esc(local), dim(d), esc(name), value
+                esc(owner),
+                esc(local),
+                dim(d),
+                esc(name),
+                value
             ),
-            Op::FieldI64 { owner, local, dim: d, name, value } => format!(
+            Op::FieldI64 {
+                owner,
+                local,
+                dim: d,
+                name,
+                value,
+            } => format!(
                 r#"{{"op":"field","owner":"{}","local":"{}","dim":"{}","name":"{}","vkind":"i64","value":"{}"}}"#,
-                esc(owner), esc(local), dim(d), esc(name), value
+                esc(owner),
+                esc(local),
+                dim(d),
+                esc(name),
+                value
             ),
-            Op::FieldText { owner, local, dim: d, name, value } => format!(
+            Op::FieldText {
+                owner,
+                local,
+                dim: d,
+                name,
+                value,
+            } => format!(
                 r#"{{"op":"field","owner":"{}","local":"{}","dim":"{}","name":"{}","vkind":"text","value":"{}"}}"#,
-                esc(owner), esc(local), dim(d), esc(name), esc(value)
+                esc(owner),
+                esc(local),
+                dim(d),
+                esc(name),
+                esc(value)
             ),
-            Op::FieldBool { owner, local, dim: d, name, value } => format!(
+            Op::FieldBool {
+                owner,
+                local,
+                dim: d,
+                name,
+                value,
+            } => format!(
                 r#"{{"op":"field","owner":"{}","local":"{}","dim":"{}","name":"{}","vkind":"bool","value":"{}"}}"#,
-                esc(owner), esc(local), dim(d), esc(name), if *value { 1 } else { 0 }
+                esc(owner),
+                esc(local),
+                dim(d),
+                esc(name),
+                if *value { 1 } else { 0 }
             ),
-            Op::FieldBytes { owner, local, dim: d, name, value } => {
+            Op::FieldBytes {
+                owner,
+                local,
+                dim: d,
+                name,
+                value,
+            } => {
                 let hex: String = value.iter().map(|b| format!("{:02x}", b)).collect();
                 format!(
                     r#"{{"op":"field","owner":"{}","local":"{}","dim":"{}","name":"{}","vkind":"bytes","value":"{}"}}"#,
-                    esc(owner), esc(local), dim(d), esc(name), hex
+                    esc(owner),
+                    esc(local),
+                    dim(d),
+                    esc(name),
+                    hex
                 )
             }
-            Op::Child { p, label, ordinal, c } => format!(
+            Op::Child {
+                p,
+                label,
+                ordinal,
+                c,
+            } => format!(
                 r#"{{"op":"child","p_owner":"{}","p_local":"{}","label":"{}","ordinal":{},"c_owner":"{}","c_local":"{}"}}"#,
-                esc(&p.0), esc(&p.1), esc(label), ordinal, esc(&c.0), esc(&c.1)
+                esc(&p.0),
+                esc(&p.1),
+                esc(label),
+                ordinal,
+                esc(&c.0),
+                esc(&c.1)
             ),
             Op::Edge { s, label, t, role } => format!(
                 r#"{{"op":"edge","s_owner":"{}","s_local":"{}","label":"{}","t_owner":"{}","t_local":"{}","role":"{}"}}"#,
-                esc(&s.0), esc(&s.1), esc(label), esc(&t.0), esc(&t.1), esc(role.as_str())
+                esc(&s.0),
+                esc(&s.1),
+                esc(label),
+                esc(&t.0),
+                esc(&t.1),
+                esc(role.as_str())
             ),
         }
     }
@@ -139,28 +313,73 @@ struct Vector {
 }
 
 fn node(kind: &str, owner: &str, local: &str, nk: &str) -> Op {
-    Op::Node { kind: kind.into(), owner: owner.into(), local: local.into(), node_kind: nk.into() }
+    Op::Node {
+        kind: kind.into(),
+        owner: owner.into(),
+        local: local.into(),
+        node_kind: nk.into(),
+    }
 }
 fn fu64(owner: &str, local: &str, d: Dimension, name: &str, v: u64) -> Op {
-    Op::FieldU64 { owner: owner.into(), local: local.into(), dim: d, name: name.into(), value: v }
+    Op::FieldU64 {
+        owner: owner.into(),
+        local: local.into(),
+        dim: d,
+        name: name.into(),
+        value: v,
+    }
 }
 fn fi64(owner: &str, local: &str, d: Dimension, name: &str, v: i64) -> Op {
-    Op::FieldI64 { owner: owner.into(), local: local.into(), dim: d, name: name.into(), value: v }
+    Op::FieldI64 {
+        owner: owner.into(),
+        local: local.into(),
+        dim: d,
+        name: name.into(),
+        value: v,
+    }
 }
 fn ftext(owner: &str, local: &str, d: Dimension, name: &str, v: &str) -> Op {
-    Op::FieldText { owner: owner.into(), local: local.into(), dim: d, name: name.into(), value: v.into() }
+    Op::FieldText {
+        owner: owner.into(),
+        local: local.into(),
+        dim: d,
+        name: name.into(),
+        value: v.into(),
+    }
 }
 fn fbool(owner: &str, local: &str, d: Dimension, name: &str, v: bool) -> Op {
-    Op::FieldBool { owner: owner.into(), local: local.into(), dim: d, name: name.into(), value: v }
+    Op::FieldBool {
+        owner: owner.into(),
+        local: local.into(),
+        dim: d,
+        name: name.into(),
+        value: v,
+    }
 }
 fn fbytes(owner: &str, local: &str, d: Dimension, name: &str, v: Vec<u8>) -> Op {
-    Op::FieldBytes { owner: owner.into(), local: local.into(), dim: d, name: name.into(), value: v }
+    Op::FieldBytes {
+        owner: owner.into(),
+        local: local.into(),
+        dim: d,
+        name: name.into(),
+        value: v,
+    }
 }
 fn child(po: &str, pl: &str, label: &str, ord: u32, co: &str, cl: &str) -> Op {
-    Op::Child { p: (po.into(), pl.into()), label: label.into(), ordinal: ord, c: (co.into(), cl.into()) }
+    Op::Child {
+        p: (po.into(), pl.into()),
+        label: label.into(),
+        ordinal: ord,
+        c: (co.into(), cl.into()),
+    }
 }
 fn edge(so: &str, sl: &str, label: &str, to: &str, tl: &str, role: EdgeRole) -> Op {
-    Op::Edge { s: (so.into(), sl.into()), label: label.into(), t: (to.into(), tl.into()), role }
+    Op::Edge {
+        s: (so.into(), sl.into()),
+        label: label.into(),
+        t: (to.into(), tl.into()),
+        role,
+    }
 }
 
 /// The corpus. Deliberately includes the adversarial shapes the SCHEMA_VERSION
@@ -171,8 +390,11 @@ fn corpus() -> Vec<Vector> {
 
     vec![
         // 1. empty graph (no nodes, no edges)
-        Vector { name: "empty", graph_key: ("test.unit", "g", "unit:0", "unit"), ops: vec![] },
-
+        Vector {
+            name: "empty",
+            graph_key: ("test.unit", "g", "unit:0", "unit"),
+            ops: vec![],
+        },
         // 2. single node, all-dimension fields and one self-describing kind
         Vector {
             name: "single_node",
@@ -185,7 +407,6 @@ fn corpus() -> Vec<Vector> {
                 fbool(o, "a", TraceEvents, "emitted", true),
             ],
         },
-
         // 3. body -> literal with one reference edge (the golden.rs fixture
         //    shape; node-key `kind` is uniformly "n" here, see `ek`).
         Vector {
@@ -198,10 +419,16 @@ fn corpus() -> Vec<Vector> {
                 ftext("golden", "expr:0", Names, "name", "x"),
                 ftext("golden", "expr:0", Types, "type", "u256"),
                 child("golden", "body:0", "expr", 0, "golden", "expr:0"),
-                edge("golden", "expr:0", "uses", "golden", "body:0", EdgeRole::Reference),
+                edge(
+                    "golden",
+                    "expr:0",
+                    "uses",
+                    "golden",
+                    "body:0",
+                    EdgeRole::Reference,
+                ),
             ],
         },
-
         // 4. duplicate (ordinal, label) children, distinct constants:
         //    f(1, 2) shape. Tests the SCHEMA_VERSION 2 fix at the Constants facet.
         Vector {
@@ -232,7 +459,6 @@ fn corpus() -> Vec<Vector> {
                 child(o, "f", "arg", 0, o, "a2"),
             ],
         },
-
         // 5. dependency cycle (a -> b -> a), exercised under CondenseScc.
         Vector {
             name: "dep_cycle",
@@ -246,7 +472,6 @@ fn corpus() -> Vec<Vector> {
                 edge(o, "b", "calls", o, "a", EdgeRole::Dependency),
             ],
         },
-
         // 6. symmetric SCC with an asymmetric tail outside: two members in a
         //    cycle, one of which also points out to an external node. Exercises
         //    the wl.init cross-edge fold (members must color apart).
@@ -262,7 +487,6 @@ fn corpus() -> Vec<Vector> {
                 edge(o, "x", "e", o, "leaf", EdgeRole::Dependency),
             ],
         },
-
         // 7. mixed value kinds incl. negative i64 and raw bytes, plus an Origin
         //    edge (which graph.full must skip) and a Call edge (which it keeps).
         Vector {
@@ -337,7 +561,10 @@ fn build_graph(v: &Vector) -> (GraphKey, Graph) {
 fn dump_lean_vectors() {
     let mut json = String::new();
     json.push_str("{\n");
-    json.push_str(&format!("  \"schema_version\": {},\n", riff_catalog_core::SCHEMA_VERSION));
+    json.push_str(&format!(
+        "  \"schema_version\": {},\n",
+        riff_catalog_core::SCHEMA_VERSION
+    ));
     json.push_str("  \"magic\": \"riffcat\",\n");
 
     // blake3 KATs
@@ -345,7 +572,10 @@ fn dump_lean_vectors() {
     let kats = blake3_kats();
     for (i, (n, hex)) in kats.iter().enumerate() {
         let comma = if i + 1 < kats.len() { "," } else { "" };
-        json.push_str(&format!("    {{\"len\": {}, \"hash\": \"{}\"}}{}\n", n, hex, comma));
+        json.push_str(&format!(
+            "    {{\"len\": {}, \"hash\": \"{}\"}}{}\n",
+            n, hex, comma
+        ));
     }
     json.push_str("  ],\n");
 
@@ -369,21 +599,24 @@ fn dump_lean_vectors() {
     for v in &vectors {
         let (gk, g) = build_graph(v);
         // ops
-        let ops_json: Vec<String> = v.ops.iter().map(|o| format!("        {}", o.to_json())).collect();
+        let ops_json: Vec<String> = v
+            .ops
+            .iter()
+            .map(|o| format!("        {}", o.to_json()))
+            .collect();
         // per applicable policy: graph digests + facet ids/addresses
         let mut results: Vec<String> = Vec::new();
         for (label, p) in &pols {
             if let Some(digests) = try_digests(p, &gk, &g) {
                 let dim_json: Vec<String> = digests
                     .iter()
-                    .map(|(d, h)| format!(r#"{{"dim":"{}","digest":"{}"}}"#, d.as_str(), h.to_hex()))
+                    .map(|(d, h)| {
+                        format!(r#"{{"dim":"{}","digest":"{}"}}"#, d.as_str(), h.to_hex())
+                    })
                     .collect();
                 // facet addresses for full and names_blind
-                let res = digest_graph(
-                    &DigestRequest::all_dimensions(gk.clone(), p.clone()),
-                    &g,
-                )
-                .unwrap();
+                let res = digest_graph(&DigestRequest::all_dimensions(gk.clone(), p.clone()), &g)
+                    .unwrap();
                 let facets = [
                     ("full", Facet::full(p.policy_id())),
                     ("names_blind", Facet::names_blind(p.policy_id())),

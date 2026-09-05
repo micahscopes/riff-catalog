@@ -20,6 +20,7 @@ riff-catalog-yul = { path = "crates/riff-catalog-yul" }
 riff-catalog-solidity = { path = "crates/riff-catalog-solidity" }
 riff-catalog-evm = { path = "crates/riff-catalog-evm" }
 riff-catalog-sourcify = { path = "crates/riff-catalog-sourcify" }
+riff-catalog-view = { path = "crates/riff-catalog-view" }
 
 blake3 = "1"
 serde = { version = "1", features = ["derive"] }

@@ -1,0 +1,9 @@
+# Address the selected object's emitted bytecode independently of its policy.
+language "riffcat-view/1"
+view "solc.selected-output/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.selected_output"
+traverse children
+
+retain structure, constants

@@ -98,7 +98,10 @@ fn is_aug(q: &str) -> bool {
     q.starts_with("aug") || q == "+"
 }
 fn is_major_seventh(q: &str) -> bool {
-    matches!(q, "maj" | "major" | "ma" | "M" | "\u{0394}" | "\u{25b3}" | "j")
+    matches!(
+        q,
+        "maj" | "major" | "ma" | "M" | "\u{0394}" | "\u{25b3}" | "j"
+    )
 }
 
 /// Triad (third, fifth) intervals above the root for a quality token.

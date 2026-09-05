@@ -2,14 +2,14 @@
 //! CFG from the new code-generation pipeline) into riff-catalog graphs.
 //!
 //! Why this level is special:
-//! - SSA value numbers (`v0, v1…`) erase variable names BY CONSTRUCTION —
-//!   the names-blind facet is the native representation.
+//! - SSA value numbers (`v0, v1…`) erase variable names BY CONSTRUCTION,
+//!   so the names-blind facet is the native representation.
 //! - Jump targets are explicit block edges → loops are real back-edges →
 //!   SCCs → the WL machinery actually bites (invariant I4).
 //! - It works for BOTH Solidity-viaIR and direct `.yul` input (verified),
 //!   which `--ir-ast-json` does not.
 //!
-//! Lowering rules (invariant I15: `vN` strings NEVER enter payloads —
+//! Lowering rules (invariant I15: `vN` strings NEVER enter payloads,
 //! def-use is positional structure):
 //! - block → `yulssa.block` node; jump targets → Dependency edges labeled
 //!   `jump:<k>` (target order is semantics for ConditionalJump).
@@ -22,7 +22,7 @@
 //! - phi inputs pair with predecessor blocks as labeled pairs, NOT raw
 //!   order: `phi-in` children at ordinal 0 (multiset), each with a Data edge
 //!   to its def and a Control edge `from` to its predecessor block.
-//! - block sets are multisets (label `block`, ordinal 0) — JSON array order
+//! - block sets are multisets (label `block`, ordinal 0). JSON array order
 //!   is emission order, not semantics; the CFG lives in the jump edges. The
 //!   entry block is singled out via the `entry` child label.
 //!
@@ -199,10 +199,12 @@ fn build_object_tree(
 
     // Object-level (dispatch) blocks: first block is the entry.
     if let Some(blocks) = object.get("blocks").and_then(Value::as_array) {
-        let entry = blocks
-            .first()
-            .and_then(|block| block.get("id"))
-            .and_then(Value::as_str);
+        let entry = object.get("entry").and_then(Value::as_str).or_else(|| {
+            blocks
+                .first()
+                .and_then(|block| block.get("id"))
+                .and_then(Value::as_str)
+        });
         lower_blocks(
             graph,
             owner,
@@ -221,7 +223,7 @@ fn build_object_tree(
         lower_function_body(graph, owner, function, &fn_keys, &fn_path)?;
     }
 
-    // Sub-objects: full recursive containment (multiset children — map
+    // Sub-objects: full recursive containment (multiset children, map
     // order is not semantics).
     if let Some(subs) = object.get("subObjects").and_then(Value::as_object) {
         for (sub_index, (sub_name, sub)) in subs
@@ -361,7 +363,7 @@ fn lower_blocks(
         }
     }
 
-    // Pass 2: operands, immediates, exits, jumps — defs are complete now.
+    // Pass 2: operands, immediates, exits, jumps. Defs are complete now.
     for block in blocks {
         let id = block.get("id").and_then(Value::as_str).expect("checked");
         let block_path = format!("{base}/b:{id}");
@@ -389,7 +391,7 @@ fn lower_blocks(
                             continue;
                         };
                         if is_phi {
-                            // labeled (predecessor, value) pair — multiset
+                            // Labeled (predecessor, value) pair, as a multiset.
                             let pair_node = add_operand_node(
                                 graph,
                                 owner,
@@ -408,7 +410,7 @@ fn lower_blocks(
                                     .add_edge(&pair_node, "from", pred, EdgeRole::Control)
                                     .map_err(YulLowerError::Core)?;
                             }
-                        } else if is_value_ref(text) {
+                        } else if defs.contains_key(text) || is_value_ref(text) {
                             let use_node = add_operand_node(
                                 graph,
                                 owner,
@@ -557,7 +559,7 @@ fn add_operand_node(
 }
 
 /// Wire a value use to its definition. `vN` text itself never becomes a
-/// field — only the Data edge to the def site carries the information (I15).
+/// field. Only the Data edge to the def site carries the information (I15).
 /// Unresolved values (cross-block liveness oddities) become a Structure
 /// `free` marker so they at least perturb shape deterministically.
 fn wire_use(
@@ -577,6 +579,81 @@ fn wire_use(
 }
 
 fn is_value_ref(text: &str) -> bool {
-    text.strip_prefix('v')
-        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
+    ["v", "phi"].into_iter().any(|prefix| {
+        text.strip_prefix(prefix)
+            .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use riff_catalog_core::{Dimension, EdgeRole, Value as GraphValue};
+    use serde_json::json;
+
+    use super::{is_value_ref, lower_yul_cfg};
+
+    #[test]
+    fn recognizes_solc_values_and_phi_results() {
+        assert!(is_value_ref("v0"));
+        assert!(is_value_ref("phi2"));
+        assert!(!is_value_ref("0x02"));
+        assert!(!is_value_ref("phi"));
+    }
+
+    #[test]
+    fn phi_result_operand_lowers_as_a_use_not_a_literal() {
+        let cfg = json!({
+            "Demo": {
+                "blocks": [{
+                    "id": "Block0",
+                    "instructions": [
+                        { "op": "PhiFunction", "in": ["v0", "v1"], "out": ["phi2"] },
+                        { "op": "add", "in": ["0x07", "phi2"], "out": ["v2"] }
+                    ],
+                    "exit": { "type": "Terminated" }
+                }],
+                "functions": {},
+                "subObjects": {}
+            },
+            "type": "Object"
+        });
+        let lowered = lower_yul_cfg(&cfg, "test:phi-result").unwrap();
+        let graph = &lowered.objects[0].graph;
+        let instruction = |op: &str| {
+            graph
+                .nodes
+                .iter()
+                .find(|(_, node)| {
+                    node.kind.as_str() == "yulssa.insn"
+                        && node.fields.iter().any(|field| {
+                            field.name.as_str() == "op"
+                                && field.value == GraphValue::Text(op.to_string())
+                        })
+                })
+                .map(|(key, _)| key)
+                .unwrap()
+        };
+        let phi = instruction("PhiFunction");
+        let add = instruction("add");
+        let phi_operand = graph
+            .children
+            .iter()
+            .find(|child| {
+                child.parent == *add && child.label.as_str() == "in" && child.ordinal == 1
+            })
+            .map(|child| &child.child)
+            .unwrap();
+
+        assert_eq!(graph.nodes[phi_operand].kind.as_str(), "yulssa.use");
+        assert!(graph.edges.iter().any(|edge| {
+            edge.source == *phi_operand
+                && edge.target == *phi
+                && edge.label.as_str() == "def"
+                && edge.role == EdgeRole::Data
+        }));
+        assert!(!graph.nodes[phi_operand].fields.iter().any(|field| {
+            field.dimension == Dimension::Constants
+                && field.value == GraphValue::Text("phi2".to_string())
+        }));
+    }
 }
