@@ -1,0 +1,1 @@
+{"cases":[{"bytes":0,"ranges":[],"covered":0,"outside":0},{"bytes":8,"ranges":[[1,4],[3,6],[1,4]],"covered":5,"outside":3},{"bytes":8,"ranges":[[0,8],[2,3]],"covered":8,"outside":0},{"bytes":8,"ranges":[[0,2],[2,4]],"covered":4,"outside":4},{"bytes":8,"ranges":[[1,2],[5,8]],"covered":4,"outside":4}],"short_bytes":10,"long_bytes":19}

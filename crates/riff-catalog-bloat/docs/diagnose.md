@@ -3,6 +3,10 @@
 This tool locates recorded growth and preserves evidence. It does not decide
 whether a shader is correct. Start with one failing kernel and exact saved output.
 
+For emitted-code bloat, start with the [artifact census](artifact-census.md).
+It complements instruction counts with exact WGSL function and projection-run
+coverage, including per-function counts for repeated patterns.
+
 ## Try the real MB2 checkpoint now
 
 The existing binary and captures in this VM need no compiler rebuild:
