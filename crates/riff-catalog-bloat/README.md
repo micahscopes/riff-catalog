@@ -5,6 +5,9 @@ evidence. It seals a versioned JSON capture, validates its stage DAG and
 stage-local function IDs, computes module, root-body, and reachable-union
 instruction totals, and replays deterministic JSON or a short table.
 
+Start with the [diagnosis quickstart](docs/diagnose.md) for existing MB2 captures,
+growth inspection and the evidence needed for a correctness investigation.
+
 The toolkit has no Sonatina dependency. It imports neutral structured compiler
 events, and a compatibility adapter imports older Fe stderr traces as
 explicitly weaker evidence.
@@ -14,13 +17,15 @@ walkthrough and its evidence limits.
 
 For compiler integration, see the [Fe design and MB2 handoff](docs/fe-instrumentation-design.md),
 including proposed reusable Sonatina observation hooks and migration checks.
+The [MB2 consumer agreement](docs/mb2-consumer-contract.md) records current
+recorder ownership and the compatibility boundary for that integration.
 The [live runbook](docs/live-pilot.md) and [verified results](docs/live-results.md)
 cover the contained retained-helper versus inline experiment.
 
 ## Try the synthetic general capture
 
-All checked-in fixtures are synthetic illustrations. They are not compiler
-measurements.
+The general capture below is synthetic. Real typed-recorder compatibility
+fixtures live in `tests/fixtures/mb2-observe`, with their own provenance README.
 
 ```sh
 export TMPDIR=/workspace/tmp
@@ -130,9 +135,11 @@ Artifact paths must remain inside the request directory. Graph totals are a
 static direct-function closure over captured functions and all instructions in
 their layout blocks. They are not path-feasible CFG instruction totals.
 
-The structured stream is bounded to 100,000 records and 64 MiB. Fe also limits
-each linked artifact to 256 MiB. Hitting a bound fails the compile and cannot
-produce a successful completion marker.
+The importer bounds structured streams to 100,000 records and 64 MiB and linked
+artifacts to 256 MiB. Import rejection does not imply compilation failed.
+The original pilot producer failed compilation on recording errors; the MB2
+typed recorder supports ordinary best-effort capture and explicit strict mode.
+Budget exhaustion can leave valid shader artifacts but an incomplete capture.
 
 Every rooted frontier records aggregate inliner call and instruction counts.
 Structured caller/callee inline events and clone census rows are emitted only
