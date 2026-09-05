@@ -1,0 +1,59 @@
+{
+  "label": "synthetic shared helper and recursion",
+  "provenance": {
+    "producer": "checked-in synthetic fixture",
+    "producer_revision": "fixture-v1",
+    "command": "none",
+    "environment": {},
+    "notes": ["Synthetic illustration, not a measured compiler result."]
+  },
+  "alignment": {
+    "source_id": "synthetic:shared-recursive-v1",
+    "compiler_id": "synthetic-compiler-v1",
+    "settings": {"inline": "example"}
+  },
+  "completion": {"status": "complete", "producer_marker": "synthetic fixture is complete"},
+  "intervention": {"kind": "none", "requested": [], "resolved": [], "consequential": []},
+  "artifacts": [],
+  "stages": [
+    {
+      "id": "lowered",
+      "kind": "synthetic_ir",
+      "predecessors": [],
+      "functions": [
+        {"id": "entry-a", "display_name": "entry_a", "instructions": 5},
+        {"id": "entry-b", "display_name": "entry_b", "instructions": 7},
+        {"id": "shared", "display_name": "shared", "instructions": 11},
+        {"id": "recursive", "display_name": "recursive", "instructions": 13},
+        {"id": "dead", "display_name": "dead", "instructions": 101}
+      ],
+      "selected_entries": ["entry-a", "entry-b"],
+      "direct_calls": [
+        {"caller": "entry-a", "callee": "shared", "callsites": 1},
+        {"caller": "entry-b", "callee": "shared", "callsites": 1},
+        {"caller": "shared", "callee": "recursive", "callsites": 1},
+        {"caller": "recursive", "callee": "recursive", "callsites": 1}
+      ],
+      "call_graph": {"completeness": "complete"},
+      "unknown_indirect_calls": [],
+      "measurements": []
+    },
+    {
+      "id": "unknown-calls",
+      "kind": "synthetic_ir_with_indirect_call",
+      "predecessors": ["lowered"],
+      "functions": [
+        {"id": "root", "display_name": "root", "instructions": 3}
+      ],
+      "selected_entries": ["root"],
+      "direct_calls": [],
+      "call_graph": {"completeness": "incomplete", "reason": "dynamic target set was not captured"},
+      "unknown_indirect_calls": [
+        {"caller": "root", "callsites": 1, "reason": "function pointer target unknown"}
+      ],
+      "measurements": []
+    }
+  ],
+  "inline_events": [],
+  "compatibility_observations": []
+}

@@ -27,6 +27,9 @@ compiler's origin keys at the boundary.
 | `riff-catalog-yul` | one Yul AST, two front doors (solc JSON + own zero-dep text parser); `yul-ast/1` and `yul-ssa-cfg/1` lowerings |
 | `riff-catalog-solidity` | `sol-ast/1`: declarative nodeType-profile walker over raw AST JSON |
 | `riff-catalog-evm` | `evm/1`: opcodes → structure, PUSH immediates → constants |
+| `riff-catalog-sonatina` | `sonatina-ir/1`: typed control/data/call graphs plus anonymous structural repetition census |
+| `riff-catalog-fe-rmir` | stable Fe runtime-MIR topology with aggregate slices plus thin materialization and call frontiers |
+| `riff-catalog-bloat` | versioned compiler-growth captures, deterministic reports, comparison, and bounded Fe stderr import |
 | `riff-catalog-sourcify` | fetch + cache verified contracts, reconstruct standard-json, recompile locally |
 | `riff-catalog-view` | parse, identify, and materialize declarative graph views |
 | `riff-catalog-cli` | the `riffcat` binary |
@@ -67,10 +70,22 @@ $ examples/03-shared-shape-census.sh
 ```
 
 Local `.sol` files ingest too (`riffcat ingest Contract.sol`, needs solc
-on PATH or `--solc`), as does direct Yul at the SSA level via solc's
-`yulCFGJson` (the ingestion path for fe-emitted Yul). Witnessed claims
-and attestations live under `riffcat claim --help` and
-`riffcat attest --help`; `riffcat conformance` runs the dual-path and
+on PATH or `--solc`), as do direct `.sona` Sonatina IR snapshots, Fe `.rmir`
+observations, and Yul at the SSA level via solc's `yulCFGJson` (the ingestion
+path for fe-emitted Yul). Set `FE_RUNTIME_IR_SNAPSHOT_DIR` while compiling Fe
+to emit content-addressed `.rmir` files. One ingest emits the full
+`rmir-package` graph, the transitive `rmir-aggregate` data slice, the thin
+`rmir-materialization` frontier, and the `rmir-call` frontier. The thin views
+separate representation pressure and helper fan-out from unrelated producer
+work, making pre-inline growth attributable without changing the five digest
+dimensions. Add `--units rmir-function` to emit one complete-body unit per Fe
+function. Direct callees remain lightweight but carry their complete anonymous
+body digests in every facet dimension, so buckets can find post-erasure
+duplicate candidates without confusing wrappers that call different helpers.
+Use at least `structure+constants` when constants affect semantics, and retain
+independent behavior gates before changing compiler ownership. Witnessed
+claims and attestations live under `riffcat claim --help` and `riffcat attest
+--help`; `riffcat conformance` runs the dual-path and
 SSA-round-trip drift detectors over local `.sol` files.
 
 ## Solc SSA observations
@@ -168,6 +183,23 @@ and their control-flow structure.
 
 The `language` directive reserves an explicit syntax version. Other ways of
 defining facets can be evaluated later without changing the graph contract.
+## Sonatina analysis facets
+
+For Sonatina snapshots, use `structure` to measure anonymous topology and
+repeated shapes, `structure+types` to include representation and ABI changes,
+`structure+constants` to include generated literal content, and
+`structure+types+constants` for the usual compiler-growth inquiry. These are
+query-time projections of the same stored digests. They are analysis facets,
+not correctness claims: a smaller repeated-shape count does not by itself
+prove that a lowering preserves behavior. Call, data, and control edges stay
+in the graph's structural topology, while names and origins remain available
+for identity and provenance-sensitive views.
+
+Compiler investigations often need more than one linear before and after pair.
+[`docs/compiler-sequence-views.md`](docs/compiler-sequence-views.md) describes
+the planned ragged product of lowering-stage and compiler-world DAGs, including
+analysis projections, causal edges, build coordinates, and measurements that
+remain deliberately separate from the five semantic digest dimensions.
 
 ## Where this came from
 

@@ -1,0 +1,13 @@
+[package]
+name = "riff-catalog-sonatina"
+description = "Canonical riff-catalog lowering for Sonatina IR modules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+riff-catalog-core.workspace = true
+sonatina-ir.workspace = true
+sonatina-parser.workspace = true
+thiserror.workspace = true

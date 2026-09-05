@@ -59,7 +59,7 @@ fn default_cache_dir() -> String {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Compile artifacts (.sol, .yul, sourcify refs) and write graphs +
+    /// Compile or parse artifacts (.sol, .yul, .sona, .rmir, sourcify refs) and write graphs +
     /// digests into the corpus.
     Ingest {
         /// Files to ingest.
@@ -69,8 +69,8 @@ enum Command {
         sourcify: Vec<String>,
         #[arg(long, default_value = "both")]
         optimize: String,
-        /// Units to emit: fn,object,ssa,evm (sol-contract/sol-fn always on
-        /// for .sol inputs).
+        /// Units to emit: fn,object,ssa,evm,rmir-function (sol-contract/sol-fn,
+        /// sona-module, and package-level RMIR views are always on for their inputs).
         #[arg(long, default_value = "fn,object,ssa")]
         units: String,
         /// Error on unknown Solidity node types instead of tagging them.
@@ -166,7 +166,7 @@ enum Command {
         name: Option<String>,
     },
     /// The corpus root: a canonical, order-independent merkle root over the
-    /// corpus's distinct facet addresses — the commitment conditional claims
+    /// corpus's distinct facet addresses, the commitment conditional claims
     /// reference.
     Root {
         /// Restrict to one unit (default: every unit).
