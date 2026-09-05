@@ -7,7 +7,12 @@ mod corpus;
 mod facet;
 mod ingest;
 mod queries;
+mod ssa_trace_cmd;
+mod stack_oracle_cmd;
+mod stack_policy_cmd;
+mod stack_trace_cmd;
 mod table;
+mod view_cmd;
 
 use std::path::PathBuf;
 
@@ -73,6 +78,66 @@ enum Command {
         strict: bool,
         #[arg(long)]
         label: Option<String>,
+    },
+    /// Ingest versioned JSONL snapshots from solc's SSA observer.
+    IngestSsaTrace {
+        /// JSONL trace emitted by yulssatrace.
+        path: PathBuf,
+        /// Stable identity namespace for graph addresses.
+        #[arg(long)]
+        owner: Option<String>,
+    },
+    /// Ingest solc stack decisions or a full compiler event stream.
+    #[command(visible_alias = "ingest-compiler-trace")]
+    IngestStackTrace {
+        /// JSONL emitted by yulssatrace's stack or compiler event output.
+        path: PathBuf,
+        /// Stable identity namespace for event addresses.
+        #[arg(long)]
+        owner: Option<String>,
+    },
+    /// Export content-addressed pure-SWAP cases for an exact oracle.
+    StackOracleExport {
+        /// JSONL emitted by yulssatrace's stack or compiler event output.
+        path: PathBuf,
+        /// Largest fully reachable stack admitted to the oracle domain.
+        #[arg(long, default_value_t = 16)]
+        max_size: usize,
+        /// Stable identity namespace used while lowering the trace.
+        #[arg(long)]
+        owner: Option<String>,
+    },
+    /// Emit a solc replay policy from a content-addressed stack tradeoff class.
+    StackPolicy {
+        /// Shape-address prefix from the solc.stack-in-tradeoff/1 view.
+        profile: String,
+        /// Restrict matches by owner, unit name, or artifact id.
+        #[arg(long)]
+        selector: Option<String>,
+    },
+    /// List SSA stage metrics and snapshot addresses.
+    Observations {
+        /// Substring over owner, function, or snapshot id.
+        selector: Option<String>,
+        /// Restrict to an exact function name. Use <main> for main code.
+        #[arg(long)]
+        function: Option<String>,
+        /// Restrict to transform or layout observations.
+        #[arg(long)]
+        stage_kind: Option<String>,
+    },
+    /// Materialize a declarative graph view and persist its facet addresses.
+    View {
+        /// Path to a riffcat-view/1 specification.
+        spec: PathBuf,
+        /// Substring over artifact id, owner, or graph name.
+        selector: String,
+        /// Restrict the input graph unit.
+        #[arg(long)]
+        unit: Option<String>,
+        /// Restrict to an exact graph name.
+        #[arg(long)]
+        name: Option<String>,
     },
     /// Group corpus units into equivalence classes at a facet.
     Bucket {
@@ -255,6 +320,55 @@ fn main() -> Result<()> {
             };
             ingest::run(&corpus, &args)
         }
+        Command::IngestSsaTrace { path, owner } => ssa_trace_cmd::ingest(
+            &corpus,
+            &ssa_trace_cmd::TraceIngestArgs { path, owner },
+            cli.json,
+        ),
+        Command::IngestStackTrace { path, owner } => stack_trace_cmd::ingest(
+            &corpus,
+            &stack_trace_cmd::StackTraceIngestArgs { path, owner },
+            cli.json,
+        ),
+        Command::StackOracleExport {
+            path,
+            max_size,
+            owner,
+        } => stack_oracle_cmd::run(&stack_oracle_cmd::StackOracleExportArgs {
+            path,
+            max_size,
+            owner,
+        }),
+        Command::StackPolicy { profile, selector } => stack_policy_cmd::run(
+            &corpus,
+            &stack_policy_cmd::StackPolicyArgs { profile, selector },
+        ),
+        Command::Observations {
+            selector,
+            function,
+            stage_kind,
+        } => ssa_trace_cmd::list(
+            &corpus,
+            selector.as_deref(),
+            function.as_deref(),
+            stage_kind.as_deref(),
+            cli.json,
+        ),
+        Command::View {
+            spec,
+            selector,
+            unit,
+            name,
+        } => view_cmd::run(
+            &corpus,
+            &view_cmd::ViewArgs {
+                spec,
+                selector,
+                unit,
+                name,
+            },
+            cli.json,
+        ),
         Command::Bucket {
             query,
             min_size,

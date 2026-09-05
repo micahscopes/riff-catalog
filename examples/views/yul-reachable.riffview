@@ -1,0 +1,14 @@
+# Retain the reachable computation in a standalone yulssa function graph.
+language "riffcat-view/1"
+view "yul.reachable/1"
+input "yul-ssa-cfg/1"
+
+# Start with functions that own an entry block.
+root child-parent "entry"
+
+# Do not follow the function's generic `block` children. Jumps discover only
+# reachable blocks. Other labels retain arguments, instructions, and operands.
+traverse children entry, arg, insn, in, imm, phi-in, cond, ret
+traverse edges dependency, data, control
+
+retain structure, types, constants

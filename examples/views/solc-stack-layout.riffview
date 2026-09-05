@@ -1,0 +1,10 @@
+# Address one stable stack-layout iteration, including its spill state.
+language "riffcat-view/1"
+view "solc.stack-layout/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.stack_layout_iteration"
+traverse children
+traverse edges data
+
+retain structure, constants, types

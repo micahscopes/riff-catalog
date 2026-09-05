@@ -1,0 +1,10 @@
+# Address all candidate layouts at a join independently of the selected one.
+language "riffcat-view/1"
+view "solc.join-context/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.context"
+traverse children
+traverse edges data
+
+retain structure, constants, types

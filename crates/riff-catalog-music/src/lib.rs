@@ -21,7 +21,7 @@ pub mod chord;
 pub mod set_theory;
 
 use riff_catalog_core::{
-    CatalogError, CyclePolicy, Dimension, DigestRequest, EntityKey, Facet, Graph, GraphKey,
+    CatalogError, CyclePolicy, DigestRequest, Dimension, EntityKey, Facet, Graph, GraphKey,
     HashPolicy, NodeKey, ViewMode, digest_graph,
 };
 
@@ -95,7 +95,11 @@ pub fn encode_pitch_class_set(
 
 /// The "equal at this facet" address, as hex, computed in the anonymous-shape
 /// view (so the riff's own name never enters the digest).
-pub fn facet_hex(key: &GraphKey, graph: &Graph, dims: &[Dimension]) -> Result<String, CatalogError> {
+pub fn facet_hex(
+    key: &GraphKey,
+    graph: &Graph,
+    dims: &[Dimension],
+) -> Result<String, CatalogError> {
     let policy = HashPolicy::new(LEVEL, ViewMode::AnonymousShape, CyclePolicy::CondenseScc)?;
     let req = DigestRequest::all_dimensions(key.clone(), policy);
     let hashes = digest_graph(&req, graph)?.hashes;
@@ -124,7 +128,10 @@ mod tests {
     fn transposed(k: i32) -> Vec<Note> {
         MOTIF
             .iter()
-            .map(|&(p, d)| Note { pitch: p + k, dur: d })
+            .map(|&(p, d)| Note {
+                pitch: p + k,
+                dur: d,
+            })
             .collect()
     }
 
@@ -191,11 +198,53 @@ mod tests {
         // The opening of Schubert's An die Musik and its variants, as in the
         // storybook's riff-dial. Keep these in sync with RIFFS in app.js.
         let riffs: [(&str, &[(i32, u32)]); 5] = [
-            ("An die Musik", &[(69, 2), (69, 1), (71, 1), (69, 2), (66, 1), (64, 1), (66, 2), (62, 2)]),
-            ("up a fifth", &[(76, 2), (76, 1), (78, 1), (76, 2), (73, 1), (71, 1), (73, 2), (69, 2)]),
-            ("same notes, re-voiced", &[(62, 1), (78, 1), (66, 1), (81, 1), (64, 1), (71, 2)]),
-            ("same rhythm, new notes", &[(72, 2), (67, 1), (71, 1), (67, 2), (65, 1), (69, 1), (67, 2), (72, 2)]),
-            ("a different riff", &[(60, 1), (60, 1), (67, 1), (67, 1), (69, 2)]),
+            (
+                "An die Musik",
+                &[
+                    (69, 2),
+                    (69, 1),
+                    (71, 1),
+                    (69, 2),
+                    (66, 1),
+                    (64, 1),
+                    (66, 2),
+                    (62, 2),
+                ],
+            ),
+            (
+                "up a fifth",
+                &[
+                    (76, 2),
+                    (76, 1),
+                    (78, 1),
+                    (76, 2),
+                    (73, 1),
+                    (71, 1),
+                    (73, 2),
+                    (69, 2),
+                ],
+            ),
+            (
+                "same notes, re-voiced",
+                &[(62, 1), (78, 1), (66, 1), (81, 1), (64, 1), (71, 2)],
+            ),
+            (
+                "same rhythm, new notes",
+                &[
+                    (72, 2),
+                    (67, 1),
+                    (71, 1),
+                    (67, 2),
+                    (65, 1),
+                    (69, 1),
+                    (67, 2),
+                    (72, 2),
+                ],
+            ),
+            (
+                "a different riff",
+                &[(60, 1), (60, 1), (67, 1), (67, 1), (69, 2)],
+            ),
         ];
         let shapes = |dims: &[Dimension], pcs: bool| {
             riffs
@@ -215,8 +264,20 @@ mod tests {
         };
         let full = Dimension::ALL.to_vec();
         assert_eq!(shapes(&full, false), 5, "full: all five are distinct");
-        assert_eq!(shapes(&HARMONIC_RELATIONSHIPS, false), 4, "intervals: An die Musik = up a fifth");
-        assert_eq!(shapes(&RHYTHM, false), 3, "rhythm: An die Musik = up a fifth = same rhythm");
-        assert_eq!(shapes(&PITCH_CLASS_SET, true), 4, "note set: An die Musik = re-voiced");
+        assert_eq!(
+            shapes(&HARMONIC_RELATIONSHIPS, false),
+            4,
+            "intervals: An die Musik = up a fifth"
+        );
+        assert_eq!(
+            shapes(&RHYTHM, false),
+            3,
+            "rhythm: An die Musik = up a fifth = same rhythm"
+        );
+        assert_eq!(
+            shapes(&PITCH_CLASS_SET, true),
+            4,
+            "note set: An die Musik = re-voiced"
+        );
     }
 }

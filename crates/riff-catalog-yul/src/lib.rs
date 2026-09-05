@@ -22,6 +22,8 @@ pub mod error;
 pub mod lower;
 pub mod parser;
 pub mod ssa;
+pub mod stack_trace;
+pub mod trace;
 
 mod lexer;
 

@@ -1,0 +1,9 @@
+# Address a candidate's normalized cost tradeoff against solc's default.
+language "riffcat-view/1"
+view "solc.stack-in-tradeoff/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.profile"
+traverse children
+
+retain structure, constants

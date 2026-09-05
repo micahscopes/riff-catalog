@@ -26,3 +26,7 @@ lean_lib «Riffcat» where
 the Rust-produced expectations. Run with `lake exe check`. -/
 lean_exe «check» where
   root := `Main
+
+/-- Computes exact EVM top-SWAP costs and checked witnesses for riff-cat cases. -/
+lean_exe «shuffle_oracle» where
+  root := `ShuffleOracleMain

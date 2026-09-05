@@ -27,8 +27,8 @@ mod encode;
 // modules at the crate root so existing `riff_catalog_core::{...}` item paths and
 // the internal `crate::<module>::Item` references in the hashing modules keep
 // resolving unchanged. Hashing (encode, hash, policy, reference, index) stays here.
-pub use riff_catalog_schema::{dimension, error, graph, key, record, text, value};
 use riff_catalog_schema::serde_pairs;
+pub use riff_catalog_schema::{dimension, error, graph, key, record, text, value};
 
 pub use dimension::Dimension;
 pub use error::CatalogError;

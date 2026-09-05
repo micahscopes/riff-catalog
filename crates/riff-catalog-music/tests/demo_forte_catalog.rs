@@ -30,7 +30,10 @@ const FORTE_NAMES: &[(&str, &str)] = &[
 ];
 
 fn pcs_string(pcs: &[i32]) -> String {
-    pcs.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(" ")
+    pcs.iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn invert(pcs: &[i32]) -> Vec<i32> {
@@ -89,21 +92,25 @@ fn the_demo_catalog_matches_the_published_catalog() {
     // its mirror, does not join them until the prime-form fold.
     let tnf = |c: &str| transposition_normal_form(&chord_to_pitch_classes(c).expect(c));
     assert_eq!(tnf("C"), tnf("G"), "C = G at the Tn-type");
-    assert_ne!(tnf("C"), tnf("Am"), "Am stays apart at the Tn-type (the A/B point)");
+    assert_ne!(
+        tnf("C"),
+        tnf("Am"),
+        "Am stays apart at the Tn-type (the A/B point)"
+    );
 }
 
 /// The demo's invert (I) toggle: A and B swap, symmetric sets stay themselves.
 #[test]
 fn the_invert_operation_swaps_a_and_b_and_fixes_the_symmetric_sets() {
     let expect: &[(&str, &str)] = &[
-        ("C", "3-11A"),     // major inverts onto the minor type
+        ("C", "3-11A"), // major inverts onto the minor type
         ("G", "3-11A"),
-        ("Am", "3-11B"),    // and minor onto the major type
-        ("Caug", "3-12"),   // the symmetric four invert to themselves
+        ("Am", "3-11B"),  // and minor onto the major type
+        ("Caug", "3-12"), // the symmetric four invert to themselves
         ("Bdim", "3-10"),
         ("Cmaj7", "4-20"),
         ("Am7", "4-26"),
-        ("G7", "4-27A"),    // dominant seventh inverts onto the half-diminished type
+        ("G7", "4-27A"), // dominant seventh inverts onto the half-diminished type
     ];
     for (notation, id) in expect {
         let pcs = chord_to_pitch_classes(notation).expect(notation);
@@ -131,7 +138,10 @@ fn forte_names_keys_are_exactly_the_engine_prime_forms_of_the_demo_chords() {
     emitted.dedup();
     let mut keys: Vec<String> = FORTE_NAMES.iter().map(|(k, _)| (*k).to_string()).collect();
     keys.sort();
-    assert_eq!(emitted, keys, "FORTE_NAMES must key exactly the displayed prime forms");
+    assert_eq!(
+        emitted, keys,
+        "FORTE_NAMES must key exactly the displayed prime forms"
+    );
 }
 
 /// The chord-fp chapter (the-riff, chapter 2): "Cdo" is the solfege spelling of
@@ -140,7 +150,11 @@ fn forte_names_keys_are_exactly_the_engine_prime_forms_of_the_demo_chords() {
 #[test]
 fn chord_fp_chapter_grouping_matches_its_prose() {
     let pf = |c: &str| prime_form(&chord_to_pitch_classes(c).expect(c));
-    assert_eq!(chord_to_pitch_classes("Cdo").unwrap(), vec![0, 4, 7], "Cdo is C major");
+    assert_eq!(
+        chord_to_pitch_classes("Cdo").unwrap(),
+        vec![0, 4, 7],
+        "Cdo is C major"
+    );
     assert_eq!(pf("C"), vec![0, 3, 7]);
     assert_eq!(pf("Cdo"), pf("C"), "two spellings, one class");
     assert_eq!(pf("Am"), pf("C"));
@@ -150,6 +164,10 @@ fn chord_fp_chapter_grouping_matches_its_prose() {
     assert_ne!(pf("Caug"), pf("Bdim"));
     // The badge pair the chapter renders: Tn-type and the prime form it folds to.
     let c = chord_to_pitch_classes("C").unwrap();
-    assert_eq!(transposition_normal_form(&c), vec![0, 4, 7], "C: Tn [0 4 7]");
+    assert_eq!(
+        transposition_normal_form(&c),
+        vec![0, 4, 7],
+        "C: Tn [0 4 7]"
+    );
     assert_eq!(prime_form(&c), vec![0, 3, 7], "C: prime [0 3 7]");
 }

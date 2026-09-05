@@ -45,9 +45,9 @@ const FIXTURES: &[(&str, &str, &str, &str)] = &[
 pub fn fixture_index() -> String {
     let items: Vec<_> = FIXTURES
         .iter()
-        .map(|(id, label, level, _)| {
-            serde_json::json!({ "id": id, "label": label, "level": level })
-        })
+        .map(
+            |(id, label, level, _)| serde_json::json!({ "id": id, "label": label, "level": level }),
+        )
         .collect();
     serde_json::to_string(&items).unwrap_or_else(|_| "[]".into())
 }

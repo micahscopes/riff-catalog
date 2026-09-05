@@ -560,6 +560,38 @@ const CH = [
     body: `<fold-merkle></fold-merkle>`,
   },
   {
+    nav: "hash a purchase",
+    hashingOnly: true,
+    kicker: "without cycles",
+    title: "Hash a real order, leaves first",
+    lede: "An order contains a customer and two line items. Walk from readable fields to one facet address, one actual riff-cat digest at a time.",
+    body: `<hash-walkthrough scenario="order"></hash-walkthrough>`,
+  },
+  {
+    nav: "watch one edit",
+    hashingOnly: true,
+    kicker: "change propagation",
+    title: "Change one quantity and follow the hashes",
+    lede: "The number of paper filters changes from one to two. Watch the change move up its ancestor path while the other branch stays still.",
+    body: `<hash-walkthrough scenario="edit"></hash-walkthrough>`,
+  },
+  {
+    nav: "hash a cycle",
+    hashingOnly: true,
+    kicker: "with a cycle",
+    title: "Hash mutually dependent services",
+    lede: "Inventory reads Catalog, while Catalog checks Inventory. See why the leaf-first fold stops, then step through SCC condensation and color refinement.",
+    body: `<hash-walkthrough scenario="cycle"></hash-walkthrough>`,
+  },
+  {
+    nav: "hash a loop",
+    hashingOnly: true,
+    kicker: "a cycle inside code",
+    title: "The SCC stops at the loop boundary",
+    lede: "Only mutually reachable control-flow blocks form the SCC. Entry, exit, return, and one-way instruction subtrees remain separate and keep ordinary content addresses.",
+    body: `<hash-walkthrough scenario="cfg"></hash-walkthrough>`,
+  },
+  {
     nav: "the cheap yes",
     kicker: "generalizing a fast path hevm already ships",
     title: "When structure can skip the solver",
@@ -850,6 +882,15 @@ const slugify = (s) => s.replace(/\s+/g, "-");
 // chapter. Writing a new arc means adding one entry to ARCS; ?arc=<key> selects
 // it. See demo/ARCS.md for the pool inventory and how to draft one.
 const ARCS = {
+  hashing: {
+    label: "hashing",
+    appendix: false,
+    sections: [
+      ["without cycles", ["hash a purchase"]],
+      ["one edit", ["watch one edit"]],
+      ["with cycles", ["hash a cycle", "hash a loop"]],
+    ],
+  },
   // The 20-minute talk, "A name you can check": a cold open, the receipts read
   // back in order, the turn, three live proofs plus the anchor payoff, then
   // the honest edge, the ask, and one closing line. The slides marked talkOnly
@@ -1033,7 +1074,13 @@ const SECTIONS = [];
     place(
       APPENDIX_LABEL,
       [...pool.values()]
-        .filter((c) => !c.talkOnly && !c.demosOnly && !c.tonightOnly)
+        .filter(
+          (c) =>
+            !c.talkOnly &&
+            !c.demosOnly &&
+            !c.tonightOnly &&
+            !c.hashingOnly,
+        )
         .map((c) => c.nav),
     );
   CH.length = 0;
@@ -1083,8 +1130,29 @@ customElements.define(
       document.addEventListener("keydown", (e) => {
         if (e.target.closest("live-dial") || e.target.closest("recog-scan"))
           return; // let those keep focus
-        if (e.key === "ArrowRight") this.next();
-        if (e.key === "ArrowLeft") this.prev();
+        const walkthrough = this.querySelector("hash-walkthrough");
+        if (e.key === "ArrowRight") {
+          if (
+            walkthrough &&
+            typeof walkthrough.nextStep === "function" &&
+            walkthrough.nextStep()
+          ) {
+            e.preventDefault();
+            return;
+          }
+          this.next();
+        }
+        if (e.key === "ArrowLeft") {
+          if (
+            walkthrough &&
+            typeof walkthrough.previousStep === "function" &&
+            walkthrough.previousStep()
+          ) {
+            e.preventDefault();
+            return;
+          }
+          this.prev();
+        }
         if (e.key.toLowerCase() === "d")
           setDetails(!document.body.classList.contains("details"));
       });

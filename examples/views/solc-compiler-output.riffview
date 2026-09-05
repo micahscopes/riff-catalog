@@ -1,0 +1,9 @@
+# Address emitted bytecode independently of the policy that produced it.
+language "riffcat-view/1"
+view "solc.compiler-output/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.output"
+traverse children
+
+retain structure, constants

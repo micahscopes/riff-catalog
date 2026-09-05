@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use riff_catalog_core::{
-    CyclePolicy, DigestRequest, Graph, GraphKey, HashPolicy, ViewMode, digest_graph,
+    CyclePolicy, Digest, DigestRequest, Facet, Graph, GraphKey, HashPolicy, ViewMode, digest_graph,
 };
 use riff_catalog_evm::{BytecodeKind, EVM_LEVEL, lower_bytecode};
 use riff_catalog_solc::{CachedSolc, CompileOptions, Pipeline, SolcOutput, SolcRunner};
@@ -127,7 +127,7 @@ fn short_origin_hash(origin: &str) -> String {
 }
 
 /// Hash a unit graph under both view modes and emit graph + digest records.
-fn emit_unit(
+pub(crate) fn emit_unit(
     records: &mut Vec<Record>,
     artifact: &str,
     owner: &str,
@@ -136,7 +136,7 @@ fn emit_unit(
     name: &str,
     graph_key: &GraphKey,
     graph: &Graph,
-) -> Result<()> {
+) -> Result<BTreeMap<String, Digest>> {
     records.push(Record::Graph {
         artifact_id: artifact.to_string(),
         unit: unit.to_string(),
@@ -145,6 +145,7 @@ fn emit_unit(
         graph_key: graph_key.clone(),
         graph: graph.clone(),
     });
+    let mut addresses = BTreeMap::new();
     for (mode, view_mode) in [
         ("identity", ViewMode::IdentityBound),
         ("shape", ViewMode::AnonymousShape),
@@ -154,6 +155,12 @@ fn emit_unit(
             &DigestRequest::all_dimensions(graph_key.clone(), policy.clone()),
             graph,
         )?;
+        let dimensions = result.hashes.graph.values.keys().copied();
+        let facet = Facet::new(policy.policy_id(), dimensions)?;
+        addresses.insert(
+            mode.to_string(),
+            result.hashes.facet_address(&facet)?.address_digest(),
+        );
         records.push(Record::Digest {
             artifact_id: artifact.to_string(),
             owner: owner.to_string(),
@@ -166,7 +173,7 @@ fn emit_unit(
             node_count: graph.nodes.len(),
         });
     }
-    Ok(())
+    Ok(addresses)
 }
 
 fn ingest_solidity(
@@ -306,13 +313,11 @@ fn ingest_contract_ir(
                 // so parse it through riffcat's other front door. Conformance
                 // guarantees the text and JSON paths produce the same AST.
                 match text_result {
-                    Ok(text) if !text.trim().is_empty() => {
-                        parse_object(text).map_err(|error| {
-                            anyhow::anyhow!(
-                                "parsing {variant} IR text for {source}:{contract}: {error}"
-                            )
-                        })?
-                    }
+                    Ok(text) if !text.trim().is_empty() => parse_object(text).map_err(|error| {
+                        anyhow::anyhow!(
+                            "parsing {variant} IR text for {source}:{contract}: {error}"
+                        )
+                    })?,
                     _ => {
                         eprintln!(
                             "WARN: {source}:{contract}: no {variant} IR (neither AST \

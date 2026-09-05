@@ -1,0 +1,10 @@
+# Address an emitted shuffle witness independently of surrounding compiler events.
+language "riffcat-view/1"
+view "solc.shuffle-playback/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.shuffle_playback_observation"
+traverse children
+traverse edges data
+
+retain structure, constants, types, trace_events

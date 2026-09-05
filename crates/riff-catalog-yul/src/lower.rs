@@ -822,7 +822,11 @@ mod tests {
             })
             .map(|node| node.key.clone())
             .collect();
-        assert_eq!(gcd_keys.len(), 2, "two distinct gcd nodes in the object graph");
+        assert_eq!(
+            gcd_keys.len(),
+            2,
+            "two distinct gcd nodes in the object graph"
+        );
 
         let called: std::collections::BTreeSet<_> = object_graph
             .edges

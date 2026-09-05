@@ -72,7 +72,10 @@ mod tests {
     use riff_catalog_music::{Note, encode_riff};
 
     fn ingest(name: &str, spec: &[(i32, u32)]) -> GraphHashes {
-        let notes: Vec<Note> = spec.iter().map(|&(pitch, dur)| Note { pitch, dur }).collect();
+        let notes: Vec<Note> = spec
+            .iter()
+            .map(|&(pitch, dur)| Note { pitch, dur })
+            .collect();
         let (_key, graph) = encode_riff(name, &notes).unwrap();
         ingest_graph(&graph, "riff.v1").unwrap()
     }
@@ -122,8 +125,7 @@ mod tests {
     fn origin_edges_do_not_perturb_the_shape() {
         let ek = |kind: &str, local: &str| EntityKey::new(kind, "pkg:token", local).unwrap();
         let build = |with_origin: bool| -> Graph {
-            let mut g =
-                Graph::new(GraphKey::new(ek("mir.body", "transfer"), "body").unwrap());
+            let mut g = Graph::new(GraphKey::new(ek("mir.body", "transfer"), "body").unwrap());
             let body = NodeKey::entity(ek("mir.body", "transfer"));
             let s0 = NodeKey::entity(ek("mir.stmt", "stmt:0"));
             let s1 = NodeKey::entity(ek("mir.stmt", "stmt:1"));
@@ -138,8 +140,10 @@ mod tests {
             if with_origin {
                 // provenance edges: each statement records the unit it lowered
                 // from. Same node set, only Origin edges added.
-                g.add_edge(&s0, "lowered_from", &body, EdgeRole::Origin).unwrap();
-                g.add_edge(&s1, "lowered_from", &body, EdgeRole::Origin).unwrap();
+                g.add_edge(&s0, "lowered_from", &body, EdgeRole::Origin)
+                    .unwrap();
+                g.add_edge(&s1, "lowered_from", &body, EdgeRole::Origin)
+                    .unwrap();
             }
             g
         };

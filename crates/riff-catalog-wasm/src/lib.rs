@@ -188,7 +188,7 @@ pub fn node_digests(ir_ast_json: &str, mode: &str) -> Result<String, JsValue> {
 /// the wasm wrapper can map them to `JsValue` and tests can assert on them.
 fn node_digests_impl(ir_ast_json: &str, mode: &str) -> Result<String, String> {
     use riff_catalog_yul::from_solc_value;
-    use riff_catalog_yul::lower::{LowerOptions, YUL_AST_LEVEL, LoweredUnit, lower_object};
+    use riff_catalog_yul::lower::{LowerOptions, LoweredUnit, YUL_AST_LEVEL, lower_object};
     let value: Value = serde_json::from_str(ir_ast_json).map_err(|e| e.to_string())?;
     let object = from_solc_value(&value).map_err(|e| e.to_string())?;
     let lowered =
@@ -219,8 +219,7 @@ fn node_digests_impl(ir_ast_json: &str, mode: &str) -> Result<String, String> {
         .filter(fn_like)
         .min_by(|a, b| {
             let n = |u: &LoweredUnit| u.graph.nodes.len();
-            let key =
-                |u: &LoweredUnit| (n(u).abs_diff(FOLD_TARGET_NODES), n(u), u.name.clone());
+            let key = |u: &LoweredUnit| (n(u).abs_diff(FOLD_TARGET_NODES), n(u), u.name.clone());
             key(a).cmp(&key(b))
         })
         .or_else(|| lowered.functions.iter().max_by_key(|u| u.graph.nodes.len()))
@@ -329,7 +328,9 @@ fn build_origin_graph(spec: &OriginSpec, include_origin: bool) -> Result<Graph, 
 
     for node in &spec.nodes {
         let key = key_of(&node.id)?;
-        graph.add_node(key.clone(), node.kind.clone()).map_err(str_err)?;
+        graph
+            .add_node(key.clone(), node.kind.clone())
+            .map_err(str_err)?;
         for (dim, name, value) in &node.fields {
             let dimension =
                 Dimension::parse(dim).ok_or_else(|| format!("unknown dimension {dim:?}"))?;
@@ -345,7 +346,12 @@ fn build_origin_graph(spec: &OriginSpec, include_origin: bool) -> Result<Graph, 
     }
     for (source, label, target, role) in &spec.edges {
         graph
-            .add_edge(&key_of(source)?, label.clone(), &key_of(target)?, flat_role(role)?)
+            .add_edge(
+                &key_of(source)?,
+                label.clone(),
+                &key_of(target)?,
+                flat_role(role)?,
+            )
             .map_err(str_err)?;
     }
     if include_origin {
@@ -361,6 +367,177 @@ fn build_origin_graph(spec: &OriginSpec, include_origin: bool) -> Result<Graph, 
         }
     }
     Ok(graph)
+}
+
+/// Parse the cycle policy used by the hashing walkthrough. Keeping this closed
+/// makes the page name the exact engine policy rather than silently selecting
+/// a fallback.
+fn walkthrough_cycle_policy(name: &str) -> Result<CyclePolicy, String> {
+    match name {
+        "reject" => Ok(CyclePolicy::Reject),
+        "condense_scc" => Ok(CyclePolicy::CondenseScc),
+        other => Err(format!("unknown walkthrough cycle policy {other:?}")),
+    }
+}
+
+/// Serialize one generic data-structure graph with the intermediate results the
+/// walkthrough needs. Every digest in this payload comes directly from
+/// `digest_graph`; JavaScript only reveals and explains them.
+fn walkthrough_payload(
+    graph: &Graph,
+    hashes: &GraphHashes,
+    policy: &HashPolicy,
+) -> Result<Value, String> {
+    let nodes = hashes
+        .nodes
+        .iter()
+        .map(|(key, node_hashes)| {
+            let node = graph.nodes.get(key).expect("hash result belongs to graph");
+            let fields = node
+                .fields
+                .iter()
+                .map(|field| {
+                    Ok(json!({
+                        "dimension": field.dimension.as_str(),
+                        "name": field.name.as_str(),
+                        "value": serde_json::to_value(&field.value).map_err(str_err)?,
+                    }))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            let children = graph
+                .children
+                .iter()
+                .filter(|edge| edge.parent == *key)
+                .map(|edge| {
+                    json!({
+                        "label": edge.label.as_str(),
+                        "ordinal": edge.ordinal,
+                        "target": edge.child.owner().local(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            let outgoing = graph
+                .edges
+                .iter()
+                .filter(|edge| edge.source == *key && edge.role != EdgeRole::Origin)
+                .map(|edge| {
+                    json!({
+                        "label": edge.label.as_str(),
+                        "role": edge.role.as_str(),
+                        "target": edge.target.owner().local(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            let component_index = hashes
+                .components
+                .iter()
+                .position(|component| component.members.contains(key));
+            Ok(json!({
+                "id": key.owner().local(),
+                "key": key.canonical_key(),
+                "kind": node.kind.as_str(),
+                "fields": fields,
+                "children": children,
+                "outgoing": outgoing,
+                "local": dimension_map(&node_hashes.local),
+                "tree": dimension_map(&node_hashes.tree),
+                "component": node_hashes.component.as_ref().map(dimension_map),
+                "component_index": component_index,
+            }))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let components = hashes
+        .components
+        .iter()
+        .map(|component| {
+            let members = component
+                .members
+                .iter()
+                .map(|member| {
+                    let colors = component
+                        .member_colors
+                        .get(member)
+                        .expect("component member has final colors");
+                    json!({
+                        "id": member.owner().local(),
+                        "colors": dimension_map(colors),
+                    })
+                })
+                .collect::<Vec<_>>();
+            json!({
+                "index": component.component_index,
+                "members": members,
+                "digests": dimension_map(&component.digests),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "policy": {
+            "schema_version": policy.schema_version,
+            "algorithm": policy.algorithm.as_str(),
+            "level": policy.level.as_str(),
+            "view_mode": policy.view_mode.as_str(),
+            "cycle_policy": policy.cycle_policy.as_str(),
+            "policy_id": hashes.policy_id.to_hex(),
+            "record_header": [
+                "riffcat",
+                policy.schema_version.to_string(),
+                policy.algorithm.as_str(),
+                policy.level.as_str(),
+                "<dimension>",
+                policy.view_mode.as_str(),
+                policy.cycle_policy.as_str(),
+                "<record-tag>"
+            ],
+            "encoding": "length-prefixed strings and little-endian integers",
+        },
+        "nodes": nodes,
+        "children": graph.children.iter().map(|edge| json!({
+            "source": edge.parent.owner().local(),
+            "target": edge.child.owner().local(),
+            "label": edge.label.as_str(),
+            "ordinal": edge.ordinal,
+            "role": "child",
+        })).collect::<Vec<_>>(),
+        "edges": graph.edges.iter().filter(|edge| edge.role != EdgeRole::Origin).map(|edge| json!({
+            "source": edge.source.owner().local(),
+            "target": edge.target.owner().local(),
+            "label": edge.label.as_str(),
+            "role": edge.role.as_str(),
+        })).collect::<Vec<_>>(),
+        "components": components,
+        "graph": dimension_map(&hashes.graph),
+        "facets": facet_addresses(hashes).map_err(|error| format!("{error:?}"))?,
+    }))
+}
+
+/// Hash a compact, generic graph for the interactive walkthrough. The data is
+/// lowered through the same graph and digest implementation used by the CLI.
+/// `cycle_policy` is `reject` or `condense_scc`.
+fn hash_walkthrough_impl(spec_json: &str, cycle_policy: &str) -> Result<String, String> {
+    const WALKTHROUGH_LEVEL: &str = "walkthrough.data-structure/1";
+    let spec: OriginSpec = serde_json::from_str(spec_json).map_err(str_err)?;
+    let graph = build_origin_graph(&spec, false)?;
+    let policy = HashPolicy::new(
+        WALKTHROUGH_LEVEL,
+        ViewMode::AnonymousShape,
+        walkthrough_cycle_policy(cycle_policy)?,
+    )
+    .map_err(str_err)?;
+    let hashes = digest_graph(
+        &DigestRequest::all_dimensions(graph.graph_key.clone(), policy.clone()),
+        &graph,
+    )
+    .map_err(str_err)?
+    .hashes;
+    serde_json::to_string(&walkthrough_payload(&graph, &hashes, &policy)?).map_err(str_err)
+}
+
+#[wasm_bindgen]
+pub fn hash_walkthrough(spec_json: &str, cycle_policy: &str) -> Result<String, JsValue> {
+    hash_walkthrough_impl(spec_json, cycle_policy).map_err(js_err)
 }
 
 fn str_err(e: impl std::fmt::Display) -> String {
@@ -490,7 +667,8 @@ pub fn origin_containment(a_json: &str, b_json: &str, dimension: &str) -> Result
 pub fn fingerprint_source(ast_json: &str, mode: &str) -> Result<String, JsValue> {
     use riff_catalog_solidity::{SOL_AST_LEVEL, WalkOptions, lower_source_unit};
     let ast: Value = serde_json::from_str(ast_json).map_err(js_err)?;
-    let lowered = lower_source_unit(&ast, "wasm", &WalkOptions { strict: false }).map_err(js_err)?;
+    let lowered =
+        lower_source_unit(&ast, "wasm", &WalkOptions { strict: false }).map_err(js_err)?;
     let view_mode = view(mode);
     let mut out = Vec::new();
     for unit in std::iter::once(&lowered.source_unit)
@@ -530,10 +708,10 @@ pub fn fingerprint_riff(riff_json: &str) -> Result<String, JsValue> {
     let mut notes = Vec::with_capacity(raw.len());
     let mut pitches = Vec::with_capacity(raw.len());
     for n in raw {
-        let pitch = n
-            .get("pitch")
-            .and_then(serde_json::Value::as_i64)
-            .ok_or_else(|| js_err("each note needs an integer \"pitch\""))? as i32;
+        let pitch =
+            n.get("pitch")
+                .and_then(serde_json::Value::as_i64)
+                .ok_or_else(|| js_err("each note needs an integer \"pitch\""))? as i32;
         let dur = n
             .get("dur")
             .and_then(serde_json::Value::as_u64)
@@ -667,6 +845,70 @@ mod tests {
     use super::oklch_chip;
 
     const DEMO_YUL: &str = include_str!("../../../demo/app/fixtures/demo.yul.json");
+    const ORDER_SPEC: &str = r#"{
+      "owner":"walk:shop","unit":"order-1042","unit_kind":"commerce.order",
+      "nodes":[
+        {"id":"order","kind":"commerce.order","fields":[["names","number","ORD-1042"],["constants","currency","USD"]]},
+        {"id":"buyer","kind":"commerce.customer","fields":[["names","name","Mina"]]},
+        {"id":"item","kind":"commerce.line_item","fields":[["constants","quantity","1"]]},
+        {"id":"product","kind":"commerce.product_snapshot","fields":[["names","title","Coffee beans"],["constants","unit_price_cents","1800"]]}
+      ],
+      "children":[
+        ["order","buyer",0,"buyer"],
+        ["order","item",1,"item"],
+        ["item","product",0,"product"]
+      ],
+      "edges":[]
+    }"#;
+    const SERVICE_CYCLE_SPEC: &str = r#"{
+      "owner":"walk:shop","unit":"services","unit_kind":"deployment.service_graph",
+      "nodes":[
+        {"id":"storefront","kind":"deployment.service","fields":[["names","name","storefront"]]},
+        {"id":"checkout","kind":"deployment.service","fields":[["names","name","checkout"]]},
+        {"id":"inventory","kind":"deployment.service","fields":[["names","name","inventory"]]},
+        {"id":"catalog","kind":"deployment.service","fields":[["names","name","catalog"]]},
+        {"id":"payments","kind":"deployment.service","fields":[["names","name","payments"]]}
+      ],
+      "children":[],
+      "edges":[
+        ["storefront","calls","checkout","dependency"],
+        ["checkout","reserves","inventory","dependency"],
+        ["checkout","charges","payments","dependency"],
+        ["inventory","reads","catalog","dependency"],
+        ["catalog","checks_stock","inventory","dependency"]
+      ]
+    }"#;
+    const CFG_LOOP_SPEC: &str = r#"{
+      "owner":"walk:yul-cfg","unit":"sum-memory","unit_kind":"yulssa.fn",
+      "nodes":[
+        {"id":"entry","kind":"yulssa.block"},
+        {"id":"loop_header","kind":"yulssa.block"},
+        {"id":"load_item","kind":"yulssa.block"},
+        {"id":"add_total","kind":"yulssa.block"},
+        {"id":"increment","kind":"yulssa.block"},
+        {"id":"test_insn","kind":"yulssa.insn","fields":[["structure","op","lt"]]},
+        {"id":"load_insn","kind":"yulssa.insn","fields":[["structure","op","mload"]]},
+        {"id":"add_insn","kind":"yulssa.insn","fields":[["structure","op","add"]]},
+        {"id":"inc_insn","kind":"yulssa.insn","fields":[["structure","op","add"]]},
+        {"id":"exit","kind":"yulssa.block"},
+        {"id":"return","kind":"yulssa.block"}
+      ],
+      "children":[
+        ["loop_header","instruction",0,"test_insn"],
+        ["load_item","instruction",0,"load_insn"],
+        ["add_total","instruction",0,"add_insn"],
+        ["increment","instruction",0,"inc_insn"]
+      ],
+      "edges":[
+        ["entry","jump","loop_header","dependency"],
+        ["loop_header","true","load_item","dependency"],
+        ["loop_header","false","exit","dependency"],
+        ["load_item","next","add_total","dependency"],
+        ["add_total","next","increment","dependency"],
+        ["increment","backedge","loop_header","dependency"],
+        ["exit","jump","return","dependency"]
+      ]
+    }"#;
 
     #[test]
     fn node_digests_match_fold_shape() {
@@ -674,7 +916,11 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let nodes = v["nodes"].as_array().expect("nodes array");
         assert!(!nodes.is_empty(), "fold needs at least one node");
-        assert!(nodes.len() <= 16, "fold unit should stay small, got {}", nodes.len());
+        assert!(
+            nodes.len() <= 16,
+            "fold unit should stay small, got {}",
+            nodes.len()
+        );
         // Exactly one root (parent: null), the others all parented in the skeleton.
         let roots = nodes.iter().filter(|n| n["parent"].is_null()).count();
         assert_eq!(roots, 1, "a tree has exactly one root");
@@ -705,6 +951,152 @@ mod tests {
         // shape (anonymous) and identity differ: names/paths enter only in identity.
         let id = super::node_digests_impl(DEMO_YUL, "identity").unwrap();
         assert_ne!(a, id, "shape view should not equal identity view");
+    }
+
+    #[test]
+    fn walkthrough_hashes_an_order_with_the_real_acyclic_fold() {
+        let out = super::hash_walkthrough_impl(ORDER_SPEC, "reject").unwrap();
+        let value: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(value["policy"]["cycle_policy"], "reject");
+        assert_eq!(value["nodes"].as_array().unwrap().len(), 4);
+        assert!(value["components"].as_array().unwrap().is_empty());
+        assert_eq!(value["facets"]["full"].as_str().unwrap().len(), 64);
+        assert_eq!(value["graph"]["structure"].as_str().unwrap().len(), 64);
+    }
+
+    #[test]
+    fn walkthrough_rejects_then_condenses_a_real_dependency_cycle() {
+        let error = super::hash_walkthrough_impl(SERVICE_CYCLE_SPEC, "reject").unwrap_err();
+        assert!(error.contains("cycle"), "got {error}");
+
+        let out = super::hash_walkthrough_impl(SERVICE_CYCLE_SPEC, "condense_scc").unwrap();
+        let value: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let components = value["components"].as_array().unwrap();
+        let cycle = components
+            .iter()
+            .find(|component| component["members"].as_array().unwrap().len() == 2)
+            .expect("inventory and catalog form one SCC");
+        let members = cycle["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| member["id"].as_str().unwrap())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            members,
+            std::collections::BTreeSet::from(["catalog", "inventory"])
+        );
+    }
+
+    #[test]
+    fn walkthrough_cfg_scc_stops_at_the_loop_boundary() {
+        let out = super::hash_walkthrough_impl(CFG_LOOP_SPEC, "condense_scc").unwrap();
+        let value: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let components = value["components"].as_array().unwrap();
+        let loop_component = components
+            .iter()
+            .find(|component| component["members"].as_array().unwrap().len() == 4)
+            .expect("four loop blocks form one SCC");
+        let members = loop_component["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| member["id"].as_str().unwrap())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            members,
+            std::collections::BTreeSet::from([
+                "add_total",
+                "increment",
+                "load_item",
+                "loop_header"
+            ])
+        );
+        assert_eq!(components.len(), 8, "one loop SCC plus seven singletons");
+        for outside in [
+            "entry",
+            "test_insn",
+            "load_insn",
+            "add_insn",
+            "inc_insn",
+            "exit",
+            "return",
+        ] {
+            assert!(components.iter().any(|component| {
+                let members = component["members"].as_array().unwrap();
+                members.len() == 1 && members[0]["id"] == outside
+            }));
+        }
+
+        let without_backedge = CFG_LOOP_SPEC.replace(
+            "[\"increment\",\"backedge\",\"loop_header\",\"dependency\"],",
+            "",
+        );
+        let open_out = super::hash_walkthrough_impl(&without_backedge, "condense_scc").unwrap();
+        let open_value: serde_json::Value = serde_json::from_str(&open_out).unwrap();
+        assert_ne!(
+            value["graph"]["structure"], open_value["graph"]["structure"],
+            "the backedge must change the whole graph"
+        );
+        for instruction in ["test_insn", "load_insn", "add_insn", "inc_insn"] {
+            let cyclic = value["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == instruction)
+                .unwrap();
+            let open = open_value["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == instruction)
+                .unwrap();
+            assert_eq!(
+                cyclic["local"], open["local"],
+                "loop membership must not alter {instruction}'s local address"
+            );
+            assert_eq!(
+                cyclic["tree"], open["tree"],
+                "the backedge is upstream of {instruction}'s subtree address"
+            );
+        }
+    }
+
+    #[test]
+    fn walkthrough_edit_changes_only_the_expected_acyclic_path() {
+        let edited = ORDER_SPEC.replace(
+            "[\"constants\",\"quantity\",\"1\"]",
+            "[\"constants\",\"quantity\",\"2\"]",
+        );
+        let before: serde_json::Value =
+            serde_json::from_str(&super::hash_walkthrough_impl(ORDER_SPEC, "reject").unwrap())
+                .unwrap();
+        let after: serde_json::Value =
+            serde_json::from_str(&super::hash_walkthrough_impl(&edited, "reject").unwrap())
+                .unwrap();
+        fn node<'a>(value: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+            value["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == id)
+                .unwrap()
+        }
+
+        assert_ne!(
+            node(&before, "item")["local"]["constants"],
+            node(&after, "item")["local"]["constants"]
+        );
+        assert_ne!(
+            node(&before, "order")["tree"]["constants"],
+            node(&after, "order")["tree"]["constants"]
+        );
+        assert_eq!(
+            node(&before, "product")["tree"]["constants"],
+            node(&after, "product")["tree"]["constants"]
+        );
+        assert_eq!(before["facets"]["structure"], after["facets"]["structure"]);
+        assert_ne!(before["facets"]["full"], after["facets"]["full"]);
     }
 
     // A small fe-style lowering bundle: a source expression subtree and its
@@ -786,9 +1178,15 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["structure_matches"], serde_json::json!(true));
         assert_eq!(v["full_matches"], serde_json::json!(true));
-        assert_eq!(v["with_origin"]["structure"], v["without_origin"]["structure"]);
+        assert_eq!(
+            v["with_origin"]["structure"],
+            v["without_origin"]["structure"]
+        );
         assert_eq!(v["with_origin"]["full"], v["without_origin"]["full"]);
-        assert_eq!(v["with_origin"]["node_count"], v["without_origin"]["node_count"]);
+        assert_eq!(
+            v["with_origin"]["node_count"],
+            v["without_origin"]["node_count"]
+        );
         // the provenance really is there in one and absent in the other.
         assert!(v["with_origin"]["origin_edges"].as_u64().unwrap() > 0);
         assert_eq!(v["without_origin"]["origin_edges"], serde_json::json!(0));
@@ -801,14 +1199,17 @@ mod tests {
     // specific nodes (all engine-derived).
     #[test]
     fn divergence_is_partial_and_localized_through_the_binding() {
-        let out =
-            super::origin_containment_impl(BEAT2_A, BEAT2_B, "structure").expect("origin_containment");
+        let out = super::origin_containment_impl(BEAT2_A, BEAT2_B, "structure")
+            .expect("origin_containment");
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let c = v["a_in_b"].as_f64().unwrap();
         assert!(c > 0.0 && c < 1.0, "expected partial containment, got {c}");
         // the changed multiply must be among the nodes flagged as divergent.
         let a_only = v["a_only"].as_array().unwrap();
-        assert!(!a_only.is_empty(), "a divergence must localize to some node");
+        assert!(
+            !a_only.is_empty(),
+            "a divergence must localize to some node"
+        );
         assert!(
             a_only.iter().any(|n| n["id"] == "op"),
             "the strength-reduced operator should be flagged, got {a_only:?}"
@@ -821,7 +1222,11 @@ mod tests {
     fn chip_color_stable_distinct_and_formatted() {
         let a = oklch_chip("c80e6c0c0bab");
         assert_eq!(a, oklch_chip("c80e6c0c0bab"), "same digest, same color");
-        assert_ne!(a, oklch_chip("394376dc71f0"), "different digest, different color");
+        assert_ne!(
+            a,
+            oklch_chip("394376dc71f0"),
+            "different digest, different color"
+        );
         assert!(a.starts_with("oklch(") && a.ends_with(')'), "got {a}");
     }
 }

@@ -1,0 +1,10 @@
+# Address the before, after-layout, and after-closure spill sets.
+language "riffcat-view/1"
+view "solc.spill-state/1"
+input "solc-stack-event/1"
+
+root node-kind "solc.stack.spills"
+traverse children
+traverse edges data
+
+retain structure, constants, types

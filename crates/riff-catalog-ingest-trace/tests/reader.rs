@@ -3,7 +3,7 @@
 //! No hashing engine here; the engine-side inertness contract lives in the
 //! `riff-catalog` facade.
 
-use riff_catalog_ingest_trace::{ingest_trace_bundle, SUPPORTED_TRACE_SCHEMA_VERSION};
+use riff_catalog_ingest_trace::{SUPPORTED_TRACE_SCHEMA_VERSION, ingest_trace_bundle};
 use riff_catalog_schema::{Dimension, EdgeRole, NodeKey, Value};
 
 /// A miniature bundle in fe's exact wire form: a metadata header, three origin
@@ -96,7 +96,8 @@ fn rejects_a_future_trace_schema_before_interpreting_known_records() {
     );
     let err = ingest_trace_bundle(future).unwrap_err();
     assert!(
-        err.to_string().contains("unsupported trace schema version 2"),
+        err.to_string()
+            .contains("unsupported trace schema version 2"),
         "got: {err}"
     );
     assert_eq!(SUPPORTED_TRACE_SCHEMA_VERSION, 1);

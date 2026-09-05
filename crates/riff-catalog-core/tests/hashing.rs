@@ -583,8 +583,16 @@ fn sibling_constant_order_visible_under_condense_scc() {
         graph.add_child(&body, "arg", 1, &b).unwrap();
         graph
     };
-    let left = digests(&build(false), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
-    let right = digests(&build(true), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    let left = digests(
+        &build(false),
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    );
+    let right = digests(
+        &build(true),
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    );
     assert_eq!(
         left.graph.get(Dimension::Structure),
         right.graph.get(Dimension::Structure),
@@ -625,8 +633,16 @@ fn flat_edge_role_swap_visible_outside_structure() {
         graph.add_edge(&c, "edge", &d, cd_role).unwrap();
         graph
     };
-    let left = digests(&build(false), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
-    let right = digests(&build(true), ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    let left = digests(
+        &build(false),
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    );
+    let right = digests(
+        &build(true),
+        ViewMode::AnonymousShape,
+        CyclePolicy::CondenseScc,
+    );
     assert_ne!(
         left.graph.get(Dimension::Names),
         right.graph.get(Dimension::Names),
