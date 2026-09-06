@@ -295,6 +295,8 @@ pub enum DecisionKind {
         instructions: u64,
         accesses_resource: bool,
         maximum_physical_parameters: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prepared_structure: Option<PreparedHelperStructure>,
     },
     BackendRejected {
         reason: String,
@@ -303,6 +305,23 @@ pub enum DecisionKind {
     FrontendRetained,
     ForcedInline,
     ConsequentialInline,
+}
+
+/// Producer-recorded static region-tree counts for one logical helper before
+/// backend control compaction. Neither dynamic work nor emitted byte counts;
+/// resource-specialized variants do not multiply these measurements.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreparedHelperStructure {
+    pub region_nodes: u64,
+    pub reachable_blocks: u64,
+    pub referenced_blocks: u64,
+    pub block_occurrences: u64,
+    pub duplicated_block_occurrences: u64,
+    pub loops: u64,
+    pub conditionals: u64,
+    pub loop_exits: u64,
+    pub loop_continues: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

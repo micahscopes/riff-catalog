@@ -177,6 +177,7 @@ pub fn import_fe_events(input: FeEventsImport) -> Result<Capture> {
                         instructions: helper.instructions,
                         accesses_resource: helper.accesses_resource,
                         maximum_physical_parameters: helper.maximum_physical_parameters,
+                        prepared_structure: helper.prepared_structure,
                     },
                     evidence: evidence.clone(),
                 }));
@@ -658,6 +659,8 @@ struct RawCallable {
     instructions: u64,
     accesses_resource: bool,
     maximum_physical_parameters: u64,
+    #[serde(default)]
+    prepared_structure: Option<PreparedHelperStructure>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -682,4 +685,35 @@ struct RawArtifact {
     path: String,
     sha256: String,
     bytes: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn callable_structure_is_optional_and_lossless() {
+        let mut value = serde_json::json!({
+            "function": "f7", "display_name": "shared_continuation",
+            "variants": 3, "instructions": 76, "accesses_resource": true,
+            "maximum_physical_parameters": 4
+        });
+        let old: RawCallable = serde_json::from_value(value.clone()).unwrap();
+        assert!(old.prepared_structure.is_none());
+        let counts = serde_json::json!({
+            "region_nodes": 12, "reachable_blocks": 8, "referenced_blocks": 8,
+            "block_occurrences": 10, "duplicated_block_occurrences": 2,
+            "loops": 1, "conditionals": 3, "loop_exits": 1, "loop_continues": 0
+        });
+        value["prepared_structure"] = counts.clone();
+        let new: RawCallable = serde_json::from_value(value).unwrap();
+        assert_eq!(serde_json::to_value(new.prepared_structure).unwrap(), counts);
+
+        let old_decision = serde_json::json!({
+            "kind": "backend_callable", "variants": 3, "instructions": 76,
+            "accesses_resource": true, "maximum_physical_parameters": 4
+        });
+        let parsed: DecisionKind = serde_json::from_value(old_decision.clone()).unwrap();
+        assert_eq!(serde_json::to_value(parsed).unwrap(), old_decision);
+    }
 }
