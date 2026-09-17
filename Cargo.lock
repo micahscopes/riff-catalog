@@ -1090,6 +1090,7 @@ name = "riff-catalog-solidity"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "riff-catalog-core",
  "riff-catalog-solc",
  "riff-catalog-yul",

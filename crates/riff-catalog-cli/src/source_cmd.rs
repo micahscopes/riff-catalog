@@ -79,6 +79,7 @@ pub fn run_search(
     start: usize,
     end: usize,
     view: &str,
+    overlap: bool,
     output: Option<&Path>,
 ) -> Result<()> {
     ensure!(
@@ -96,7 +97,13 @@ pub fn run_search(
         "bindings-ignore-literals" => View::BindingsIgnoreLiterals,
         _ => anyhow::bail!("unknown source view"),
     };
-    let result = search(&bundle.artifacts, query_file, start, end, view)?;
+    let result = if overlap {
+        use riff_catalog_solidity::similarity::{IndexBudget, SyntaxIndex};
+        let index = SyntaxIndex::build(&bundle.artifacts, view, IndexBudget::default())?;
+        serde_json::to_value(index.overlap(query_file, start, end, 3, 200)?)?
+    } else {
+        serde_json::to_value(search(&bundle.artifacts, query_file, start, end, view)?)?
+    };
     match output {
         Some(path) => write_new(path, &result),
         None => {
