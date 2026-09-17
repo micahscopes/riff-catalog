@@ -11,6 +11,7 @@ name = "riffcat"
 path = "src/main.rs"
 
 [dependencies]
+riff-catalog-region.workspace = true
 riff-catalog-core.workspace = true
 riff-catalog-claims.workspace = true
 riff-catalog-solc.workspace = true

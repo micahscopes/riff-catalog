@@ -1,0 +1,18 @@
+[package]
+name = "riff-catalog-region"
+description = "Explicit ported regions and bounded structural comparison"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+riff-catalog-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+riff-catalog-solc.workspace = true
+riff-catalog-yul.workspace = true
+blake3.workspace = true

@@ -991,6 +991,7 @@ dependencies = [
  "riff-catalog-core",
  "riff-catalog-evm",
  "riff-catalog-fe-rmir",
+ "riff-catalog-region",
  "riff-catalog-solc",
  "riff-catalog-solidity",
  "riff-catalog-sonatina",
@@ -1048,6 +1049,19 @@ dependencies = [
  "pest",
  "riff-catalog-core",
  "vibe-grammars",
+]
+
+[[package]]
+name = "riff-catalog-region"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "riff-catalog-core",
+ "riff-catalog-solc",
+ "riff-catalog-yul",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
