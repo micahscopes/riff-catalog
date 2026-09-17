@@ -36,8 +36,8 @@ struct Entry {
     address: String,
 }
 
-pub struct SyntaxIndex<'a> {
-    artifacts: &'a [SourceArtifact],
+pub struct SyntaxIndex {
+    artifacts: Vec<SourceArtifact>,
     entries: Vec<Entry>,
     postings: BTreeMap<String, Vec<usize>>,
     view: View,
@@ -157,11 +157,11 @@ pub fn tokens(source: &str, file: i64) -> Vec<Span> {
     result
 }
 
-impl<'a> SyntaxIndex<'a> {
-    pub fn build(artifacts: &'a [SourceArtifact], view: View, budget: IndexBudget) -> Result<Self> {
+impl SyntaxIndex {
+    pub fn build(artifacts: &[SourceArtifact], view: View, budget: IndexBudget) -> Result<Self> {
         ensure!(artifacts.len() <= 100, "source corpus exceeds 100 files");
         let mut index = Self {
-            artifacts,
+            artifacts: artifacts.to_vec(),
             entries: Vec::new(),
             postings: BTreeMap::new(),
             view,
