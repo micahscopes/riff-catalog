@@ -8,6 +8,7 @@
 
 pub mod protocol;
 pub mod exact;
+pub mod yul_cfg;
 pub mod wl_observation;
 
 use std::collections::{BTreeMap, BTreeSet};

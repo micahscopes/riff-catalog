@@ -19,7 +19,7 @@ struct Bundle {
     captures: Vec<Value>,
 }
 
-fn write_new(path: &Path, value: &impl Serialize) -> Result<()> {
+pub(crate) fn write_new(path: &Path, value: &impl Serialize) -> Result<()> {
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
