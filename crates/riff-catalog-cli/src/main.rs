@@ -8,6 +8,7 @@ mod facet;
 mod ingest;
 mod queries;
 mod region_cmd;
+mod source_cmd;
 mod ssa_trace_cmd;
 mod stack_oracle_cmd;
 mod stack_policy_cmd;
@@ -60,6 +61,27 @@ fn default_cache_dir() -> String {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Capture source text and resolved Solidity ASTs in an offline bundle.
+    SourceCapture {
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Find selected syntax in a captured corpus, without a detector query.
+    SourceSearch {
+        bundle: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        query_file: usize,
+        #[arg(long)]
+        start: usize,
+        #[arg(long)]
+        end: usize,
+        #[arg(long, default_value = "bindings")]
+        view: String,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Compare explicit ordered pure regions (experimental JSONL protocol).
     Region {
         /// Read requests from stdin and write one versioned result per line.
@@ -300,6 +322,29 @@ impl AssertFlags {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    match &cli.command {
+        Command::SourceCapture { paths, output } => {
+            return source_cmd::capture(paths, output, cli.solc.as_deref());
+        }
+        Command::SourceSearch {
+            bundle,
+            query_file,
+            start,
+            end,
+            view,
+            output,
+        } => {
+            return source_cmd::run_search(
+                bundle,
+                *query_file,
+                *start,
+                *end,
+                view,
+                output.as_deref(),
+            );
+        }
+        _ => {}
+    }
     if matches!(&cli.command, Command::Region { .. }) {
         return region_cmd::run();
     }
@@ -307,7 +352,9 @@ fn main() -> Result<()> {
     let cache_dir = PathBuf::from(&cli.cache);
 
     match cli.command {
-        Command::Region { .. } => unreachable!("handled before corpus access"),
+        Command::Region { .. } | Command::SourceCapture { .. } | Command::SourceSearch { .. } => {
+            unreachable!("handled before corpus access")
+        }
         Command::Ingest {
             paths,
             sourcify,

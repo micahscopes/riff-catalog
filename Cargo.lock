@@ -1089,9 +1089,11 @@ dependencies = [
 name = "riff-catalog-solidity"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "riff-catalog-core",
  "riff-catalog-solc",
  "riff-catalog-yul",
+ "serde",
  "serde_json",
  "thiserror",
 ]
