@@ -79,6 +79,9 @@ enum Command {
         end: usize,
         #[arg(long, default_value = "bindings")]
         view: String,
+        /// Rank shared subtrees and show nonoverlapping coverage.
+        #[arg(long)]
+        overlap: bool,
         #[arg(long)]
         output: Option<PathBuf>,
     },
@@ -332,6 +335,7 @@ fn main() -> Result<()> {
             start,
             end,
             view,
+            overlap,
             output,
         } => {
             return source_cmd::run_search(
@@ -340,6 +344,7 @@ fn main() -> Result<()> {
                 *start,
                 *end,
                 view,
+                *overlap,
                 output.as_deref(),
             );
         }

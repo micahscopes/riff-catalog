@@ -15,6 +15,7 @@ mod error;
 mod profile;
 mod walker;
 pub mod selection;
+pub mod similarity;
 
 pub use error::SolLowerError;
 pub use profile::spec_for;
