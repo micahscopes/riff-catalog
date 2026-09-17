@@ -7,6 +7,7 @@ mod corpus;
 mod facet;
 mod ingest;
 mod queries;
+mod region_cmd;
 mod ssa_trace_cmd;
 mod stack_oracle_cmd;
 mod stack_policy_cmd;
@@ -59,6 +60,12 @@ fn default_cache_dir() -> String {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Compare explicit ordered pure regions (experimental JSONL protocol).
+    Region {
+        /// Read requests from stdin and write one versioned result per line.
+        #[arg(long, required = true)]
+        jsonl: bool,
+    },
     /// Compile or parse artifacts (.sol, .yul, .sona, .rmir, sourcify refs) and write graphs +
     /// digests into the corpus.
     Ingest {
@@ -293,10 +300,14 @@ impl AssertFlags {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    if matches!(&cli.command, Command::Region { .. }) {
+        return region_cmd::run();
+    }
     let corpus = Corpus::open(&cli.corpus)?;
     let cache_dir = PathBuf::from(&cli.cache);
 
     match cli.command {
+        Command::Region { .. } => unreachable!("handled before corpus access"),
         Command::Ingest {
             paths,
             sourcify,
