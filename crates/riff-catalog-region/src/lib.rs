@@ -7,6 +7,7 @@
 //! function signatures, or unordered graphs.
 
 pub mod protocol;
+pub mod exact;
 pub mod wl_observation;
 
 use std::collections::{BTreeMap, BTreeSet};
