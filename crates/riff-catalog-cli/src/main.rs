@@ -15,6 +15,7 @@ mod stack_policy_cmd;
 mod stack_trace_cmd;
 mod table;
 mod view_cmd;
+mod yul_region_cmd;
 
 use std::path::PathBuf;
 
@@ -61,6 +62,30 @@ fn default_cache_dir() -> String {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Capture experimental SSA CFGs from a Yul source file.
+    YulCapture {
+        path: PathBuf,
+        #[arg(long)]
+        object: String,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Compare explicit block selections in two captured functions.
+    YulCompare {
+        bundle: PathBuf,
+        #[arg(long)]
+        left: String,
+        #[arg(long)]
+        right: String,
+        #[arg(long, value_delimiter = ',')]
+        left_blocks: Vec<String>,
+        #[arg(long, value_delimiter = ',')]
+        right_blocks: Vec<String>,
+        #[arg(long, default_value_t = 100_000)]
+        states: usize,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Capture source text and resolved Solidity ASTs in an offline bundle.
     SourceCapture {
         #[arg(required = true)]
@@ -326,6 +351,30 @@ impl AssertFlags {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match &cli.command {
+        Command::YulCapture {
+            path,
+            object,
+            output,
+        } => return yul_region_cmd::capture(path, object, output, cli.solc.as_deref()),
+        Command::YulCompare {
+            bundle,
+            left,
+            right,
+            left_blocks,
+            right_blocks,
+            states,
+            output,
+        } => {
+            return yul_region_cmd::run(
+                bundle,
+                left,
+                right,
+                left_blocks,
+                right_blocks,
+                *states,
+                output.as_deref(),
+            );
+        }
         Command::SourceCapture { paths, output } => {
             return source_cmd::capture(paths, output, cli.solc.as_deref());
         }
@@ -357,7 +406,11 @@ fn main() -> Result<()> {
     let cache_dir = PathBuf::from(&cli.cache);
 
     match cli.command {
-        Command::Region { .. } | Command::SourceCapture { .. } | Command::SourceSearch { .. } => {
+        Command::Region { .. }
+        | Command::SourceCapture { .. }
+        | Command::SourceSearch { .. }
+        | Command::YulCapture { .. }
+        | Command::YulCompare { .. } => {
             unreachable!("handled before corpus access")
         }
         Command::Ingest {
