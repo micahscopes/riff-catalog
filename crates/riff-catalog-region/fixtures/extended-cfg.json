@@ -1,0 +1,694 @@
+{
+  "ExtendedRegions": {
+    "blocks": [
+      {
+        "exit": {
+          "type": "Terminated"
+        },
+        "id": "Block0",
+        "instructions": [
+          {
+            "in": [
+              "0x00"
+            ],
+            "op": "calldataload",
+            "out": [
+              "v1"
+            ]
+          },
+          {
+            "in": [
+              "0x20"
+            ],
+            "op": "calldataload",
+            "out": [
+              "v3"
+            ]
+          },
+          {
+            "in": [
+              "v1",
+              "v3"
+            ],
+            "op": "nested",
+            "out": [
+              "v4"
+            ]
+          },
+          {
+            "in": [
+              "0x00",
+              "v4"
+            ],
+            "op": "mstore",
+            "out": []
+          },
+          {
+            "in": [
+              "v1",
+              "v3"
+            ],
+            "op": "exits",
+            "out": [
+              "v6"
+            ]
+          },
+          {
+            "in": [
+              "0x20",
+              "v6"
+            ],
+            "op": "mstore",
+            "out": []
+          },
+          {
+            "in": [
+              "v1",
+              "v3"
+            ],
+            "op": "effects",
+            "out": []
+          },
+          {
+            "in": [
+              "v1",
+              "v3"
+            ],
+            "op": "effects_swapped",
+            "out": []
+          },
+          {
+            "in": [
+              "0x00",
+              "0x40"
+            ],
+            "op": "return",
+            "out": []
+          }
+        ],
+        "liveness": {
+          "in": [],
+          "out": []
+        },
+        "type": "BuiltinCall"
+      }
+    ],
+    "functions": {
+      "effects": {
+        "arguments": [
+          "v0",
+          "v1"
+        ],
+        "blocks": [
+          {
+            "exit": {
+              "returnValues": [],
+              "type": "FunctionReturn"
+            },
+            "id": "Block0",
+            "instructions": [
+              {
+                "in": [
+                  "0x00",
+                  "v0"
+                ],
+                "op": "mstore",
+                "out": []
+              },
+              {
+                "in": [
+                  "0x20",
+                  "v1"
+                ],
+                "op": "mstore",
+                "out": []
+              }
+            ],
+            "liveness": {
+              "in": [
+                "v1",
+                "v0"
+              ],
+              "out": []
+            },
+            "type": "BuiltinCall"
+          }
+        ],
+        "entry": "Block0",
+        "numReturns": 0,
+        "type": "Function"
+      },
+      "effects_swapped": {
+        "arguments": [
+          "v0",
+          "v1"
+        ],
+        "blocks": [
+          {
+            "exit": {
+              "returnValues": [],
+              "type": "FunctionReturn"
+            },
+            "id": "Block0",
+            "instructions": [
+              {
+                "in": [
+                  "0x20",
+                  "v1"
+                ],
+                "op": "mstore",
+                "out": []
+              },
+              {
+                "in": [
+                  "0x00",
+                  "v0"
+                ],
+                "op": "mstore",
+                "out": []
+              }
+            ],
+            "liveness": {
+              "in": [
+                "v0",
+                "v1"
+              ],
+              "out": []
+            },
+            "type": "BuiltinCall"
+          }
+        ],
+        "entry": "Block0",
+        "numReturns": 0,
+        "type": "Function"
+      },
+      "exits": {
+        "arguments": [
+          "v0",
+          "v1"
+        ],
+        "blocks": [
+          {
+            "exit": {
+              "targets": [
+                "Block1"
+              ],
+              "type": "Jump"
+            },
+            "id": "Block0",
+            "instructions": [],
+            "liveness": {
+              "in": [
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "v1",
+                "v0"
+              ]
+            }
+          },
+          {
+            "entries": [
+              "Block0",
+              "Block6"
+            ],
+            "exit": {
+              "cond": "v5",
+              "targets": [
+                "Block4",
+                "Block2"
+              ],
+              "type": "ConditionalJump"
+            },
+            "id": "Block1",
+            "instructions": [
+              {
+                "in": [
+                  "0x00",
+                  "v19"
+                ],
+                "op": "PhiFunction",
+                "out": [
+                  "phi4"
+                ]
+              },
+              {
+                "in": [
+                  "0x00",
+                  "v17"
+                ],
+                "op": "PhiFunction",
+                "out": [
+                  "phi13"
+                ]
+              },
+              {
+                "in": [
+                  "phi4",
+                  "v0"
+                ],
+                "op": "lt",
+                "out": [
+                  "v5"
+                ]
+              }
+            ],
+            "liveness": {
+              "in": [
+                "phi13",
+                "phi4",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "phi13",
+                "phi4",
+                "v1",
+                "v0"
+              ]
+            },
+            "type": "BuiltinCall"
+          },
+          {
+            "exit": {
+              "returnValues": [
+                "phi13"
+              ],
+              "type": "FunctionReturn"
+            },
+            "id": "Block4",
+            "instructions": [],
+            "liveness": {
+              "in": [
+                "phi13"
+              ],
+              "out": [
+                "phi13"
+              ]
+            }
+          },
+          {
+            "exit": {
+              "cond": "v7",
+              "targets": [
+                "Block6",
+                "Block5"
+              ],
+              "type": "ConditionalJump"
+            },
+            "id": "Block2",
+            "instructions": [
+              {
+                "in": [
+                  "phi4",
+                  "v1"
+                ],
+                "op": "eq",
+                "out": [
+                  "v7"
+                ]
+              }
+            ],
+            "liveness": {
+              "in": [
+                "phi13",
+                "phi4",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "phi13",
+                "phi4",
+                "v1",
+                "v0"
+              ]
+            },
+            "type": "BuiltinCall"
+          },
+          {
+            "exit": {
+              "targets": [
+                "Block1"
+              ],
+              "type": "Jump"
+            },
+            "id": "Block6",
+            "instructions": [
+              {
+                "in": [
+                  "phi13",
+                  "phi4"
+                ],
+                "op": "add",
+                "out": [
+                  "v17"
+                ]
+              },
+              {
+                "in": [
+                  "phi4",
+                  "0x01"
+                ],
+                "op": "add",
+                "out": [
+                  "v19"
+                ]
+              }
+            ],
+            "liveness": {
+              "in": [
+                "phi4",
+                "phi13",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "v19",
+                "v17",
+                "v1",
+                "v0"
+              ]
+            },
+            "type": "BuiltinCall"
+          },
+          {
+            "exit": {
+              "targets": [
+                "Block4"
+              ],
+              "type": "Jump"
+            },
+            "id": "Block5",
+            "instructions": [],
+            "liveness": {
+              "in": [
+                "phi13"
+              ],
+              "out": [
+                "phi13"
+              ]
+            }
+          }
+        ],
+        "entry": "Block0",
+        "numReturns": 1,
+        "type": "Function"
+      },
+      "nested": {
+        "arguments": [
+          "v0",
+          "v1"
+        ],
+        "blocks": [
+          {
+            "exit": {
+              "targets": [
+                "Block1"
+              ],
+              "type": "Jump"
+            },
+            "id": "Block0",
+            "instructions": [],
+            "liveness": {
+              "in": [
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "v1",
+                "v0"
+              ]
+            }
+          },
+          {
+            "entries": [
+              "Block0",
+              "Block8"
+            ],
+            "exit": {
+              "cond": "v5",
+              "targets": [
+                "Block4",
+                "Block2"
+              ],
+              "type": "ConditionalJump"
+            },
+            "id": "Block1",
+            "instructions": [
+              {
+                "in": [
+                  "0x00",
+                  "v25"
+                ],
+                "op": "PhiFunction",
+                "out": [
+                  "phi4"
+                ]
+              },
+              {
+                "in": [
+                  "0x00",
+                  "phi11"
+                ],
+                "op": "PhiFunction",
+                "out": [
+                  "phi22"
+                ]
+              },
+              {
+                "in": [
+                  "phi4",
+                  "v0"
+                ],
+                "op": "lt",
+                "out": [
+                  "v5"
+                ]
+              }
+            ],
+            "liveness": {
+              "in": [
+                "phi22",
+                "phi4",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "phi22",
+                "phi4",
+                "v1",
+                "v0"
+              ]
+            },
+            "type": "BuiltinCall"
+          },
+          {
+            "exit": {
+              "returnValues": [
+                "phi22"
+              ],
+              "type": "FunctionReturn"
+            },
+            "id": "Block4",
+            "instructions": [],
+            "liveness": {
+              "in": [
+                "phi22"
+              ],
+              "out": [
+                "phi22"
+              ]
+            }
+          },
+          {
+            "exit": {
+              "targets": [
+                "Block5"
+              ],
+              "type": "Jump"
+            },
+            "id": "Block2",
+            "instructions": [],
+            "liveness": {
+              "in": [
+                "phi22",
+                "phi4",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "phi22",
+                "phi4",
+                "v1",
+                "v0"
+              ]
+            }
+          },
+          {
+            "entries": [
+              "Block2",
+              "Block6"
+            ],
+            "exit": {
+              "cond": "v8",
+              "targets": [
+                "Block8",
+                "Block6"
+              ],
+              "type": "ConditionalJump"
+            },
+            "id": "Block5",
+            "instructions": [
+              {
+                "in": [
+                  "0x00",
+                  "v14"
+                ],
+                "op": "PhiFunction",
+                "out": [
+                  "phi7"
+                ]
+              },
+              {
+                "in": [
+                  "phi22",
+                  "v12"
+                ],
+                "op": "PhiFunction",
+                "out": [
+                  "phi11"
+                ]
+              },
+              {
+                "in": [
+                  "phi7",
+                  "v1"
+                ],
+                "op": "lt",
+                "out": [
+                  "v8"
+                ]
+              }
+            ],
+            "liveness": {
+              "in": [
+                "phi7",
+                "phi11",
+                "phi4",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "phi7",
+                "phi11",
+                "phi4",
+                "v1",
+                "v0"
+              ]
+            },
+            "type": "BuiltinCall"
+          },
+          {
+            "exit": {
+              "targets": [
+                "Block1"
+              ],
+              "type": "Jump"
+            },
+            "id": "Block8",
+            "instructions": [
+              {
+                "in": [
+                  "phi4",
+                  "0x01"
+                ],
+                "op": "add",
+                "out": [
+                  "v25"
+                ]
+              }
+            ],
+            "liveness": {
+              "in": [
+                "phi11",
+                "phi4",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "v25",
+                "phi11",
+                "v1",
+                "v0"
+              ]
+            },
+            "type": "BuiltinCall"
+          },
+          {
+            "exit": {
+              "targets": [
+                "Block5"
+              ],
+              "type": "Jump"
+            },
+            "id": "Block6",
+            "instructions": [
+              {
+                "in": [
+                  "phi4",
+                  "phi7"
+                ],
+                "op": "xor",
+                "out": [
+                  "v10"
+                ]
+              },
+              {
+                "in": [
+                  "phi11",
+                  "v10"
+                ],
+                "op": "add",
+                "out": [
+                  "v12"
+                ]
+              },
+              {
+                "in": [
+                  "phi7",
+                  "0x01"
+                ],
+                "op": "add",
+                "out": [
+                  "v14"
+                ]
+              }
+            ],
+            "liveness": {
+              "in": [
+                "phi7",
+                "phi11",
+                "phi4",
+                "v1",
+                "v0"
+              ],
+              "out": [
+                "v14",
+                "v12",
+                "phi4",
+                "v1",
+                "v0"
+              ]
+            },
+            "type": "BuiltinCall"
+          }
+        ],
+        "entry": "Block0",
+        "numReturns": 1,
+        "type": "Function"
+      }
+    }
+  },
+  "type": "Object"
+}
