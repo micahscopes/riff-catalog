@@ -1,31 +1,48 @@
 # riff-catalog
 
-**A catalog of riffs**: facet-relative content addressing for compiler
-artifacts. Each artifact is lowered into a canonical graph and hashed once
-per *dimension* (structure, names, constants, types, trace events); two
-artifacts "rhyme at facet F" when their digests agree on F's dimension
-subset. Witnessed **claims** assert equivalences hashing can't see;
-**attestations** gate queries on guarantees (verified, tested) that
-structure is silent about.
+Content-addressed views of structured data, with adapters for compiler artifacts.
+Choose which information matters, find shared structure, and inspect what changes
+across programs or compiler stages.
 
-> **Status: DRAFT.** Built out end-to-end for review; no API here is
-> blessed yet. The full design plan with its 16 invariants is in
-> [PLAN.md](PLAN.md).
+A **facet** specifies which information a comparison retains, such as names,
+constants or types. Ignoring names can reveal renamed code; ignoring constants
+can group computations that have different behavior. Matches are relative to
+that choice, not automatic proofs of semantic equivalence.
 
-Everything rides Argot-maintained tooling: solc does all the compiling
-(including the experimental `yulCFGJson` SSA pipeline), Sourcify supplies
-verified real-world contracts, and the graph model is built to take the fe
-compiler's origin keys at the boundary.
+**Experimental.** APIs and formats are still evolving. The general graph index
+uses WL/SCC structural fingerprints; these are not a complete graph-isomorphism
+test. Selected Solidity syntax uses complete normalized-record comparison.
+Bounded exact comparison of selected cyclic graphs is a separate interface,
+with explicit unsupported and budget-exceeded outcomes.
+
+## Start here
+
+- [Runnable examples](examples/README.md): start with offline Yul, then try
+  source commonality over verified contracts.
+- [Code as query](docs/code-as-query.md): capture Solidity source, select a
+  region, and retrieve whole or partial structural matches.
+- [Exact cyclic comparisons](crates/riff-catalog-region/EXACT-CONTRACT.md):
+  the graph contract, bounds, correspondence checks and limitations.
+- [Compiler-growth analysis](crates/riff-catalog-bloat/README.md): captures,
+  measurements, attribution and report boundaries.
+- [Compiler sequence views](docs/compiler-sequence-views.md): a design proposal
+  for relating observations across compiler stages and configurations.
+
+The Rust libraries and `riffcat` CLI provide the analysis. Some examples need
+solc or an experimental compiler build; saved captures and offline Yul examples
+do not. Networked Sourcify examples are explicitly labeled below.
 
 ## Crates
 
 | crate | what |
 |---|---|
+| `riff-catalog-schema` | shared graph and identity data types |
 | `riff-catalog-core` | graph interchange form, canonical byte encoding, per-dimension blake3 digests, WL-refined SCC hashing, facets, indexes |
 | `riff-catalog-claims` | witnessed equivalence claims (union-find closure), property attestations (gating), claim-gated lookup |
 | `riff-catalog-solc` | `solc --standard-json` driver: AST/ir/irAst/yulCFGJson outputs, disk cache, version resolver trait |
 | `riff-catalog-yul` | one Yul AST, two front doors (solc JSON + own zero-dep text parser); `yul-ast/1` and `yul-ssa-cfg/1` lowerings |
-| `riff-catalog-solidity` | `sol-ast/1`: declarative nodeType-profile walker over raw AST JSON |
+| `riff-catalog-solidity` | Solidity AST lowering, binding-aware selected syntax, and explanatory partial-overlap retrieval |
+| `riff-catalog-region` | explicit region boundaries, ordered computations, and bounded exact cyclic graph comparison |
 | `riff-catalog-evm` | `evm/1`: opcodes → structure, PUSH immediates → constants |
 | `riff-catalog-sonatina` | `sonatina-ir/1`: typed control/data/call graphs plus anonymous structural repetition census |
 | `riff-catalog-fe-rmir` | stable Fe runtime-MIR topology with aggregate slices plus thin materialization and call frontiers |
@@ -201,17 +218,15 @@ the planned ragged product of lowering-stage and compiler-world DAGs, including
 analysis projections, causal edges, build coordinates, and measurements that
 remain deliberately separate from the five semantic digest dimensions.
 
-## Where this came from
+## Identity and compatibility
 
-Successor to the `shape-address` prototype in the fe repo, redesigned per
-the interop-plan conversation: WL color refinement replaces key-ordered SCC
-hashing (three anonymity leaks fixed, plus cross-component edges folded
-into WL init colors so asymmetric cycle members separate), the dimension
-set moved out of policy identity, claims/attestations added, salsa coupling
-removed. Golden tests freeze the encoding; changing any frozen value
+Graph lowering, edge direction, region boundaries and retained labels determine
+what a hash means. Matching under one projection does not imply matching under
+another. Claims and attestations carry additional evidence separately from
+structural identity. Golden tests freeze the encoding; changing a frozen value
 requires a `SCHEMA_VERSION` bump.
 
-Known v1 scope cuts (deliberate, see PLAN.md "Honest scope cuts"): facet
+Known v1 scope limits: facet
 space is the Boolean lattice over 5 dimensions × view mode × level; 1-WL
 incompleteness accepted and documented; per-function unit graphs treat
 out-of-graph callees as opaque; `yulCFGJson` is experimental upstream and

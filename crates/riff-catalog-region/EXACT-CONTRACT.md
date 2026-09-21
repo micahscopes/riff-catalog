@@ -39,7 +39,7 @@ There is no persistent address format yet for this experimental core. Any future
 content address needs a versioned byte encoding and domain. This does not change
 old Riff-cat SCC hashes.
 
-## Tests and remaining producer work
+## Tests and compiler adapter
 
 - All 64 loop-free directed graphs on three vertices, all 4096 pair comparisons,
   checked against independent permutation enumeration.
@@ -47,6 +47,9 @@ old Riff-cat SCC hashes.
 - Triangular prism versus K3,3: tied WL colors, distinct exact canonical graphs.
 - Budget exhaustion is explicit.
 
-These tests exercise a general reference core. Wiring real Yul result slots,
-phi-predessor associations and selected boundaries is still required before the
-cyclic-Yul application slice can be claimed complete.
+These tests exercise the general reference core. The `yul_cfg` adapter now
+materializes selected blocks from experimental solc SSA captures, retaining
+result slots, phi predecessor/value associations and explicit boundary ports.
+Real-capture regressions are in `tests/yul_cfg.rs` and `tests/yul_extended.rs`.
+This is structural correspondence under the adapter contract, not a proof of
+compiler correctness or behavior preservation.
