@@ -11,6 +11,7 @@ mod input;
 mod output;
 mod resolve;
 mod runner;
+pub mod sourcemap;
 
 pub use error::{SolcDiagnostic, SolcError};
 pub use input::{
