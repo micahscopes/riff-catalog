@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, Subcommand};
 use riff_catalog_bloat::*;
 
@@ -125,6 +125,10 @@ enum Command {
         /// lowers from this post-opt operation (for example `evm_malloc`).
         #[arg(long)]
         anchor_op: Option<String>,
+        /// Write every instruction's mechanism as pc sets: a directory with
+        /// one JSON array of pcs per mechanism, plus an index.
+        #[arg(long)]
+        mechanisms_out: Option<PathBuf>,
         #[arg(long)]
         json_out: Option<PathBuf>,
         #[arg(long, default_value_t = 12)]
@@ -165,6 +169,9 @@ enum Command {
         /// JSON list of pairs: {label, fe: [bodies], solc: {build: [names]}, confidence}.
         #[arg(long)]
         pairs: PathBuf,
+        /// Fe artifact bytes, for the residual row.
+        #[arg(long)]
+        fe_total: Option<u64>,
         #[arg(long)]
         json_out: Option<PathBuf>,
     },
@@ -193,6 +200,46 @@ enum Command {
         json_out: Option<PathBuf>,
         #[arg(long, default_value_t = 12)]
         top: usize,
+    },
+    /// Put every byte of an EVM runtime in one cause bucket: named causes in
+    /// the order given, then role buckets by opcode.
+    EvmByteCauses {
+        artifact: PathBuf,
+        /// End of the instructions (defaults to the whole artifact).
+        #[arg(long)]
+        code_end: Option<usize>,
+        /// riffcat-regions/1 manifest with `function` regions.
+        #[arg(long)]
+        regions: PathBuf,
+        /// A named cause, in priority order: `pcs:NAME=path.json` (an array
+        /// of pcs or an object with `entries[].pc`), `pattern:NAME=hex`,
+        /// `repeats:NAME=census.json` (run occurrences beyond each class's
+        /// first copy), `duplicates:NAME=sonatina-functions.json#facet-index`
+        /// (functions beyond the largest copy of each class),
+        /// `regions:NAME=a|b` (function regions whose name contains one),
+        /// `bodies:NAME=a|b` (Fe primary or synthetic-for source bodies
+        /// containing one; needs --attribution).
+        #[arg(long)]
+        cause: Vec<String>,
+        /// A detail label, same syntax as --cause: cross-tabulates each
+        /// bucket's bytes by the first detail set holding the instruction.
+        #[arg(long)]
+        detail: Vec<String>,
+        #[arg(long, requires = "contract")]
+        attribution: Option<PathBuf>,
+        #[arg(long)]
+        contract: Option<String>,
+        #[arg(long)]
+        json_out: PathBuf,
+    },
+    /// Compare two byte-cause ledgers bucket by bucket.
+    EvmByteCausesCompare {
+        #[arg(long)]
+        left: PathBuf,
+        #[arg(long)]
+        right: PathBuf,
+        #[arg(long)]
+        json_out: Option<PathBuf>,
     },
     /// Byte census of one Fe EVM contract from `fe dev trace emit` plus
     /// `fe dev debug emit --attribution-details`, checked against the artifact.
@@ -441,6 +488,7 @@ fn main() -> Result<()> {
             pattern,
             pc_set,
             anchor_op,
+            mechanisms_out,
             json_out,
             top,
         } => {
@@ -583,6 +631,20 @@ fn main() -> Result<()> {
                 rows: &rows,
                 code,
             };
+            if let Some(dir) = &mechanisms_out {
+                fs::create_dir_all(dir)?;
+                let mut index = BTreeMap::new();
+                for (k, (name, pcs)) in inputs
+                    .byte_mechanisms(&clamp, &spill)
+                    .into_iter()
+                    .enumerate()
+                {
+                    let file = format!("mechanism-{k}.json");
+                    fs::write(dir.join(&file), serde_json::to_vec(&pcs)?)?;
+                    index.insert(name, file);
+                }
+                fs::write(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
+            }
             if let Some(op) = &anchor_op {
                 for p in &pattern {
                     let (name, hex) = p.split_once('=').context("--pattern name=hex")?;
@@ -655,6 +717,7 @@ fn main() -> Result<()> {
             fe_stages,
             solc,
             pairs,
+            fe_total,
             json_out,
         } => {
             let fe: FeStagesReport = serde_json::from_slice(&fs::read(&fe_stages)?)?;
@@ -667,7 +730,11 @@ fn main() -> Result<()> {
                 tables.insert(name.to_string(), table);
             }
             let pairs: Vec<FunctionPair> = serde_json::from_slice(&fs::read(&pairs)?)?;
-            let rows = compare_functions(&fe, &tables, &pairs);
+            let mut rows = compare_functions(&fe, &tables, &pairs);
+            if let Some(total) = fe_total {
+                let residual = residual_row(&rows, total, &tables);
+                rows.push(residual);
+            }
             if let Some(path) = json_out {
                 fs::write(&path, serde_json::to_vec_pretty(&rows)?)?;
             }
@@ -741,6 +808,235 @@ fn main() -> Result<()> {
                         names.join(", ")
                     );
                 }
+            }
+        }
+        Command::EvmByteCauses {
+            artifact,
+            code_end,
+            regions,
+            cause,
+            detail,
+            attribution,
+            contract,
+            json_out,
+        } => {
+            let code = decode_artifact(&fs::read(&artifact)?)?;
+            let end = code_end.unwrap_or(code.len()).min(code.len());
+            let manifest: RegionManifest = serde_json::from_slice(&fs::read(&regions)?)?;
+            let functions: Vec<(String, u32, u32)> = manifest
+                .regions
+                .iter()
+                .filter(|r| r.kind == "function")
+                .map(|r| (r.name.clone(), r.start as u32, r.end as u32))
+                .collect();
+            let rows = match (&attribution, &contract) {
+                (Some(p), Some(c)) => Some(riff_catalog_ingest_trace::bytes::read_runtime_details(
+                    &fs::read_to_string(p)?,
+                    c,
+                )?),
+                _ => None,
+            };
+            let insts = riff_catalog_evm::runs::decode(&code[..end]);
+            let mut causes = Vec::new();
+            let mut details = Vec::new();
+            for (is_detail, spec) in cause
+                .iter()
+                .map(|c| (false, c))
+                .chain(detail.iter().map(|d| (true, d)))
+            {
+                let (kind, rest) = spec.split_once(':').context("--cause kind:NAME=arg")?;
+                let (name, arg) = rest.split_once('=').context("--cause kind:NAME=arg")?;
+                let pcs: std::collections::BTreeSet<u32> = match kind {
+                    "pcs" => {
+                        let v: serde_json::Value = serde_json::from_slice(&fs::read(arg)?)?;
+                        v.as_array()
+                            .or_else(|| v["entries"].as_array())
+                            .context("pc set")?
+                            .iter()
+                            .filter_map(|e| e.as_u64().or_else(|| e["pc"].as_u64()))
+                            .map(|v| v as u32)
+                            .collect()
+                    }
+                    "pattern" => pattern_selection(name, &code[..end], arg)?.pcs,
+                    "repeats" => {
+                        let v: serde_json::Value = serde_json::from_slice(&fs::read(arg)?)?;
+                        let by_id: BTreeMap<String, (u32, u32)> = v["regions"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|r| {
+                                let r = &r["region"];
+                                Some((
+                                    r["id"].as_str()?.to_string(),
+                                    (r["start"].as_u64()? as u32, r["end"].as_u64()? as u32),
+                                ))
+                            })
+                            .collect();
+                        let mut ranges = Vec::new();
+                        for p in v["patterns"].as_array().into_iter().flatten() {
+                            if p["region_kind"] != "evm_run" {
+                                continue;
+                            }
+                            let mut occ: Vec<(u32, u32)> = p["regions"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|id| by_id.get(id.as_str()?).copied())
+                                .collect();
+                            occ.sort();
+                            ranges.extend(occ.into_iter().skip(1));
+                        }
+                        range_selection(name, &code[..end], &ranges).pcs
+                    }
+                    "duplicates" => {
+                        let (path, index) = arg.split_once('#').unwrap_or((arg, "0"));
+                        let census: Vec<FunctionFacetCensus> =
+                            serde_json::from_slice(&fs::read(path)?)?;
+                        let facet = census
+                            .get(index.parse::<usize>()?)
+                            .context("duplicates facet index")?;
+                        let mut ranges = Vec::new();
+                        for class in &facet.classes {
+                            let largest = class
+                                .functions
+                                .iter()
+                                .filter_map(|(n, b)| b.map(|b| (b, n.clone())))
+                                .max();
+                            for (n, b) in &class.functions {
+                                if b.is_some() && largest.as_ref().map(|l| &l.1) != Some(n) {
+                                    ranges.extend(
+                                        functions.iter().filter(|f| &f.0 == n).map(|f| (f.1, f.2)),
+                                    );
+                                }
+                            }
+                        }
+                        range_selection(name, &code[..end], &ranges).pcs
+                    }
+                    "regions" => {
+                        let needles: Vec<&str> = arg.split('|').collect();
+                        let ranges: Vec<(u32, u32)> = functions
+                            .iter()
+                            .filter(|f| needles.iter().any(|n| f.0.contains(n)))
+                            .map(|f| (f.1, f.2))
+                            .collect();
+                        range_selection(name, &code[..end], &ranges).pcs
+                    }
+                    "bodies" => {
+                        let rows = rows.as_ref().context("bodies: needs --attribution")?;
+                        let needles: Vec<&str> = arg.split('|').collect();
+                        let hit = |key: &str| {
+                            riff_catalog_ingest_trace::bytes::source_body(key)
+                                .is_some_and(|b| needles.iter().any(|n| b.contains(n)))
+                        };
+                        rows.iter()
+                            .filter(|r| match &r.primary_source {
+                                Some(p) => hit(p),
+                                None => {
+                                    r.classification_reason.as_deref() == Some("SyntheticFor")
+                                        && r.all_origins.iter().any(|o| hit(o))
+                                }
+                            })
+                            .map(|r| r.pc_start)
+                            .collect()
+                    }
+                    other => bail!("unknown cause kind `{other}`"),
+                };
+                let sel = Selection {
+                    name: name.to_string(),
+                    pcs,
+                };
+                if is_detail {
+                    details.push(sel);
+                } else {
+                    causes.push(sel);
+                }
+            }
+            let labels = riff_catalog_evm::runs::with_labels(&code[..end], &insts)
+                .into_iter()
+                .filter(|(_, l)| l.is_some())
+                .map(|(i, _)| i.pc)
+                .collect();
+            let memory_address = riff_catalog_evm::dataflow::lift_code(&code[..end])?
+                .into_iter()
+                .flat_map(|b| b.memory_offset_pushes)
+                .collect();
+            let ledger = classify_bytes(
+                &code,
+                end,
+                &causes,
+                &labels,
+                &memory_address,
+                &functions,
+                &details,
+            );
+            let total: u64 = ledger.buckets.values().map(|t| t.bytes).sum();
+            ensure!(
+                total == ledger.artifact_bytes,
+                "buckets cover {total} of {} bytes",
+                ledger.artifact_bytes
+            );
+            fs::write(&json_out, serde_json::to_vec_pretty(&ledger)?)?;
+            for name in &ledger.order {
+                if let Some(t) = ledger.buckets.get(name) {
+                    println!("{:>7} {:>6}  {name}", t.bytes, t.instructions);
+                }
+            }
+            println!("{total:>7}         total");
+            for name in &ledger.order {
+                if let Some(d) = ledger.detail.get(name) {
+                    let mut v: Vec<(&String, &u64)> = d.iter().collect();
+                    v.sort_by(|a, b| b.1.cmp(a.1));
+                    println!("\n  {name}:");
+                    for (k, b) in v {
+                        println!("    {b:>7}  {k}");
+                    }
+                }
+            }
+        }
+        Command::EvmByteCausesCompare {
+            left,
+            right,
+            json_out,
+        } => {
+            let l: ByteCauses = serde_json::from_slice(&fs::read(&left)?)?;
+            let r: ByteCauses = serde_json::from_slice(&fs::read(&right)?)?;
+            let rows = compare_causes(&l, &r);
+            let excess = l.artifact_bytes as i64 - r.artifact_bytes as i64;
+            ensure!(
+                rows.iter().map(|x| x.excess).sum::<i64>() == excess,
+                "excess does not add up"
+            );
+            if let Some(path) = json_out {
+                fs::write(&path, serde_json::to_vec_pretty(&rows)?)?;
+            }
+            println!(
+                "{:>7} {:>7} {:>7} {:>6}  bucket",
+                "left", "right", "excess", "share"
+            );
+            for x in &rows {
+                println!(
+                    "{:>7} {:>7} {:>7} {:>5.1}%  {}",
+                    x.left,
+                    x.right,
+                    x.excess,
+                    100.0 * x.excess as f64 / excess as f64,
+                    x.bucket
+                );
+            }
+            println!(
+                "{:>7} {:>7} {:>7}         total",
+                l.artifact_bytes, r.artifact_bytes, excess
+            );
+            if !l.detail.is_empty() {
+                println!("\nestimate: role excess apportioned by the left side's mechanism shares");
+                let est = apportion_excess(&l, &rows);
+                for (name, v) in &est {
+                    println!("{v:>9.0} {:>5.1}%  {name}", 100.0 * v / excess as f64);
+                }
+                println!(
+                    "{:>9.0}         total",
+                    est.iter().map(|(_, v)| v).sum::<f64>()
+                );
             }
         }
         Command::FeTraceBytes {

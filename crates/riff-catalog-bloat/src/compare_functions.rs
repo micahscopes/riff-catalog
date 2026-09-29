@@ -92,6 +92,32 @@ pub fn compare_functions(
     out
 }
 
+/// Rows for the bytes no pair holds, so each column adds up to its whole
+/// artifact: Fe bytes outside the paired bodies, and each solc build's bytes
+/// outside its paired functions. Several Fe bodies or solc functions can be
+/// claimed by two pairs; those count once per pair, so the residual can be
+/// negative when pairs overlap.
+pub fn residual_row(
+    rows: &[FunctionComparison],
+    fe_total: u64,
+    solc: &BTreeMap<String, SolcFunctions>,
+) -> FunctionComparison {
+    let fe_paired: u64 = rows.iter().map(|r| r.fe_bytes).sum();
+    FunctionComparison {
+        label: "(everything outside the pairs: unpaired functions, dispatch, no-source and generated code, data)".into(),
+        confidence: "-".into(),
+        fe_bytes: fe_total.saturating_sub(fe_paired),
+        solc_bytes: solc
+            .iter()
+            .map(|(b, f)| {
+                let paired: u64 = rows.iter().map(|r| r.solc_bytes.get(b).copied().unwrap_or(0)).sum();
+                (b.clone(), (f.runtime_bytes as u64).saturating_sub(paired))
+            })
+            .collect(),
+        fe_top_category: None,
+    }
+}
+
 pub fn render_function_comparison(rows: &[FunctionComparison], builds: &[String]) -> String {
     use std::fmt::Write;
     let mut out = String::new();

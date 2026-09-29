@@ -401,6 +401,31 @@ impl StageInputs<'_> {
         preopt.len() as u64
     }
 
+    /// Every instruction's mechanism ([`memory_bucket`] without the library
+    /// part), for all opcodes, not only memory ones: the Fe or Sonatina
+    /// construct the bytes were emitted for. Returns mechanism to pcs.
+    pub fn byte_mechanisms(
+        &self,
+        clamp: &BTreeSet<u32>,
+        spill: &BTreeSet<u32>,
+    ) -> BTreeMap<String, BTreeSet<u32>> {
+        let mut out: BTreeMap<String, BTreeSet<u32>> = BTreeMap::new();
+        for row in self.rows {
+            let f = self.pc_facts(row);
+            let bucket = memory_bucket(
+                clamp.contains(&row.pc_start),
+                spill.contains(&row.pc_start),
+                f.ends_at,
+                &f.postopt_ops,
+                &f.mir_ops,
+                &[],
+            );
+            let mechanism = bucket.split(" | ").next().unwrap_or(&bucket).to_string();
+            out.entry(mechanism).or_default().insert(row.pc_start);
+        }
+        out
+    }
+
     /// Bytes by the trace's instruction category per function region
     /// `(name, start, end)`, largest functions first.
     pub fn category_by_function(

@@ -185,7 +185,7 @@ pub fn attribute(
             if e.file < 0 {
                 SourceOwner::NoSource
             } else if !solidity_ids.contains(&e.file) {
-                SourceOwner::Generated
+                innermost(functions, e).map_or(SourceOwner::Generated, SourceOwner::Function)
             } else if let Some(i) = innermost(functions, e) {
                 SourceOwner::Function(i)
             } else if let Some(i) = innermost(contracts, e) {
@@ -195,6 +195,41 @@ pub fn attribute(
             }
         })
         .collect()
+}
+
+/// Function definitions in compiler-generated Yul (`generatedSources` of a
+/// bytecode object), named `(yul) <name>`, so generated helpers such as ABI
+/// coders and checked arithmetic get their own owners.
+pub fn generated_function_spans(bytecode_object: &Value) -> Vec<FunctionSpan> {
+    let mut out = Vec::new();
+    let Some(sources) = bytecode_object
+        .get("generatedSources")
+        .and_then(Value::as_array)
+    else {
+        return out;
+    };
+    for source in sources {
+        let mut stack: Vec<&Value> = source.get("ast").into_iter().collect();
+        while let Some(node) = stack.pop() {
+            if let Some(obj) = node.as_object() {
+                if obj.get("nodeType").and_then(Value::as_str) == Some("YulFunctionDefinition")
+                    && let (Some(name), Some((s, e, f))) =
+                        (obj.get("name").and_then(Value::as_str), src_range(node))
+                {
+                    out.push(FunctionSpan {
+                        file: f,
+                        start: s,
+                        end: e,
+                        name: format!("(yul) {name}"),
+                    });
+                }
+                stack.extend(obj.values().filter(|v| v.is_object() || v.is_array()));
+            } else if let Some(items) = node.as_array() {
+                stack.extend(items.iter());
+            }
+        }
+    }
+    out
 }
 
 /// Source ids of the output's Solidity sources.
@@ -245,6 +280,16 @@ mod tests {
         assert_eq!(name(&owners[1]), "C.f");
         assert_eq!(owners[2], SourceOwner::Contract("C".into()));
         assert_eq!(owners[3], SourceOwner::Generated);
+        let generated = serde_json::json!({"generatedSources": [{"id": 7, "ast": {
+        "nodeType": "YulBlock", "src": "0:50:7", "statements": [
+            {"nodeType": "YulFunctionDefinition", "name": "abi_decode_x", "src": "2:10:7"}
+        ]}}]});
+        let mut all = functions.clone();
+        all.extend(generated_function_spans(&generated));
+        let owners = attribute(&entries, &all, &contracts, &solidity_source_ids(&out));
+        assert!(
+            matches!(owners[3], SourceOwner::Function(i) if all[i].name == "(yul) abi_decode_x")
+        );
         assert_eq!(owners[4], SourceOwner::NoSource);
     }
 }
