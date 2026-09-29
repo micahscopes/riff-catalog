@@ -12,3 +12,4 @@ doctest = false
 [dependencies]
 riff-catalog-core.workspace = true
 thiserror.workspace = true
+blake3.workspace = true

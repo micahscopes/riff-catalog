@@ -1019,6 +1019,7 @@ dependencies = [
 name = "riff-catalog-evm"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "riff-catalog-core",
  "thiserror",
 ]
