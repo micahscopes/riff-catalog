@@ -47,10 +47,11 @@ pub struct EvmRunOptions {
     /// Runs of fewer instructions are not reported (default 2).
     #[serde(default = "default_min_run_instructions")]
     pub min_run_instructions: u32,
-    /// With constant ports: at most this many constants may differ between
-    /// the copies of a class.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_varying_constants: Option<usize>,
+    /// Compare only PUSH values classed as memory or calldata offsets as
+    /// ports (the memory-offsets-blind key), grouping the same code for
+    /// different struct layouts. Ignored with `constants_as_ports`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub memory_offsets_as_ports: bool,
 }
 
 fn default_min_run_instructions() -> u32 {
@@ -304,7 +305,7 @@ fn assign_function_scopes(
 /// overlap, so their covered bytes may be added; they still overlap the
 /// `function` regions that contain them.
 fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptions) -> Result<()> {
-    use riff_catalog_evm::runs::{RunCensusOptions, Scope, census_runs};
+    use riff_catalog_evm::runs::{RunCensusOptions, RunKey, Scope, census_runs};
     let mut functions: Vec<&CensusRegion> = report
         .regions
         .iter()
@@ -323,9 +324,14 @@ fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptio
         &scopes,
         RunCensusOptions {
             min_run_bytes: options.min_run_bytes,
-            constants_as_ports: options.constants_as_ports,
+            key: if options.constants_as_ports {
+                RunKey::ConstantsBlind
+            } else if options.memory_offsets_as_ports {
+                RunKey::MemoryOffsetsBlind
+            } else {
+                RunKey::Exact
+            },
             min_run_instructions: options.min_run_instructions,
-            max_varying_constants: options.max_varying_constants,
             ..RunCensusOptions::default()
         },
     )
@@ -403,19 +409,17 @@ fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptio
             .then_with(|| a.digest.cmp(&b.digest))
     });
     report.caveats.push(format!(
-        "EVM runs use {}: same opcodes, {}, internal jump labels equal by offset from the run start, outside labels as first-use ports. Runs are at least {} bytes and {} instructions{}, stay inside one function region, and the selected classes never overlap (greedy by covered bytes, not an optimal cover). A match is structural correspondence, not proof of equal behavior or of safe sharing.",
+        "EVM runs use {}: same opcodes, {}, internal jump labels equal by offset from the run start, outside labels as first-use ports. Runs are at least {} bytes and {} instructions, stay inside one function region, and the selected classes never overlap (greedy by covered bytes, not an optimal cover). A match is structural correspondence, not proof of equal behavior or of safe sharing.",
         census.policy,
         if options.constants_as_ports {
             "non-label immediates as first-use ports"
+        } else if options.memory_offsets_as_ports {
+            "same non-label immediates except memory and calldata offsets, which are first-use ports"
         } else {
             "same non-label immediates"
         },
         options.min_run_bytes,
         options.min_run_instructions,
-        options
-            .max_varying_constants
-            .map(|m| format!(", with at most {m} constants differing between copies"))
-            .unwrap_or_default()
     ));
     Ok(())
 }
@@ -1191,7 +1195,7 @@ mod tests {
                 min_run_bytes: 8,
                 constants_as_ports: false,
                 min_run_instructions: 2,
-                max_varying_constants: None,
+                memory_offsets_as_ports: false,
             }),
         };
         let report = census_regions(&code, manifest).unwrap();

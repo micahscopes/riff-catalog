@@ -60,6 +60,17 @@ enum Command {
         #[arg(long, default_value_t = 10)]
         top: usize,
     },
+    /// Lift EVM bytecode into basic blocks (`evm-dataflow/1`) and write each
+    /// block's bytes by role and its flat and dataflow facet addresses.
+    EvmDataflow {
+        /// Runtime artifact (raw bytes or hex).
+        artifact: PathBuf,
+        /// Lift only the first N bytes (exclude trailing data or metadata).
+        #[arg(long)]
+        code_end: Option<usize>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Byte census of one Fe EVM contract from `fe dev trace emit` plus
     /// `fe dev debug emit --attribution-details`, checked against the artifact.
     FeTraceBytes {
@@ -85,10 +96,10 @@ enum Command {
         /// Runs of fewer instructions are not reported.
         #[arg(long, default_value_t = 2)]
         min_run_instructions: u32,
-        /// With --constants-as-ports: at most this many constants may differ
-        /// between the copies of a class.
+        /// Compare only constants that are memory or calldata offsets as
+        /// ports (the same code for different struct layouts groups together).
         #[arg(long)]
-        max_varying_constants: Option<usize>,
+        memory_offsets_as_ports: bool,
         /// Write the full report as JSON.
         #[arg(long)]
         json_out: Option<PathBuf>,
@@ -242,6 +253,17 @@ fn main() -> Result<()> {
                 print!("{}", render_census(&value, top));
             }
         }
+        Command::EvmDataflow {
+            artifact,
+            code_end,
+            out,
+        } => {
+            let bytes = decode_artifact(&fs::read(&artifact)?)?;
+            let end = code_end.unwrap_or(bytes.len()).min(bytes.len());
+            let blocks = evm_dataflow_blocks(&bytes[..end])?;
+            fs::write(&out, serde_json::to_vec(&blocks)?)?;
+            println!("{} blocks over {} bytes", blocks.blocks.len(), end);
+        }
         Command::FeTraceBytes {
             trace,
             attribution,
@@ -250,7 +272,7 @@ fn main() -> Result<()> {
             min_run_bytes,
             constants_as_ports,
             min_run_instructions,
-            max_varying_constants,
+            memory_offsets_as_ports,
             json_out,
             census_dir,
             top,
@@ -270,7 +292,7 @@ fn main() -> Result<()> {
                     min_run_bytes,
                     constants_as_ports,
                     min_run_instructions,
-                    max_varying_constants,
+                    memory_offsets_as_ports,
                 },
             )?;
             if let Some(dir) = census_dir {

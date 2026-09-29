@@ -965,8 +965,10 @@ dependencies = [
  "anyhow",
  "blake3",
  "clap",
+ "riff-catalog-core",
  "riff-catalog-evm",
  "riff-catalog-ingest-trace",
+ "riff-catalog-view",
  "serde",
  "serde_json",
  "sha2",
@@ -1023,6 +1025,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "riff-catalog-core",
+ "riff-catalog-view",
  "thiserror",
 ]
 

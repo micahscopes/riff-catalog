@@ -12,6 +12,7 @@
 //! that are Structure-twins here), while a Constants-bearing facet keeps it
 //! (an *exact/full match*). The dial they already run in production, generalized.
 
+pub mod dataflow;
 pub mod runs;
 
 use riff_catalog_core::{Dimension, EntityKey, Graph, GraphKey, NodeKey};

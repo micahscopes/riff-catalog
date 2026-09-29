@@ -47,7 +47,9 @@
 //! Each copy is lowered into a core graph ([`run_graph`], level [`RUN_LEVEL`])
 //! and its class is its core facet address: Structure plus Constants for the
 //! exact key ([`RUN_POLICY`]), Structure only for the constants-blind key
-//! ([`RUN_POLICY_CONSTANT_PORTS`], `constants_as_ports`). The suffix array and
+//! ([`RUN_POLICY_CONSTANT_PORTS`]), or the exact key through a view that
+//! erases constants classed as memory offsets ([`RUN_POLICY_MEMORY_OFFSET_PORTS`]).
+//! The suffix array and
 //! the per-occurrence token key only propose candidate groups quickly; the
 //! core address decides them. With the constants-blind facet, non-label PUSH
 //! values are also returned as bindings, in first-use order.
@@ -55,12 +57,13 @@
 //! A match is structural correspondence under this key. It is not a proof that
 //! the copies behave the same or that sharing them is safe or smaller.
 
-use std::collections::{BTreeMap, BinaryHeap, HashMap};
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 
 use riff_catalog_core::{
-    CyclePolicy, DigestRequest, Dimension, EntityKey, Facet, Graph, GraphKey, HashPolicy, NodeKey,
-    ViewMode, digest_graph,
+    CyclePolicy, Digest, DigestRequest, Dimension, EntityKey, Facet, Graph, GraphKey, HashPolicy,
+    NodeKey, ViewMode, digest_graph,
 };
+use riff_catalog_view::ViewPlan;
 
 /// Versioned lowering of one run into a core graph ([`run_graph`]). Run
 /// classes are equal core facet addresses of these graphs.
@@ -73,6 +76,132 @@ pub const RUN_POLICY: &str = "evm-run/1 facet structure+constants";
 /// is identical. The equality pattern among constants is Structure (see
 /// [`run_graph`]), so a class still needs one parameter per distinct value.
 pub const RUN_POLICY_CONSTANT_PORTS: &str = "evm-run/1 facet structure";
+/// Human-readable name of the memory-offsets-blind key: the view
+/// [`MEMORY_OFFSETS_BLIND_RUN_VIEW`] (which erases the Constants field class
+/// `memory_offset`) at Structure plus Constants. It groups copies that differ
+/// only in the constant offsets they load, store or copy at, such as the
+/// same decoder for two struct layouts.
+pub const RUN_POLICY_MEMORY_OFFSET_PORTS: &str =
+    "evm-run/1 view memory-offsets-blind facet structure+constants";
+
+/// The `riffcat-view/1` plan behind [`RUN_POLICY_MEMORY_OFFSET_PORTS`].
+pub const MEMORY_OFFSETS_BLIND_RUN_VIEW: &str = r#"
+language "riffcat-view/1"
+view "evm-run.memory-offsets-blind/1"
+input "evm-run/1"
+root node-kind "evm.run"
+traverse children
+retain structure, constants
+erase constants.memory_offset
+"#;
+
+/// Which run key a census compares on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RunKey {
+    /// Structure plus Constants.
+    #[default]
+    Exact,
+    /// Structure plus Constants, without PUSH values classed as memory or
+    /// calldata offsets by [`crate::dataflow`].
+    MemoryOffsetsBlind,
+    /// Structure only.
+    ConstantsBlind,
+}
+
+impl RunKey {
+    pub const fn policy_name(self) -> &'static str {
+        match self {
+            Self::Exact => RUN_POLICY,
+            Self::MemoryOffsetsBlind => RUN_POLICY_MEMORY_OFFSET_PORTS,
+            Self::ConstantsBlind => RUN_POLICY_CONSTANT_PORTS,
+        }
+    }
+}
+
+/// Addresses runs of one code object under one [`RunKey`].
+pub struct RunKeyer {
+    key: RunKey,
+    facet: Facet,
+    policy: HashPolicy,
+    view: Option<ViewPlan>,
+    /// PUSH pcs classed as memory offsets (only for `MemoryOffsetsBlind`).
+    offsets: HashSet<u32>,
+}
+
+impl RunKeyer {
+    pub fn new(code: &[u8], key: RunKey) -> Self {
+        let (policy, view, offsets) = match key {
+            RunKey::MemoryOffsetsBlind => {
+                let view =
+                    ViewPlan::parse(MEMORY_OFFSETS_BLIND_RUN_VIEW).expect("static run view parses");
+                let policy = HashPolicy::new(
+                    view.output_level(),
+                    ViewMode::AnonymousShape,
+                    CyclePolicy::Reject,
+                )
+                .expect("view level is valid");
+                let offsets = crate::dataflow::lift_code(code)
+                    .expect("lifting well-formed blocks")
+                    .into_iter()
+                    .flat_map(|b| b.memory_offset_pushes)
+                    .collect();
+                (policy, Some(view), offsets)
+            }
+            _ => (run_hash_policy(), None, HashSet::new()),
+        };
+        let facet = if key == RunKey::ConstantsBlind {
+            Facet::structure_only(policy.policy_id())
+        } else {
+            Facet::new(
+                policy.policy_id(),
+                [Dimension::Structure, Dimension::Constants],
+            )
+            .expect("non-empty dimensions")
+        };
+        Self {
+            key,
+            facet,
+            policy,
+            view,
+            offsets,
+        }
+    }
+
+    pub fn facet(&self) -> &Facet {
+        &self.facet
+    }
+
+    /// Whether this key compares the PUSH at `pc` (not a label) as a port.
+    fn constant_is_port(&self, pc: u32) -> bool {
+        match self.key {
+            RunKey::Exact => false,
+            RunKey::ConstantsBlind => true,
+            RunKey::MemoryOffsetsBlind => self.offsets.contains(&pc),
+        }
+    }
+
+    /// The facet address of one run.
+    pub fn address(&self, code: &[u8], run: &[(Instruction, Option<u32>)]) -> Digest {
+        let offsets = self.view.as_ref().map(|_| &self.offsets);
+        let graph = run_graph_classified(code, run, offsets);
+        let graph = match &self.view {
+            Some(view) => view.materialize(&graph).expect("run graphs are valid"),
+            None => graph,
+        };
+        let request = DigestRequest::new(
+            graph.graph_key.clone(),
+            self.policy.clone(),
+            self.facet.dimensions.iter().copied(),
+        )
+        .expect("facet has dimensions");
+        digest_graph(&request, &graph)
+            .expect("run graphs are acyclic trees")
+            .hashes
+            .facet_address(&self.facet)
+            .expect("facet matches the policy")
+            .address_digest()
+    }
+}
 
 /// The hash policy of [`RUN_LEVEL`] graphs: anonymous shape (pcs and node keys
 /// never enter a digest), acyclic (a run graph is a sequence).
@@ -144,16 +273,11 @@ pub struct RunCensusOptions {
     /// Upper bound on label-token visits during partitioning; exceeding it is
     /// an error, never a silently partial answer.
     pub work_budget: u64,
-    /// Compare non-label PUSH values as ports ([`RUN_POLICY_CONSTANT_PORTS`])
-    /// instead of exactly ([`RUN_POLICY`]).
-    pub constants_as_ports: bool,
+    /// The run key: exact, memory offsets blind, or constants blind.
+    pub key: RunKey,
     /// Ignore runs of fewer instructions than this. A single instruction is
     /// not a shape (with constant ports, every PUSH32 would match every other).
     pub min_run_instructions: u32,
-    /// With constant ports, drop candidate classes in which more than this
-    /// many constant ports take different values across the copies, so a
-    /// class is code that at most this many parameters could share.
-    pub max_varying_constants: Option<usize>,
 }
 
 impl Default for RunCensusOptions {
@@ -161,9 +285,8 @@ impl Default for RunCensusOptions {
         Self {
             min_run_bytes: 32,
             work_budget: DEFAULT_WORK_BUDGET,
-            constants_as_ports: false,
+            key: RunKey::Exact,
             min_run_instructions: 2,
-            max_varying_constants: None,
         }
     }
 }
@@ -276,7 +399,7 @@ struct Stream {
     special_positions: Vec<usize>,
 }
 
-fn build_stream(code: &[u8], scopes: &[Scope], constants_as_ports: bool) -> Stream {
+fn build_stream(code: &[u8], scopes: &[Scope], keyer: &RunKeyer) -> Stream {
     let insts = decode(code);
     let jumpdests: std::collections::HashSet<u32> = insts
         .iter()
@@ -312,7 +435,7 @@ fn build_stream(code: &[u8], scopes: &[Scope], constants_as_ports: bool) -> Stre
                 .filter(|v| bytes.len() == 1 + n && *v <= u64::from(u32::MAX))
                 .map(|v| v as u32)
                 .filter(|v| jumpdests.contains(v));
-            let as_port = constants_as_ports && target.is_none() && bytes.len() > 1;
+            let as_port = target.is_none() && bytes.len() > 1 && keyer.constant_is_port(inst.pc);
             let key = if target.is_some() {
                 vec![inst.opcode]
             } else if as_port {
@@ -486,6 +609,18 @@ fn occurrence_key(stream: &Stream, position: usize, len: usize, visits: &mut u64
 /// Structure plus Constants is the exact run key; Structure alone forgets the
 /// values but keeps which constants are equal.
 pub fn run_graph(code: &[u8], run: &[(Instruction, Option<u32>)]) -> Graph {
+    run_graph_classified(code, run, None)
+}
+
+/// [`run_graph`], except that a PUSH whose pc is in `memory_offsets` carries
+/// its immediate as the Constants field class `memory_offset` instead of
+/// `immediate`. Only the memory-offsets-blind key lowers this way, so the
+/// exact and constants-blind keys never depend on the classification.
+pub fn run_graph_classified(
+    code: &[u8],
+    run: &[(Instruction, Option<u32>)],
+    memory_offsets: Option<&HashSet<u32>>,
+) -> Graph {
     let build = || -> Result<Graph, riff_catalog_core::CatalogError> {
         let owner = EntityKey::new("evm.run", "run", "root")?;
         let mut graph = Graph::new(GraphKey::new(owner.clone(), "run")?);
@@ -526,13 +661,45 @@ pub fn run_graph(code: &[u8], run: &[(Instruction, Option<u32>)]) -> Graph {
                 let next = constants.len() as u64;
                 let port = *constants.entry(value).or_insert(next);
                 graph.add_field(&node, Dimension::Structure, "constant_port", port)?;
-                graph.add_field(&node, Dimension::Constants, "immediate", value.to_vec())?;
+                let class = if memory_offsets.is_some_and(|m| m.contains(&inst.pc)) {
+                    "memory_offset"
+                } else {
+                    "immediate"
+                };
+                graph.add_field(&node, Dimension::Constants, class, value.to_vec())?;
             }
             graph.add_child(&root, "instruction", k as u32, &node)?;
         }
         Ok(graph)
     };
     build().expect("run graph keys and fields are well formed")
+}
+
+/// Pair each instruction with its code-label target, by this module's label
+/// rule (a PUSH1..PUSH4 whose value is the pc of a JUMPDEST in `code`).
+pub fn with_labels(code: &[u8], insts: &[Instruction]) -> Vec<(Instruction, Option<u32>)> {
+    let jumpdests: std::collections::HashSet<u32> = decode(code)
+        .iter()
+        .filter(|i| i.opcode == JUMPDEST)
+        .map(|i| i.pc)
+        .collect();
+    insts
+        .iter()
+        .map(|inst| {
+            let n = push_len(inst.opcode);
+            let bytes = &code[inst.pc as usize..(inst.pc + inst.len) as usize];
+            let target = ((1..=4).contains(&n) && bytes.len() == 1 + n)
+                .then(|| {
+                    bytes[1..]
+                        .iter()
+                        .fold(0u64, |a, b| (a << 8) | u64::from(*b))
+                })
+                .filter(|v| *v <= u64::from(u32::MAX))
+                .map(|v| v as u32)
+                .filter(|v| jumpdests.contains(v));
+            (*inst, target)
+        })
+        .collect()
 }
 
 /// The address of a run graph at `facet`: equal addresses are one class.
@@ -567,9 +734,9 @@ fn stream_address(
     stream: &Stream,
     position: usize,
     len: usize,
-    facet: &Facet,
-) -> riff_catalog_core::Digest {
-    run_address(&run_graph(code, &stream_run(stream, position, len)), facet)
+    keyer: &RunKeyer,
+) -> Digest {
+    keyer.address(code, &stream_run(stream, position, len))
 }
 
 /// Find repeated runs and select a non-overlapping set of them.
@@ -600,13 +767,9 @@ pub fn census_runs(
             });
         }
     }
-    let stream = build_stream(code, &scopes, options.constants_as_ports);
-    let policy = if options.constants_as_ports {
-        RUN_POLICY_CONSTANT_PORTS
-    } else {
-        RUN_POLICY
-    };
-    let facet = run_facet(options.constants_as_ports);
+    let keyer = RunKeyer::new(code, options.key);
+    let stream = build_stream(code, &scopes, &keyer);
+    let policy = options.key.policy_name();
     let scoped_bytes = *stream.byte_prefix.last().unwrap();
     let n = stream.tokens.len();
     let sa = suffix_array(&stream.tokens);
@@ -656,7 +819,7 @@ pub fn census_runs(
             }
             for position in positions {
                 classes_by_address
-                    .entry(stream_address(code, &stream, position, len, &facet))
+                    .entry(stream_address(code, &stream, position, len, &keyer))
                     .or_default()
                     .push(position);
             }
@@ -664,18 +827,6 @@ pub fn census_runs(
         for (address, mut positions) in classes_by_address {
             if positions.len() < 2 {
                 continue;
-            }
-            if let Some(max) = options.max_varying_constants {
-                let bound: Vec<Vec<Vec<u8>>> = positions
-                    .iter()
-                    .map(|&p| occurrence_key(&stream, p, len, &mut visits).constant_bindings)
-                    .collect();
-                let varying = (0..bound[0].len())
-                    .filter(|&k| bound.iter().any(|b| b[k] != bound[0][k]))
-                    .count();
-                if varying > max {
-                    continue;
-                }
             }
             positions.sort_unstable();
             candidates.push(Candidate {
@@ -776,7 +927,7 @@ pub fn census_runs(
     }
     Ok(RunCensus {
         policy,
-        facet_id: facet.facet_id().to_hex(),
+        facet_id: keyer.facet().facet_id().to_hex(),
         min_run_bytes: options.min_run_bytes,
         classes,
         candidate_classes,
@@ -1063,7 +1214,7 @@ mod tests {
             &code,
             &whole(&code),
             RunCensusOptions {
-                constants_as_ports: true,
+                key: RunKey::ConstantsBlind,
                 ..options(12)
             },
         )
@@ -1092,7 +1243,7 @@ mod tests {
             &code,
             &whole(&code),
             RunCensusOptions {
-                constants_as_ports: true,
+                key: RunKey::ConstantsBlind,
                 ..options(12)
             },
         )
@@ -1101,7 +1252,7 @@ mod tests {
     }
 
     #[test]
-    fn single_instructions_are_not_runs_and_varying_constants_can_be_capped() {
+    fn single_instructions_are_not_runs() {
         // Three PUSH32s with different values, each followed by a different
         // opcode: the only repeat is the single PUSH32 instruction.
         let mut code = Vec::new();
@@ -1111,7 +1262,7 @@ mod tests {
             code.push(next);
         }
         let loose = RunCensusOptions {
-            constants_as_ports: true,
+            key: RunKey::ConstantsBlind,
             ..options(8)
         };
         assert!(
@@ -1120,28 +1271,6 @@ mod tests {
                 .classes
                 .is_empty()
         );
-        // Copies that differ in two constants survive a cap of two, not one.
-        let a = vec![PUSH1, 1, DUP1, ADD, POP, PUSH1, 7, MUL, POP, DUP1, ADD, POP];
-        let b = vec![PUSH1, 2, DUP1, ADD, POP, PUSH1, 8, MUL, POP, DUP1, ADD, POP];
-        let mut code = a;
-        code.push(STOP);
-        code.extend(b);
-        let capped = |max| {
-            census_runs(
-                &code,
-                &whole(&code),
-                RunCensusOptions {
-                    constants_as_ports: true,
-                    max_varying_constants: Some(max),
-                    ..options(12)
-                },
-            )
-            .unwrap()
-            .classes
-            .len()
-        };
-        assert_eq!(capped(2), 1);
-        assert_eq!(capped(1), 0);
     }
 
     /// Every window of every length: the fast per-occurrence key partitions
@@ -1155,13 +1284,21 @@ mod tests {
         code.extend(body(2));
         code.extend([PUSH1, 5, DUP1, PUSH1, 5, ADD, PUSH1, 6, MUL, POP]);
         code.extend([PUSH1, 7, DUP1, PUSH1, 7, ADD, PUSH1, 8, MUL, POP]);
-        for blind in [false, true] {
-            let stream = build_stream(&code, &whole(&code), blind);
-            let facet = run_facet(blind);
+        // mstore(add(x, off), 7) for two offsets: memory-offset constants.
+        for off in [0x20u8, 0x40] {
+            code.extend([0x5b, PUSH1, 7, 0x81, PUSH1, off, ADD, 0x52, STOP]);
+        }
+        for key in [
+            RunKey::Exact,
+            RunKey::ConstantsBlind,
+            RunKey::MemoryOffsetsBlind,
+        ] {
+            let keyer = RunKeyer::new(&code, key);
+            let stream = build_stream(&code, &whole(&code), &keyer);
             let positions = stream.insts.iter().filter(|i| i.is_some()).count();
             for len in 2..8usize {
                 let mut by_fast: HashMap<(Vec<u32>, Vec<u64>), usize> = HashMap::new();
-                let mut by_core: HashMap<riff_catalog_core::Digest, usize> = HashMap::new();
+                let mut by_core: HashMap<Digest, usize> = HashMap::new();
                 let mut pairs = Vec::new();
                 for p in 0..=positions.saturating_sub(len) {
                     let mut visits = 0;
@@ -1169,7 +1306,7 @@ mod tests {
                         stream.tokens[p..p + len].to_vec(),
                         occurrence_key(&stream, p, len, &mut visits).key,
                     );
-                    let core = stream_address(&code, &stream, p, len, &facet);
+                    let core = stream_address(&code, &stream, p, len, &keyer);
                     let next = by_fast.len();
                     let f = *by_fast.entry(fast).or_insert(next);
                     let next = by_core.len();
@@ -1178,11 +1315,41 @@ mod tests {
                 }
                 for a in &pairs {
                     for b in &pairs {
-                        assert_eq!(a.0 == b.0, a.1 == b.1, "blind={blind} len={len}");
+                        if key == RunKey::MemoryOffsetsBlind {
+                            // The core address may split what the fast key
+                            // proposes (it also keeps the equality pattern
+                            // between offsets and other constants), never merge.
+                            assert!(a.1 != b.1 || a.0 == b.0, "{key:?} len={len}");
+                        } else {
+                            assert_eq!(a.0 == b.0, a.1 == b.1, "{key:?} len={len}");
+                        }
                     }
                 }
             }
         }
+    }
+
+    #[test]
+    fn memory_offsets_blind_groups_two_struct_layouts() {
+        let mut code = Vec::new();
+        for off in [0x20u8, 0x40] {
+            code.extend([0x5b, PUSH1, 7, 0x81, PUSH1, off, ADD, 0x52, STOP]);
+        }
+        let run = |key| {
+            census_runs(&code, &whole(&code), RunCensusOptions { key, ..options(8) }).unwrap()
+        };
+        assert!(run(RunKey::Exact).classes.is_empty());
+        let blind = run(RunKey::MemoryOffsetsBlind);
+        assert_eq!(blind.policy, RUN_POLICY_MEMORY_OFFSET_PORTS);
+        assert_eq!(blind.classes.len(), 1, "{blind:?}");
+        assert_eq!(
+            blind.classes[0].occurrences[0].constant_bindings,
+            vec!["20"]
+        );
+        assert_eq!(
+            blind.classes[0].occurrences[1].constant_bindings,
+            vec!["40"]
+        );
     }
 
     #[test]
