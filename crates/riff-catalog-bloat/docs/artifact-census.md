@@ -140,6 +140,12 @@ PUSH values are compared as ports too, under policy
 That groups copies that differ only in constants (the same error path with
 another selector): code a parameter could share, not identical code.
 `evm_ports.constant_ports` and `varying_constant_ports` count them.
+`"max_varying_constants": K` (CLI `--max-varying-constants K`) keeps only
+classes whose copies differ in at most K constants, so a class is code that
+K parameters could share; without a cap, long runs of fixed-offset memory
+moves match each other with every constant different. Runs shorter than
+`min_run_instructions` (default 2) are not reported: a single PUSH32 is not
+a shape.
 
 DUP, SWAP and POP are instructions, so equal runs also have equal internal
 dataflow wiring, given the same stack at entry. A label is a PUSH1..PUSH4 whose

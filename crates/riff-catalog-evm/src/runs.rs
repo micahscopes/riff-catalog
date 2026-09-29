@@ -114,6 +114,13 @@ pub struct RunCensusOptions {
     /// Compare non-label PUSH values as ports ([`RUN_POLICY_CONSTANT_PORTS`])
     /// instead of exactly ([`RUN_POLICY`]).
     pub constants_as_ports: bool,
+    /// Ignore runs of fewer instructions than this. A single instruction is
+    /// not a shape (with constant ports, every PUSH32 would match every other).
+    pub min_run_instructions: u32,
+    /// With constant ports, drop candidate classes in which more than this
+    /// many constant ports take different values across the copies, so a
+    /// class is code that at most this many parameters could share.
+    pub max_varying_constants: Option<usize>,
 }
 
 impl Default for RunCensusOptions {
@@ -122,6 +129,8 @@ impl Default for RunCensusOptions {
             min_run_bytes: 32,
             work_budget: DEFAULT_WORK_BUDGET,
             constants_as_ports: false,
+            min_run_instructions: 2,
+            max_varying_constants: None,
         }
     }
 }
@@ -485,7 +494,7 @@ pub fn census_runs(
     for (len, left, right) in intervals {
         let first = sa[left];
         let bytes = (stream.byte_prefix[first + len] - stream.byte_prefix[first]) as u32;
-        if bytes < options.min_run_bytes.max(1) {
+        if bytes < options.min_run_bytes.max(1) || (len as u32) < options.min_run_instructions {
             continue;
         }
         let mut groups: HashMap<Vec<u64>, Vec<usize>> = HashMap::new();
@@ -501,6 +510,18 @@ pub fn census_runs(
         for (_, mut positions) in groups {
             if positions.len() < 2 {
                 continue;
+            }
+            if let Some(max) = options.max_varying_constants {
+                let bound: Vec<Vec<Vec<u8>>> = positions
+                    .iter()
+                    .map(|&p| occurrence_key(&stream, p, len, &mut visits).constant_bindings)
+                    .collect();
+                let varying = (0..bound[0].len())
+                    .filter(|&k| bound.iter().any(|b| b[k] != bound[0][k]))
+                    .count();
+                if varying > max {
+                    continue;
+                }
             }
             positions.sort_unstable();
             candidates.push(Candidate {
@@ -857,7 +878,7 @@ mod tests {
             RunCensusOptions {
                 min_run_bytes: 4,
                 work_budget: 1,
-                constants_as_ports: false,
+                ..RunCensusOptions::default()
             },
         );
         assert_eq!(
@@ -947,5 +968,49 @@ mod tests {
         )
         .unwrap();
         assert!(loose.classes.is_empty(), "{loose:?}");
+    }
+
+    #[test]
+    fn single_instructions_are_not_runs_and_varying_constants_can_be_capped() {
+        // Three PUSH32s with different values, each followed by a different
+        // opcode: the only repeat is the single PUSH32 instruction.
+        let mut code = Vec::new();
+        for (v, next) in [(1u8, ADD), (2, MUL), (3, POP)] {
+            code.push(0x7f);
+            code.extend([v; 32]);
+            code.push(next);
+        }
+        let loose = RunCensusOptions {
+            constants_as_ports: true,
+            ..options(8)
+        };
+        assert!(
+            census_runs(&code, &whole(&code), loose)
+                .unwrap()
+                .classes
+                .is_empty()
+        );
+        // Copies that differ in two constants survive a cap of two, not one.
+        let a = vec![PUSH1, 1, DUP1, ADD, POP, PUSH1, 7, MUL, POP, DUP1, ADD, POP];
+        let b = vec![PUSH1, 2, DUP1, ADD, POP, PUSH1, 8, MUL, POP, DUP1, ADD, POP];
+        let mut code = a;
+        code.push(STOP);
+        code.extend(b);
+        let capped = |max| {
+            census_runs(
+                &code,
+                &whole(&code),
+                RunCensusOptions {
+                    constants_as_ports: true,
+                    max_varying_constants: Some(max),
+                    ..options(12)
+                },
+            )
+            .unwrap()
+            .classes
+            .len()
+        };
+        assert_eq!(capped(2), 1);
+        assert_eq!(capped(1), 0);
     }
 }
