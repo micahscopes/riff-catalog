@@ -82,6 +82,13 @@ enum Command {
         /// constants group together).
         #[arg(long)]
         constants_as_ports: bool,
+        /// Runs of fewer instructions are not reported.
+        #[arg(long, default_value_t = 2)]
+        min_run_instructions: u32,
+        /// With --constants-as-ports: at most this many constants may differ
+        /// between the copies of a class.
+        #[arg(long)]
+        max_varying_constants: Option<usize>,
         /// Write the full report as JSON.
         #[arg(long)]
         json_out: Option<PathBuf>,
@@ -242,6 +249,8 @@ fn main() -> Result<()> {
             artifact,
             min_run_bytes,
             constants_as_ports,
+            min_run_instructions,
+            max_varying_constants,
             json_out,
             census_dir,
             top,
@@ -260,6 +269,8 @@ fn main() -> Result<()> {
                 &EvmRunOptions {
                     min_run_bytes,
                     constants_as_ports,
+                    min_run_instructions,
+                    max_varying_constants,
                 },
             )?;
             if let Some(dir) = census_dir {

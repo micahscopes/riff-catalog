@@ -44,6 +44,17 @@ pub struct EvmRunOptions {
     /// differ only in constants.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub constants_as_ports: bool,
+    /// Runs of fewer instructions are not reported (default 2).
+    #[serde(default = "default_min_run_instructions")]
+    pub min_run_instructions: u32,
+    /// With constant ports: at most this many constants may differ between
+    /// the copies of a class.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_varying_constants: Option<usize>,
+}
+
+fn default_min_run_instructions() -> u32 {
+    2
 }
 
 /// Outside-label ports of an EVM run class: how many, and how many of them
@@ -313,6 +324,8 @@ fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptio
         RunCensusOptions {
             min_run_bytes: options.min_run_bytes,
             constants_as_ports: options.constants_as_ports,
+            min_run_instructions: options.min_run_instructions,
+            max_varying_constants: options.max_varying_constants,
             ..RunCensusOptions::default()
         },
     )
@@ -390,14 +403,19 @@ fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptio
             .then_with(|| a.digest.cmp(&b.digest))
     });
     report.caveats.push(format!(
-        "EVM runs use {}: same opcodes, {}, internal jump labels equal by offset from the run start, outside labels as first-use ports. Runs are at least {} bytes, stay inside one function region, and the selected classes never overlap (greedy by covered bytes, not an optimal cover). A match is structural correspondence, not proof of equal behavior or of safe sharing.",
+        "EVM runs use {}: same opcodes, {}, internal jump labels equal by offset from the run start, outside labels as first-use ports. Runs are at least {} bytes and {} instructions{}, stay inside one function region, and the selected classes never overlap (greedy by covered bytes, not an optimal cover). A match is structural correspondence, not proof of equal behavior or of safe sharing.",
         census.policy,
         if options.constants_as_ports {
             "non-label immediates as first-use ports"
         } else {
             "same non-label immediates"
         },
-        options.min_run_bytes
+        options.min_run_bytes,
+        options.min_run_instructions,
+        options
+            .max_varying_constants
+            .map(|m| format!(", with at most {m} constants differing between copies"))
+            .unwrap_or_default()
     ));
     Ok(())
 }
@@ -1172,6 +1190,8 @@ mod tests {
             evm_runs: Some(EvmRunOptions {
                 min_run_bytes: 8,
                 constants_as_ports: false,
+                min_run_instructions: 2,
+                max_varying_constants: None,
             }),
         };
         let report = census_regions(&code, manifest).unwrap();

@@ -736,7 +736,7 @@ fn source_line(file: &str, line: u32) -> Option<String> {
     let first = lines.get(at)?.trim();
     // A body often starts at its brace; show the header line above it.
     if first.chars().all(|c| matches!(c, '{' | ')' | ' ')) {
-        for back in (at.saturating_sub(8)..at).rev() {
+        for back in (at.saturating_sub(16)..at).rev() {
             let l = lines[back].trim();
             if l.contains("::") || l.starts_with("fn ") || l.starts_with("pub fn ") {
                 return Some(l.to_string());
