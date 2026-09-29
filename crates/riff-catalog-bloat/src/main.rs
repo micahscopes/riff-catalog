@@ -68,8 +68,25 @@ enum Command {
         /// Lift only the first N bytes (exclude trailing data or metadata).
         #[arg(long)]
         code_end: Option<usize>,
+        /// Write every block with its facet addresses as JSON.
         #[arg(long)]
         out: PathBuf,
+        /// riffcat-regions/1 manifest whose `function` regions name functions.
+        #[arg(long)]
+        regions: Option<PathBuf>,
+        /// Fe attribution details, to count scheduling bytes with no source.
+        #[arg(long, requires = "contract")]
+        attribution: Option<PathBuf>,
+        #[arg(long)]
+        contract: Option<String>,
+        /// Minimum block sizes for the per-facet block census.
+        #[arg(long, value_delimiter = ',', default_value = "8,16,32")]
+        min_block_bytes: Vec<u32>,
+        /// Write the report as JSON.
+        #[arg(long)]
+        report_out: Option<PathBuf>,
+        #[arg(long, default_value_t = 15)]
+        top: usize,
     },
     /// Byte census of one Fe EVM contract from `fe dev trace emit` plus
     /// `fe dev debug emit --attribution-details`, checked against the artifact.
@@ -257,12 +274,54 @@ fn main() -> Result<()> {
             artifact,
             code_end,
             out,
+            regions,
+            attribution,
+            contract,
+            min_block_bytes,
+            report_out,
+            top,
         } => {
             let bytes = decode_artifact(&fs::read(&artifact)?)?;
             let end = code_end.unwrap_or(bytes.len()).min(bytes.len());
             let blocks = evm_dataflow_blocks(&bytes[..end])?;
             fs::write(&out, serde_json::to_vec(&blocks)?)?;
-            println!("{} blocks over {} bytes", blocks.blocks.len(), end);
+            let functions: Vec<(String, u32, u32)> = match &regions {
+                Some(path) => {
+                    let manifest: RegionManifest = serde_json::from_slice(&fs::read(path)?)?;
+                    manifest
+                        .regions
+                        .iter()
+                        .filter(|r| r.kind == "function")
+                        .map(|r| (r.name.clone(), r.start as u32, r.end as u32))
+                        .collect()
+                }
+                None => Vec::new(),
+            };
+            let no_source: Option<Vec<(u32, u32)>> = match (&attribution, &contract) {
+                (Some(path), Some(contract)) => Some(
+                    riff_catalog_ingest_trace::bytes::read_runtime_details(
+                        &fs::read_to_string(path)?,
+                        contract,
+                    )?
+                    .iter()
+                    .filter(|r| r.has_no_source())
+                    .map(|r| (r.pc_start, r.pc_end))
+                    .collect(),
+                ),
+                _ => None,
+            };
+            let report = dataflow_report(
+                &blocks,
+                &bytes[..end],
+                &functions,
+                no_source.as_deref(),
+                &min_block_bytes,
+                top,
+            );
+            if let Some(path) = report_out {
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+            }
+            print!("{}", render_dataflow_report(&report, top));
         }
         Command::FeTraceBytes {
             trace,
