@@ -60,6 +60,39 @@ enum Command {
         #[arg(long, default_value_t = 10)]
         top: usize,
     },
+    /// Byte census of one Fe EVM contract from `fe dev trace emit` plus
+    /// `fe dev debug emit --attribution-details`, checked against the artifact.
+    FeTraceBytes {
+        /// Trace bundle JSONL from `fe dev trace emit`.
+        #[arg(long)]
+        trace: PathBuf,
+        /// Attribution details JSON from `fe dev debug emit --attribution-details`.
+        #[arg(long)]
+        attribution: PathBuf,
+        /// Contract whose runtime code object to read.
+        #[arg(long)]
+        contract: String,
+        /// Runtime artifact (raw bytes or Fe's hex `.bin`).
+        #[arg(long)]
+        artifact: PathBuf,
+        /// Report repeated EVM runs of at least this many bytes per copy.
+        #[arg(long, default_value_t = 32)]
+        min_run_bytes: u32,
+        /// Compare PUSH constants as ports too (copies that differ only in
+        /// constants group together).
+        #[arg(long)]
+        constants_as_ports: bool,
+        /// Write the full report as JSON.
+        #[arg(long)]
+        json_out: Option<PathBuf>,
+        /// Write the raw runtime bytes and a digest-bound riffcat-regions/1
+        /// manifest (emitted functions, EVM runs enabled) so `census` can
+        /// replay the run census: `<dir>/runtime.bin`, `<dir>/regions.json`.
+        #[arg(long)]
+        census_dir: Option<PathBuf>,
+        #[arg(long, default_value_t = 25)]
+        top: usize,
+    },
     /// Seal a compiler-independent Capture JSON body into an immutable capture.
     Seal {
         #[arg(long)]
@@ -201,6 +234,46 @@ fn main() -> Result<()> {
             } else {
                 print!("{}", render_census(&value, top));
             }
+        }
+        Command::FeTraceBytes {
+            trace,
+            attribution,
+            contract,
+            artifact,
+            min_run_bytes,
+            constants_as_ports,
+            json_out,
+            census_dir,
+            top,
+        } => {
+            let bytes = decode_artifact(&fs::read(&artifact)?)?;
+            let details = fs::read_to_string(&attribution)
+                .with_context(|| format!("read {}", attribution.display()))?;
+            let reader = std::io::BufReader::new(
+                fs::File::open(&trace).with_context(|| format!("open {}", trace.display()))?,
+            );
+            let (_, manifest, _, report) = fe_trace_bytes(
+                reader,
+                &details,
+                &contract,
+                &bytes,
+                &EvmRunOptions {
+                    min_run_bytes,
+                    constants_as_ports,
+                },
+            )?;
+            if let Some(dir) = census_dir {
+                fs::create_dir_all(&dir)?;
+                fs::write(dir.join("runtime.bin"), &bytes)?;
+                fs::write(
+                    dir.join("regions.json"),
+                    serde_json::to_vec_pretty(&manifest)?,
+                )?;
+            }
+            if let Some(path) = json_out {
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+            }
+            print!("{}", render_fe_trace_bytes(&report, top));
         }
         Command::Seal { input, output } => {
             if fs::metadata(&input)?.len() > 256 * 1024 * 1024 {

@@ -28,6 +28,39 @@ pub struct RegionManifest {
     /// Producer-owned adapter name and version. Not a semantic identity policy.
     pub adapter: String,
     pub regions: Vec<RegionSpec>,
+    /// Declares the artifact to be EVM bytecode and asks for repeated
+    /// instruction runs inside each `function` region (see
+    /// `riff_catalog_evm::runs`). Absent for every other artifact format.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evm_runs: Option<EvmRunOptions>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EvmRunOptions {
+    /// Runs shorter than this many bytes per copy are not reported.
+    pub min_run_bytes: u32,
+    /// Compare non-label PUSH values as ports too, grouping copies that
+    /// differ only in constants.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub constants_as_ports: bool,
+}
+
+/// Outside-label ports of an EVM run class: how many, and how many of them
+/// are bound to different targets in different copies.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EvmRunPorts {
+    pub ports: usize,
+    pub varying_ports: usize,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub constant_ports: usize,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub varying_constant_ports: usize,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,6 +87,8 @@ pub struct PatternGroup {
     pub function_scopes: Vec<PatternScope>,
     pub unassigned_occurrences: usize,
     pub unassigned_covered_bytes: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evm_ports: Option<EvmRunPorts>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -126,6 +161,7 @@ pub fn census_regions(bytes: &[u8], manifest: RegionManifest) -> Result<Artifact
         manifest.regions.len() <= MAX_REGIONS,
         "too many census regions"
     );
+    let evm_runs = manifest.evm_runs.clone();
     let mut ids = std::collections::BTreeSet::new();
     let mut ranges = std::collections::BTreeSet::new();
     let mut regions = Vec::new();
@@ -191,6 +227,7 @@ pub fn census_regions(bytes: &[u8], manifest: RegionManifest) -> Result<Artifact
             unassigned_covered_bytes: union_bytes(
                 rs.iter().map(|r| (r.region.start, r.region.end)).collect(),
             ),
+            evm_ports: None,
         })
         .collect();
     patterns.sort_by(|a, b| {
@@ -199,7 +236,7 @@ pub fn census_regions(bytes: &[u8], manifest: RegionManifest) -> Result<Artifact
             .then_with(|| a.region_kind.cmp(&b.region_kind))
             .then_with(|| a.digest.cmp(&b.digest))
     });
-    Ok(ArtifactCensus {
+    let mut report = ArtifactCensus {
         schema: "riffcat-artifact-census/1".into(), artifact_blake3: digest,
         artifact_bytes: bytes.len(), adapter: manifest.adapter, regions,
         region_union_bytes: union, outside_region_bytes: bytes.len() - union, patterns,
@@ -210,7 +247,159 @@ pub fn census_regions(bytes: &[u8], manifest: RegionManifest) -> Result<Artifact
             "Repeated text is not necessarily redundant work or removable bytes. No behavior, aliasing or runtime-cost claim is made.".into(),
         ],
         capture_context: None,
-    })
+    };
+    if let Some(options) = evm_runs {
+        add_evm_runs(bytes, &mut report, &options)?;
+    }
+    Ok(report)
+}
+
+/// Assign each occurrence of `pattern` to the `function` region containing it.
+/// `functions` must be sorted by start and non-overlapping.
+fn assign_function_scopes(
+    functions: &[&CensusRegion],
+    by_id: &BTreeMap<String, (usize, usize)>,
+    pattern: &mut PatternGroup,
+) {
+    let mut scopes: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
+    let mut unassigned = Vec::new();
+    for id in &pattern.regions {
+        let (start, end) = by_id[id];
+        if let Some(index) = functions
+            .partition_point(|f| f.region.start <= start)
+            .checked_sub(1)
+            && end <= functions[index].region.end
+        {
+            scopes.entry(index).or_default().push((start, end));
+            continue;
+        }
+        unassigned.push((start, end));
+    }
+    pattern.unassigned_occurrences = unassigned.len();
+    pattern.unassigned_covered_bytes = union_bytes(unassigned);
+    pattern.function_scopes = scopes
+        .into_iter()
+        .map(|(index, spans)| PatternScope {
+            region_id: functions[index].region.id.clone(),
+            name: functions[index].region.name.clone(),
+            occurrences: spans.len(),
+            covered_bytes: union_bytes(spans),
+        })
+        .collect();
+}
+
+/// Repeated EVM instruction runs inside `function` regions, as `evm_run`
+/// regions plus one pattern group per selected class. Selected classes never
+/// overlap, so their covered bytes may be added; they still overlap the
+/// `function` regions that contain them.
+fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptions) -> Result<()> {
+    use riff_catalog_evm::runs::{RunCensusOptions, Scope, census_runs};
+    let mut functions: Vec<&CensusRegion> = report
+        .regions
+        .iter()
+        .filter(|r| r.region.kind == "function")
+        .collect();
+    functions.sort_by_key(|r| (r.region.start, r.region.end));
+    let scopes: Vec<Scope> = functions
+        .iter()
+        .map(|r| Scope {
+            start: r.region.start as u32,
+            end: r.region.end as u32,
+        })
+        .collect();
+    let census = census_runs(
+        bytes,
+        &scopes,
+        RunCensusOptions {
+            min_run_bytes: options.min_run_bytes,
+            constants_as_ports: options.constants_as_ports,
+            ..RunCensusOptions::default()
+        },
+    )
+    .map_err(|e| anyhow::anyhow!("EVM run census: {e}"))?;
+    let mut new_regions = Vec::new();
+    let mut patterns = Vec::new();
+    for class in &census.classes {
+        let mut ids = Vec::new();
+        for o in &class.occurrences {
+            let id = format!("evm-run:{}", o.start);
+            new_regions.push(CensusRegion {
+                region: RegionSpec {
+                    id: id.clone(),
+                    kind: "evm_run".into(),
+                    name: format!(
+                        "run {} ({} instructions)",
+                        &class.digest[..12],
+                        class.instructions_per_copy
+                    ),
+                    start: o.start as usize,
+                    end: o.end as usize,
+                },
+                bytes: (o.end - o.start) as usize,
+                content_blake3: blake3::hash(&bytes[o.start as usize..o.end as usize])
+                    .to_hex()
+                    .to_string(),
+                statement_count: Some(class.instructions_per_copy as usize),
+            });
+            ids.push(id);
+        }
+        patterns.push(PatternGroup {
+            policy: census.policy.into(),
+            region_kind: "evm_run".into(),
+            digest: class.digest.clone(),
+            occurrences: ids.len(),
+            regions: ids,
+            statements_per_occurrence: Some(class.instructions_per_copy as usize),
+            covered_bytes: class.covered_bytes() as usize,
+            function_scopes: Vec::new(),
+            unassigned_occurrences: 0,
+            unassigned_covered_bytes: 0,
+            evm_ports: Some(EvmRunPorts {
+                ports: class.ports,
+                varying_ports: class.varying_ports,
+                constant_ports: class.constant_ports,
+                varying_constant_ports: class.varying_constant_ports,
+            }),
+        });
+    }
+    let by_id: BTreeMap<String, (usize, usize)> = new_regions
+        .iter()
+        .map(|r| (r.region.id.clone(), (r.region.start, r.region.end)))
+        .collect();
+    for pattern in &mut patterns {
+        assign_function_scopes(&functions, &by_id, pattern);
+    }
+    ensure!(
+        report.regions.len() + new_regions.len() <= MAX_REGIONS,
+        "too many census regions after adding EVM runs"
+    );
+    report.regions.extend(new_regions);
+    report.region_union_bytes = union_bytes(
+        report
+            .regions
+            .iter()
+            .map(|r| (r.region.start, r.region.end))
+            .collect(),
+    );
+    report.outside_region_bytes = bytes.len() - report.region_union_bytes;
+    report.patterns.extend(patterns);
+    report.patterns.sort_by(|a, b| {
+        b.covered_bytes
+            .cmp(&a.covered_bytes)
+            .then_with(|| a.policy.cmp(&b.policy))
+            .then_with(|| a.digest.cmp(&b.digest))
+    });
+    report.caveats.push(format!(
+        "EVM runs use {}: same opcodes, {}, internal jump labels equal by offset from the run start, outside labels as first-use ports. Runs are at least {} bytes, stay inside one function region, and the selected classes never overlap (greedy by covered bytes, not an optimal cover). A match is structural correspondence, not proof of equal behavior or of safe sharing.",
+        census.policy,
+        if options.constants_as_ports {
+            "non-label immediates as first-use ports"
+        } else {
+            "same non-label immediates"
+        },
+        options.min_run_bytes
+    ));
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -489,6 +678,7 @@ pub fn census_wgsl(source: &str) -> Result<ArtifactCensus> {
         artifact_blake3: blake3::hash(source.as_bytes()).to_hex().to_string(),
         adapter: "wgsl-lexical-regions/1".into(),
         regions,
+        evm_runs: None,
     };
     let mut report = census_regions(source.as_bytes(), manifest)?;
     let by_id: BTreeMap<_, _> = report
@@ -522,6 +712,7 @@ pub fn census_wgsl(source: &str) -> Result<ArtifactCensus> {
             function_scopes: Vec::new(),
             unassigned_occurrences: 0,
             unassigned_covered_bytes: 0,
+            evm_ports: None,
         });
     }
     let functions: Vec<_> = report
@@ -530,32 +721,7 @@ pub fn census_wgsl(source: &str) -> Result<ArtifactCensus> {
         .filter(|r| r.region.kind == "function")
         .collect();
     for pattern in &mut report.patterns {
-        let mut scopes: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
-        let mut unassigned = Vec::new();
-        for id in &pattern.regions {
-            let (start, end) = by_id[id];
-            if let Some(index) = functions
-                .partition_point(|f| f.region.start <= start)
-                .checked_sub(1)
-            {
-                if end <= functions[index].region.end {
-                    scopes.entry(index).or_default().push((start, end));
-                    continue;
-                }
-            }
-            unassigned.push((start, end));
-        }
-        pattern.unassigned_occurrences = unassigned.len();
-        pattern.unassigned_covered_bytes = union_bytes(unassigned);
-        pattern.function_scopes = scopes
-            .into_iter()
-            .map(|(index, spans)| PatternScope {
-                region_id: functions[index].region.id.clone(),
-                name: functions[index].region.name.clone(),
-                occurrences: spans.len(),
-                covered_bytes: union_bytes(spans),
-            })
-            .collect();
+        assign_function_scopes(&functions, &by_id, pattern);
     }
     report.patterns.sort_by(|a, b| {
         b.covered_bytes
@@ -725,6 +891,7 @@ mod tests {
                     end: bytes.len(),
                 })
                 .collect(),
+            evm_runs: None,
         };
         assert!(census_regions(&bytes, make(8)).is_ok());
         assert!(
@@ -820,6 +987,7 @@ mod tests {
             artifact_blake3: blake3::hash(bytes).to_hex().to_string(),
             adapter: "test/1".into(),
             regions: vec![region("a", 0, 3), region("b", 1, 4)],
+            evm_runs: None,
         };
         let report = census_regions(bytes, manifest.clone()).unwrap();
         assert_eq!(report.patterns[0].occurrences, 2);
@@ -882,6 +1050,7 @@ mod tests {
                     end: 4,
                 },
             ],
+            evm_runs: None,
         };
         let report = census_regions(source, base.clone()).unwrap();
         assert_eq!(report.region_union_bytes, 8);
@@ -968,5 +1137,74 @@ mod tests {
         for invalid in ["fn f() {", "/* unterminated", "}", "struct S {"] {
             assert!(census_wgsl(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn evm_manifest_adds_non_overlapping_run_patterns_scoped_to_functions() {
+        // Two functions; each holds one copy of a 12-byte straight-line body.
+        let body = [
+            0x60u8, 0x01, 0x80, 0x01, 0x90, 0x50, 0x60, 0x07, 0x02, 0x80, 0x01, 0x50,
+        ];
+        let mut code = body.to_vec();
+        code.push(0x00);
+        code.extend(body);
+        code.push(0x00);
+        let manifest = RegionManifest {
+            schema: "riffcat-regions/1".into(),
+            artifact_blake3: blake3::hash(&code).to_hex().to_string(),
+            adapter: "test-evm/1".into(),
+            regions: vec![
+                RegionSpec {
+                    id: "f".into(),
+                    kind: "function".into(),
+                    name: "f".into(),
+                    start: 0,
+                    end: 13,
+                },
+                RegionSpec {
+                    id: "g".into(),
+                    kind: "function".into(),
+                    name: "g".into(),
+                    start: 13,
+                    end: 26,
+                },
+            ],
+            evm_runs: Some(EvmRunOptions {
+                min_run_bytes: 8,
+                constants_as_ports: false,
+            }),
+        };
+        let report = census_regions(&code, manifest).unwrap();
+        let runs: Vec<_> = report
+            .patterns
+            .iter()
+            .filter(|p| p.region_kind == "evm_run")
+            .collect();
+        assert_eq!(runs.len(), 1, "{runs:?}");
+        let run = runs[0];
+        assert_eq!(run.occurrences, 2);
+        assert_eq!(run.function_scopes.len(), 2);
+        assert_eq!(run.unassigned_occurrences, 0);
+        assert_eq!(
+            run.evm_ports,
+            Some(EvmRunPorts {
+                ports: 0,
+                varying_ports: 0,
+                constant_ports: 0,
+                varying_constant_ports: 0
+            })
+        );
+        assert_eq!(
+            report.region_union_bytes + report.outside_region_bytes,
+            code.len()
+        );
+        // A manifest without the EVM option is unchanged by this feature.
+        let plain: RegionManifest = serde_json::from_str(&format!(
+            r#"{{"schema":"riffcat-regions/1","artifact_blake3":"{}","adapter":"x/1","regions":[]}}"#,
+            blake3::hash(&code).to_hex()
+        ))
+        .unwrap();
+        assert!(plain.evm_runs.is_none());
+        assert!(census_regions(&code, plain).unwrap().patterns.is_empty());
     }
 }

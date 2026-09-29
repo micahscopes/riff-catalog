@@ -118,6 +118,90 @@ supply the graph-policy witnesses needed for a semantic claim. Current capture
 schemas require whole-artifact byte measurements, so subregions stay in the
 sidecar until a future explicitly versioned scope extension is warranted.
 
+## EVM bytecode runs
+
+A manifest may declare `"evm_runs": {"min_run_bytes": 32}`. The artifact is
+then read as EVM bytecode, and repeated instruction runs are reported inside
+each `function` region (runs never cross a function region) as `evm_run`
+regions and pattern groups with policy
+`evm-run/relative-internal-labels/external-label-ports/1`
+(`riff_catalog_evm::runs`). Two runs match when:
+
+- opcodes and non-label PUSH immediates are equal, in order;
+- a jump label that targets code inside the run targets the same offset from
+  the run start, so relocated copies still match;
+- labels that target code outside the run become ports numbered by first use.
+  The per-copy targets are bindings, and `evm_ports` counts ports and how many
+  of them differ between copies.
+
+With `"constants_as_ports": true` (CLI `--constants-as-ports`), non-label
+PUSH values are compared as ports too, under policy
+`evm-run/relative-internal-labels/external-label-ports/constant-ports/1`.
+That groups copies that differ only in constants (the same error path with
+another selector): code a parameter could share, not identical code.
+`evm_ports.constant_ports` and `varying_constant_ports` count them.
+
+DUP, SWAP and POP are instructions, so equal runs also have equal internal
+dataflow wiring, given the same stack at entry. A label is a PUSH1..PUSH4 whose
+value is a JUMPDEST pc. That is a heuristic; a constant misread as a label can
+only split a class (inside) or show up as a port binding (outside).
+
+Candidates come from maximal repeats (suffix array and LCP intervals) and are
+then partitioned by the exact key. The selection is greedy by covered bytes on
+still-unclaimed bytes, so selected groups never overlap each other and their
+`covered_bytes` add up. It is not an optimal cover. A partially claimed
+occurrence is dropped, not trimmed. A group is structural correspondence, not
+proof that the copies behave alike or that sharing them is safe or smaller.
+
+## Fe EVM contracts from the compiler trace
+
+`fe-trace-bytes` builds the manifest above from Fe's own outputs and reports
+where every runtime byte goes:
+
+```sh
+fe dev trace emit INGOT -O 1 --out trace.jsonl
+fe dev debug emit --format ethdebug --from trace.jsonl --out ethdebug.json \
+  --attribution-details attribution.json
+"$RIFFCAT" fe-trace-bytes --trace trace.jsonl --attribution attribution.json \
+  --contract NAME --artifact NAME.runtime.bin --census-dir OUT --json-out report.json
+"$RIFFCAT" census OUT/runtime.bin --regions OUT/regions.json   # replayable run census
+```
+
+The trace must describe the given artifact exactly: its length, the trace's
+code hash and every PUSH immediate are checked first. Attribution is Fe's
+`PrimarySourceV1` decision from the details file, not re-derived here. Tables:
+
+- by Fe classification, confidence and reason; by emitted function (final code
+  layout, from `bytecode.pc -> evm.vcode.inst`); by primary source body and
+  file; by recv arm, with and without the functions only one arm reaches.
+  Each of these adds up to the artifact length. Bytes after the code that the
+  trace's code hash covers but no instruction describes (constant data) are a
+  row of their own.
+- by source body anywhere among a byte's origins. These overlap by design.
+
+Emitted functions by position: a function's region runs from its first to
+its last linked byte. The unlinked gap directly before it joins it when the
+gap starts with a JUMPDEST and its other JUMPDESTs are reached only from the
+gap or the function (the entry JUMPDEST and argument set-up carry no vcode
+link). Other gaps stay "between functions". On Seaport this agrees, byte for
+byte, with the compiler's own pc map for 192 of 196 functions of a
+near-identical build.
+
+Recv arms: an arm left as its own function owns that function. An arm inlined
+into the dispatcher owns the post-optimization blocks dominated by its region
+entry, the nearest common dominator of the blocks whose instructions come only
+from that arm. The assignment is dropped, with a note, if the region would
+contain a block that comes only from another arm. Shared blocks stay in the
+"no single recv arm" row. Blocks are labeled with the recv-arm bodies found
+among their instructions' origins (Fe's attribution). Functions each arm
+reaches come from calls inferred from label pushes whose value is a
+function's first byte, walked with the capture model's `reachable_union`;
+computed jumps are not seen, so the graph is declared incomplete.
+
+Runs are joined back per occurrence: emitted function, recv arm, the source
+body with the most primary-attributed bytes, and how many instructions have the
+same primary source in every copy (the same Fe source emitted more than once).
+
 ## Formal boundary and regression checks
 
 ```sh
