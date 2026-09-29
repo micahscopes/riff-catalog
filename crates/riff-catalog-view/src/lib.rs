@@ -1,7 +1,10 @@
 //! Declarative graph views.
 //!
 //! A view plan selects roots, computes a forward reachability closure, and
-//! projects the resulting graph onto a dimension set. The plan has a canonical
+//! projects the resulting graph onto a dimension set. It may also erase field
+//! classes inside a retained dimension (`erase constants.memory_offset`): a
+//! field class is a (dimension, field name) pair, so a view can forget one
+//! kind of constant while keeping the others. The plan has a canonical
 //! digest so its semantics can participate in the output hash policy.
 
 use std::cmp::Ordering;
@@ -37,6 +40,8 @@ pub struct ViewPlan {
     pub children: ChildTraversal,
     pub edge_roles: BTreeSet<EdgeRole>,
     pub dimensions: BTreeSet<Dimension>,
+    /// Field classes removed from retained dimensions: (dimension, field name).
+    pub erased: BTreeSet<(Dimension, String)>,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
@@ -58,6 +63,7 @@ impl ViewPlan {
         let mut children = ChildTraversal::None;
         let mut edge_roles = BTreeSet::new();
         let mut dimensions = BTreeSet::new();
+        let mut erased = BTreeSet::new();
 
         for (index, raw) in source.lines().enumerate() {
             let line_number = index + 1;
@@ -96,6 +102,23 @@ impl ViewPlan {
                         dimensions.insert(dimension);
                     }
                 }
+                "erase" => {
+                    for item in csv(rest, line_number, "field class")? {
+                        let (dimension, name) = item.split_once('.').ok_or_else(|| {
+                            parse_error(
+                                line_number,
+                                format!("field class `{item}` must be `dimension.field`"),
+                            )
+                        })?;
+                        let dimension = Dimension::parse(dimension).ok_or_else(|| {
+                            parse_error(line_number, format!("unknown dimension `{dimension}`"))
+                        })?;
+                        if name.is_empty() {
+                            return Err(parse_error(line_number, "empty field name"));
+                        }
+                        erased.insert((dimension, name.to_string()));
+                    }
+                }
                 other => {
                     return Err(parse_error(
                         line_number,
@@ -129,6 +152,7 @@ impl ViewPlan {
             children,
             edge_roles,
             dimensions,
+            erased,
         })
     }
 
@@ -178,6 +202,15 @@ impl ViewPlan {
         for dimension in &self.dimensions {
             push_str(&mut bytes, dimension.as_str());
         }
+        // Appended only when present, so plans without erasures keep their ids.
+        if !self.erased.is_empty() {
+            push_str(&mut bytes, "erase");
+            push_u32(&mut bytes, self.erased.len() as u32);
+            for (dimension, name) in &self.erased {
+                push_str(&mut bytes, dimension.as_str());
+                push_str(&mut bytes, name);
+            }
+        }
 
         Digest::from_bytes(*blake3::hash(&bytes).as_bytes())
     }
@@ -186,6 +219,13 @@ impl ViewPlan {
     /// prevents a changed plan from retaining an old view identity.
     pub fn output_level(&self) -> String {
         format!("view:{}@{}", self.name, self.plan_id())
+    }
+
+    fn keeps(&self, field: &Field) -> bool {
+        self.dimensions.contains(&field.dimension)
+            && !self
+                .erased
+                .contains(&(field.dimension, field.name.as_str().to_string()))
     }
 
     pub fn materialize(&self, input: &Graph) -> Result<Graph, ViewError> {
@@ -265,8 +305,7 @@ impl ViewPlan {
                 continue;
             }
             let mut node = node.clone();
-            node.fields
-                .retain(|field| self.dimensions.contains(&field.dimension));
+            node.fields.retain(|field| self.keeps(field));
             node.fields.sort_by(compare_fields);
             output.nodes.insert(key.clone(), node);
         }
@@ -291,8 +330,7 @@ impl ViewPlan {
             .filter(|edge| live.contains(&edge.source) && live.contains(&edge.target))
             .cloned()
             .map(|mut edge| {
-                edge.fields
-                    .retain(|field| self.dimensions.contains(&field.dimension));
+                edge.fields.retain(|field| self.keeps(field));
                 edge.fields.sort_by(compare_fields);
                 edge
             })
@@ -643,5 +681,47 @@ retain structure
         )
         .unwrap_err();
         assert!(empty.to_string().contains("at least one root"));
+    }
+
+    #[test]
+    fn erase_removes_one_field_class_and_changes_the_plan_id() {
+        let base = r#"
+language "riffcat-view/1"
+view "erase.test/1"
+input "yul-ssa-cfg/1"
+root child-parent "entry"
+traverse children
+retain structure, constants
+"#;
+        let plain = parse(base);
+        let erasing = parse(&format!("{base}erase constants.value\n"));
+        assert!(plain.erased.is_empty());
+        assert_ne!(plain.plan_id(), erasing.plan_id());
+        let owner = "erase:test";
+        let key = GraphKey::new(EntityKey::new("t.fn", owner, "f").unwrap(), "fn").unwrap();
+        let mut graph = Graph::new(key);
+        let root = node(owner, "t.fn", "f");
+        let leaf = node(owner, "t.leaf", "leaf");
+        graph.add_node(root.clone(), "fn").unwrap();
+        graph.add_node(leaf.clone(), "leaf").unwrap();
+        graph
+            .add_field(&leaf, Dimension::Constants, "value", 7u64)
+            .unwrap();
+        graph
+            .add_field(&leaf, Dimension::Constants, "size", 1u64)
+            .unwrap();
+        graph.add_child(&root, "entry", 0, &leaf).unwrap();
+        let out = erasing.materialize(&graph).unwrap();
+        let names: Vec<&str> = out.nodes[&leaf]
+            .fields
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["size"]);
+        assert_eq!(
+            plain.materialize(&graph).unwrap().nodes[&leaf].fields.len(),
+            2
+        );
+        assert!(ViewPlan::parse(&format!("{base}erase constants\n")).is_err());
     }
 }

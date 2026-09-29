@@ -142,10 +142,17 @@ ports numbered by first use.
 That groups copies that differ only in constants (the same error path with
 another selector): code a parameter could share, not identical code.
 `evm_ports.constant_ports` and `varying_constant_ports` count them.
-`"max_varying_constants": K` (CLI `--max-varying-constants K`) keeps only
-classes whose copies differ in at most K constants, so a class is code that
-K parameters could share; without a cap, long runs of fixed-offset memory
-moves match each other with every constant different. Runs shorter than
+`"memory_offsets_as_ports": true` (CLI `--memory-offsets-as-ports`) keeps
+every constant except those `riff_catalog_evm::dataflow` classes as memory or
+calldata offsets (a constant whose every use in its basic block is an MLOAD,
+MSTORE, MSTORE8, CALLDATALOAD or CALLDATACOPY address, directly or through
+ADDs). Those are lowered as the Constants field class `memory_offset` and
+erased by the `riffcat-view/1` plan `evm-run.memory-offsets-blind/1`, so the
+key groups the same code for different struct layouts (policy name
+`evm-run/1 view memory-offsets-blind facet structure+constants`). It replaces
+an earlier cap on the number of differing constants, which worked around long
+runs of fixed-offset memory moves matching each other with every constant
+different. Runs shorter than
 `min_run_instructions` (default 2) are not reported: a single PUSH32 is not
 a shape.
 

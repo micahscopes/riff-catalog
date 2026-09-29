@@ -6,6 +6,7 @@
 
 mod census;
 mod census_store;
+mod evm_dataflow;
 mod fe;
 mod fe_events;
 mod fe_trace;
@@ -22,6 +23,10 @@ pub use census::{
 pub use census_store::{
     CensusComparison, CensusFile, CensusSource, compare_censuses, render_census_comparison,
     replay_census, save_census,
+};
+pub use evm_dataflow::{
+    BlockRecord, DataflowBlocks, EVM_DATAFLOW_BLOCKS_SCHEMA, MEMORY_OFFSETS_BLIND_VIEW,
+    PORT_ORDER_BLIND_VIEW, evm_dataflow_blocks,
 };
 pub use fe::{FeImport, import_fe_trace};
 pub use fe_events::{FeEventsImport, import_fe_events};
