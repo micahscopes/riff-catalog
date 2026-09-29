@@ -1,6 +1,7 @@
 //! riff-catalog-ingest-trace: turn an fe origin/provenance trace bundle into
 //! riff-catalog graphs, with no hashing engine in sight. The [`bytes`] module
-//! reads the same bundle's instruction facts into a byte ledger.
+//! reads the same bundle's instruction facts into a byte ledger, and [`stages`]
+//! indexes the origin graph by compiler stage.
 //!
 //! fe emits a JSONL trace bundle: one JSON object per line, each tagged with a
 //! `record` discriminator (`"fact"` or `"metadata"`) and, for facts, a `type`
@@ -39,6 +40,7 @@
 //! no hashing itself; hand the returned graphs to `riff_catalog::ingest_graph`.
 
 pub mod bytes;
+pub mod stages;
 
 use serde::Deserialize;
 
@@ -59,7 +61,7 @@ const INTRODUCED_BY_FIELD: &str = "introduced_by";
 /// `attribution_gap` fact kind, which this reader skips like any other
 /// non-origin kind, so versions 1 and 2 are both accepted.
 pub const SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 2;
-const OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 1;
+pub(crate) const OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 1;
 
 /// Error raised while reading a trace bundle.
 #[derive(Debug, thiserror::Error)]
