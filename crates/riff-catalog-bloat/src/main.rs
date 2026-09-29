@@ -88,6 +88,48 @@ enum Command {
         #[arg(long, default_value_t = 15)]
         top: usize,
     },
+    /// Trace emitted bytes back through Fe's compiler stages: named
+    /// selections (memory operations, byte patterns, run classes, functions
+    /// and their call sites, no-source bytes), expansion per Fe body, and
+    /// content-addressed expansion chains.
+    FeTraceStages {
+        #[arg(long)]
+        trace: PathBuf,
+        #[arg(long)]
+        attribution: PathBuf,
+        #[arg(long)]
+        contract: String,
+        #[arg(long)]
+        artifact: PathBuf,
+        /// riffcat-regions/1 manifest with `function` regions.
+        #[arg(long)]
+        regions: PathBuf,
+        /// Census output (`census --json`) whose EVM run classes to trace.
+        #[arg(long)]
+        census: Option<PathBuf>,
+        /// How many of the census's largest run classes to trace.
+        #[arg(long, default_value_t = 6)]
+        runs: usize,
+        /// Trace every function whose name starts with this, and its call sites.
+        #[arg(long)]
+        function_prefix: Vec<String>,
+        /// A named byte pattern, `name=hex` with `??` for any byte.
+        #[arg(long)]
+        pattern: Vec<String>,
+        /// A named pc set, `name=path`: a JSON array of pcs, or an object whose
+        /// `entries` are objects with a `pc` (for example Sonatina memory-plan
+        /// tags). The name `backend_spill` feeds the memory-origin buckets.
+        #[arg(long)]
+        pc_set: Vec<String>,
+        /// For every --pattern, also trace the nearest later instruction that
+        /// lowers from this post-opt operation (for example `evm_malloc`).
+        #[arg(long)]
+        anchor_op: Option<String>,
+        #[arg(long)]
+        json_out: Option<PathBuf>,
+        #[arg(long, default_value_t = 12)]
+        top: usize,
+    },
     /// Byte census of one Fe EVM contract from `fe dev trace emit` plus
     /// `fe dev debug emit --attribution-details`, checked against the artifact.
     FeTraceBytes {
@@ -322,6 +364,188 @@ fn main() -> Result<()> {
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_dataflow_report(&report, top));
+        }
+        Command::FeTraceStages {
+            trace,
+            attribution,
+            contract,
+            artifact,
+            regions,
+            census,
+            runs,
+            function_prefix,
+            pattern,
+            pc_set,
+            anchor_op,
+            json_out,
+            top,
+        } => {
+            let code = decode_artifact(&fs::read(&artifact)?)?;
+            let rows = riff_catalog_ingest_trace::bytes::read_runtime_details(
+                &fs::read_to_string(&attribution)?,
+                &contract,
+            )?;
+            let code_len = rows.last().map_or(0, |r| r.pc_end as usize);
+            let code = &code[..code_len.min(code.len())];
+            let reader = std::io::BufReader::new(
+                fs::File::open(&trace).with_context(|| format!("open {}", trace.display()))?,
+            );
+            let graph = riff_catalog_ingest_trace::stages::StageGraph::read(reader)?;
+            let manifest: RegionManifest = serde_json::from_slice(&fs::read(&regions)?)?;
+            let functions: Vec<&RegionSpec> = manifest
+                .regions
+                .iter()
+                .filter(|r| r.kind == "function")
+                .collect();
+            let mut selections = vec![
+                range_selection("all", code, &[(0, code.len() as u32)]),
+                opcode_selection("memory_ops", code, &MEMORY_OPCODES),
+                Selection {
+                    name: "no_source".into(),
+                    pcs: rows
+                        .iter()
+                        .filter(|r| r.has_no_source())
+                        .map(|r| r.pc_start)
+                        .collect(),
+                },
+            ];
+            let mut clamp = std::collections::BTreeSet::new();
+            for p in &pattern {
+                let (name, hex) = p.split_once('=').context("--pattern name=hex")?;
+                let sel = pattern_selection(name, code, hex)?;
+                if name == "free_pointer_clamp" {
+                    clamp = sel.pcs.clone();
+                }
+                selections.push(sel);
+                selections.push(pattern_next_selection(
+                    &format!("{name} (next instruction after each copy)"),
+                    code,
+                    hex,
+                )?);
+            }
+            let mut spill = std::collections::BTreeSet::new();
+            for p in &pc_set {
+                let (name, path) = p.split_once('=').context("--pc-set name=path")?;
+                let value: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+                let items = value
+                    .as_array()
+                    .or_else(|| value["entries"].as_array())
+                    .context("pc set: expected an array or an object with entries")?;
+                let pcs: std::collections::BTreeSet<u32> = items
+                    .iter()
+                    .filter_map(|e| e.as_u64().or_else(|| e["pc"].as_u64()))
+                    .map(|v| v as u32)
+                    .collect();
+                if name == "backend_spill" {
+                    spill = pcs.clone();
+                }
+                selections.push(Selection {
+                    name: name.to_string(),
+                    pcs,
+                });
+            }
+            if let Some(path) = census {
+                let value: serde_json::Value = serde_json::from_slice(&fs::read(&path)?)?;
+                let by_id: BTreeMap<String, (u32, u32)> = value["regions"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|r| {
+                        let r = &r["region"];
+                        Some((
+                            r["id"].as_str()?.to_string(),
+                            (r["start"].as_u64()? as u32, r["end"].as_u64()? as u32),
+                        ))
+                    })
+                    .collect();
+                let mut patterns: Vec<&serde_json::Value> = value["patterns"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|p| p["region_kind"] == "evm_run")
+                    .collect();
+                patterns.sort_by_key(|p| std::cmp::Reverse(p["covered_bytes"].as_u64()));
+                for p in patterns.into_iter().take(runs) {
+                    let ranges: Vec<(u32, u32)> = p["regions"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|id| by_id.get(id.as_str()?).copied())
+                        .collect();
+                    let digest = p["digest"].as_str().unwrap_or("");
+                    let name = format!(
+                        "run {} ({} copies x {} bytes)",
+                        &digest[..12.min(digest.len())],
+                        ranges.len(),
+                        ranges.first().map_or(0, |r| r.1 - r.0)
+                    );
+                    selections.push(range_selection(&name, code, &ranges));
+                }
+            }
+            let insts = riff_catalog_evm::runs::decode(code);
+            for prefix in &function_prefix {
+                for f in functions
+                    .iter()
+                    .filter(|f| f.name.starts_with(prefix.as_str()))
+                {
+                    selections.push(range_selection(
+                        &format!("function {}", f.name),
+                        code,
+                        &[(f.start as u32, f.end as u32)],
+                    ));
+                    let entry = f.start as u64;
+                    let callers: std::collections::BTreeSet<u32> = insts
+                        .iter()
+                        .filter(|i| {
+                            (0x60..=0x63).contains(&i.opcode)
+                                && i.len as usize == usize::from(i.opcode - 0x5e)
+                        })
+                        .filter(|i| {
+                            code[i.pc as usize + 1..(i.pc + i.len) as usize]
+                                .iter()
+                                .fold(0u64, |a, b| (a << 8) | u64::from(*b))
+                                == entry
+                        })
+                        .map(|i| i.pc)
+                        .collect();
+                    selections.push(Selection {
+                        name: format!("call sites of {} (entry label pushes)", f.name),
+                        pcs: callers,
+                    });
+                }
+            }
+            let inputs = StageInputs {
+                graph: &graph,
+                rows: &rows,
+                code,
+            };
+            if let Some(op) = &anchor_op {
+                for p in &pattern {
+                    let (name, hex) = p.split_once('=').context("--pattern name=hex")?;
+                    let ranges = pattern_matches(code, hex)?;
+                    selections.push(inputs.nearest_after(
+                        &format!("{name} (nearest later instruction lowering from {op})"),
+                        &ranges,
+                        op,
+                        48,
+                    ));
+                }
+            }
+            let report = FeStagesReport {
+                schema: FE_STAGES_SCHEMA.into(),
+                contract: contract.clone(),
+                stage_graph_nodes: graph.len(),
+                selections: selections
+                    .iter()
+                    .map(|s| inputs.report(s, &clamp, &spill, top))
+                    .collect(),
+                expansion_by_body: inputs.expansion_by_body(),
+                chain_classes: inputs.chain_classes(top.max(40))?,
+            };
+            if let Some(path) = json_out {
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+            }
+            print!("{}", render_fe_stages(&report, top));
         }
         Command::FeTraceBytes {
             trace,

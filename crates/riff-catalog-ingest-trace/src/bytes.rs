@@ -64,14 +64,14 @@ pub fn key_parts(key: &str) -> Option<(&str, &str, &str)> {
 }
 
 #[derive(Deserialize)]
-struct WireKey {
+pub(crate) struct WireKey {
     kind: String,
     owner_key: String,
     local_key: String,
 }
 
 impl WireKey {
-    fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         key_text(&self.kind, &self.owner_key, &self.local_key)
     }
 }
@@ -265,7 +265,7 @@ const WANTED: [&str; 10] = [
     "source_file",
 ];
 
-fn fact_type(line: &str) -> Option<&str> {
+pub(crate) fn fact_type(line: &str) -> Option<&str> {
     let at = line.find("\"type\":")? + "\"type\":".len();
     let rest = line[at..].trim_start().strip_prefix('"')?;
     Some(&rest[..rest.find('"')?])

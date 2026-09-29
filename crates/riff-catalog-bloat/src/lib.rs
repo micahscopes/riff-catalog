@@ -9,6 +9,7 @@ mod census_store;
 mod evm_dataflow;
 mod fe;
 mod fe_events;
+mod fe_stages;
 mod fe_trace;
 mod manifest;
 mod model;
@@ -32,6 +33,11 @@ pub use evm_dataflow::{
 };
 pub use fe::{FeImport, import_fe_trace};
 pub use fe_events::{FeEventsImport, import_fe_events};
+pub use fe_stages::{
+    BodyExpansion, ChainClass, FE_STAGES_SCHEMA, FeStagesReport, MEMORY_OPCODES, STAGE_CHAIN_LEVEL,
+    Selection, StageInputs, StageReport, memory_bucket, opcode_selection, pattern_matches,
+    pattern_next_selection, pattern_selection, range_selection, render_fe_stages,
+};
 pub use fe_trace::{
     BodyInfo, FE_TRACE_REGIONS_ADAPTER, FeTraceBytesReport, Row, RunInfo, RunOccurrenceInfo,
     body_name, decode_artifact, emitted_function_manifest, fe_trace_bytes, render_fe_trace_bytes,
