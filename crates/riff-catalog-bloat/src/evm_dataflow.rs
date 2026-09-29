@@ -451,6 +451,93 @@ pub fn render_dataflow_report(report: &DataflowReport, top: usize) -> String {
     out
 }
 
+/// Blocks of two artifacts that share a facet address: content-addressed
+/// matches across compilers. A match is structural correspondence under the
+/// facet, a heuristic lead, never an equivalence proof.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CrossFacet {
+    pub facet: String,
+    pub min_block_bytes: u32,
+    pub shared_addresses: usize,
+    pub left_blocks: usize,
+    pub left_bytes: u64,
+    pub right_blocks: usize,
+    pub right_bytes: u64,
+    /// Largest shared addresses: (address, left copies, right copies, bytes
+    /// per left copy, first left start, first right start).
+    pub top: Vec<(String, usize, usize, u32, u32, u32)>,
+}
+
+fn block_index<'a>(
+    d: &'a DataflowBlocks,
+    facet: &str,
+    min: u32,
+) -> std::collections::BTreeMap<String, Vec<&'a BlockRecord>> {
+    let mut m: std::collections::BTreeMap<String, Vec<&'a BlockRecord>> = Default::default();
+    for b in &d.blocks {
+        if b.bytes >= min && b.instructions >= 2 {
+            m.entry(b.addresses[facet].clone()).or_default().push(b);
+        }
+    }
+    m
+}
+
+pub fn compare_blocks(
+    left: &DataflowBlocks,
+    right: &DataflowBlocks,
+    min_block_bytes: &[u32],
+    top: usize,
+) -> Vec<CrossFacet> {
+    let mut out = Vec::new();
+    for facet in left.facets.keys() {
+        if !right.facets.contains_key(facet) {
+            continue;
+        }
+        for &min in min_block_bytes {
+            let (l, r) = (
+                block_index(left, facet, min),
+                block_index(right, facet, min),
+            );
+            let mut shared: Vec<(String, usize, usize, u32, u32, u32)> = Vec::new();
+            let (mut lb, mut rb, mut lc, mut rc) = (0u64, 0u64, 0usize, 0usize);
+            for (addr, ls) in &l {
+                if let Some(rs) = r.get(addr) {
+                    lb += ls.iter().map(|b| u64::from(b.bytes)).sum::<u64>();
+                    rb += rs.iter().map(|b| u64::from(b.bytes)).sum::<u64>();
+                    lc += ls.len();
+                    rc += rs.len();
+                    shared.push((
+                        addr.clone(),
+                        ls.len(),
+                        rs.len(),
+                        ls[0].bytes,
+                        ls[0].start,
+                        rs[0].start,
+                    ));
+                }
+            }
+            let count = shared.len();
+            shared.sort_by(|a, b| {
+                (u64::from(b.3) * b.1 as u64)
+                    .cmp(&(u64::from(a.3) * a.1 as u64))
+                    .then_with(|| a.0.cmp(&b.0))
+            });
+            shared.truncate(top);
+            out.push(CrossFacet {
+                facet: facet.clone(),
+                min_block_bytes: min,
+                shared_addresses: count,
+                left_blocks: lc,
+                left_bytes: lb,
+                right_blocks: rc,
+                right_bytes: rb,
+                top: shared,
+            });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,6 +585,16 @@ mod tests {
             addr(0, "dataflow_constants_blind"),
             addr(2, "dataflow_constants_blind")
         );
+    }
+
+    #[test]
+    fn cross_artifact_blocks_match_by_facet_address() {
+        let a = evm_dataflow_blocks(&[0x60, 4, 0x35, 0x60, 0x80, 0x52, 0x00]).unwrap();
+        let b = evm_dataflow_blocks(&[0x60, 0x80, 0x60, 4, 0x35, 0x90, 0x52, 0x00]).unwrap();
+        let cmp = compare_blocks(&a, &b, &[2], 3);
+        let at = |f: &str| cmp.iter().find(|c| c.facet == f).unwrap();
+        assert_eq!(at("dataflow").shared_addresses, 1);
+        assert_eq!(at("flat").shared_addresses, 0);
     }
 
     #[test]

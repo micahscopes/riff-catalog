@@ -968,6 +968,8 @@ dependencies = [
  "riff-catalog-core",
  "riff-catalog-evm",
  "riff-catalog-ingest-trace",
+ "riff-catalog-solc",
+ "riff-catalog-sonatina",
  "riff-catalog-view",
  "serde",
  "serde_json",

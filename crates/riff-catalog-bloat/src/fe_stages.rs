@@ -63,6 +63,12 @@ pub struct StageReport {
     pub instructions: u64,
     /// Distinct nodes met at each stage, tracing back from the selection.
     pub nodes_by_stage: BTreeMap<String, u64>,
+    /// Sonatina pre-opt instructions lowered from the MIR nodes met. Post-opt
+    /// instructions link to MIR directly, so tracing back never meets
+    /// pre-opt; this counts them forward from MIR instead.
+    pub preopt_from_traced_mir: u64,
+    /// Bytes by the trace's instruction category.
+    pub by_category: BTreeMap<String, Tally>,
     /// Origin edges inside the traced closure, by `label/introduced_by`.
     pub edges_by_phase: BTreeMap<String, u64>,
     /// Bytes by the earliest stage an instruction's provenance reaches.
@@ -274,6 +280,8 @@ impl StageInputs<'_> {
             bytes: 0,
             instructions: 0,
             nodes_by_stage: BTreeMap::new(),
+            preopt_from_traced_mir: 0,
+            by_category: BTreeMap::new(),
             edges_by_phase: BTreeMap::new(),
             provenance_ends_at: BTreeMap::new(),
             gap_reasons: BTreeMap::new(),
@@ -300,6 +308,12 @@ impl StageInputs<'_> {
             report
                 .provenance_ends_at
                 .entry(f.ends_at.as_str().into())
+                .or_default()
+                .add(f.bytes);
+            let category = f.node.and_then(|n| g.category(n)).unwrap_or("(none)");
+            report
+                .by_category
+                .entry(category.into())
                 .or_default()
                 .add(f.bytes);
             if let Some(reason) = f.node.and_then(|n| g.gap(n)) {
@@ -365,6 +379,7 @@ impl StageInputs<'_> {
                 }
             }
         }
+        report.preopt_from_traced_mir = self.preopt_from_mir(&closure);
         report.by_postopt_operation = top(post, n);
         report.by_mir_operation = top(mir, n);
         report.by_primary_span = top(spans, n);
@@ -372,10 +387,51 @@ impl StageInputs<'_> {
         report
     }
 
-    /// Per Fe source body: HIR nodes in the body, and the nodes at every
-    /// later stage and the emitted bytes whose provenance reaches the body
-    /// (a node reaching several bodies counts for each), plus the bytes whose
-    /// primary source is in the body (each byte once).
+    fn preopt_from_mir(&self, nodes: &BTreeSet<u32>) -> u64 {
+        let g = self.graph;
+        let mut preopt = BTreeSet::new();
+        for &m in nodes.iter().filter(|m| g.stage(**m) == Stage::Mir) {
+            preopt.extend(
+                g.lowered_into(m)
+                    .iter()
+                    .copied()
+                    .filter(|p| g.stage(*p) == Stage::PreOpt),
+            );
+        }
+        preopt.len() as u64
+    }
+
+    /// Bytes by the trace's instruction category per function region
+    /// `(name, start, end)`, largest functions first.
+    pub fn category_by_function(
+        &self,
+        functions: &[(String, u32, u32)],
+    ) -> Vec<(String, u64, BTreeMap<String, u64>)> {
+        let mut out: Vec<(String, u64, BTreeMap<String, u64>)> = functions
+            .iter()
+            .map(|(name, start, end)| {
+                let mut cats: BTreeMap<String, u64> = BTreeMap::new();
+                let first = self.rows.partition_point(|r| r.pc_start < *start);
+                for r in self.rows[first..].iter().take_while(|r| r.pc_start < *end) {
+                    let c = self
+                        .graph
+                        .node(&r.instruction_key)
+                        .and_then(|n| self.graph.category(n))
+                        .unwrap_or("(none)");
+                    *cats.entry(c.into()).or_default() += u64::from(r.pc_end - r.pc_start);
+                }
+                (name.clone(), cats.values().sum(), cats)
+            })
+            .collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        out
+    }
+
+    /// Per Fe source body: the nodes at every stage and the emitted bytes of
+    /// this code object whose provenance reaches the body (a node reaching
+    /// several bodies counts for each), plus the bytes whose primary source
+    /// is in the body (each byte once). Only nodes that feed this code object
+    /// count (see the comment in the body).
     pub fn expansion_by_body(&self) -> Vec<BodyExpansion> {
         let g = self.graph;
         let n = g.len();
@@ -447,11 +503,27 @@ impl StageInputs<'_> {
             .iter()
             .filter_map(|r| g.node(&r.instruction_key).map(|n| (n, r)))
             .collect();
-        for id in 0..n as u32 {
+        // Count only what feeds this code object: nodes met tracing back from
+        // its instructions, and the pre-opt instructions lowered from those MIR
+        // nodes inside the same Sonatina module as the post-opt nodes met.
+        let traced = g.trace_back(pcs.keys().copied());
+        let module_of = |id: u32| {
+            riff_catalog_ingest_trace::bytes::key_parts(g.key(id))
+                .map(|(_, owner, _)| owner.to_string())
+        };
+        let modules: BTreeSet<String> = traced
+            .iter()
+            .filter(|m| g.stage(**m) == Stage::PostOpt)
+            .filter_map(|m| module_of(*m))
+            .collect();
+        let mut counted: BTreeSet<u32> = traced.clone();
+        for &m in traced.iter().filter(|m| g.stage(**m) == Stage::Mir) {
+            counted.extend(g.lowered_into(m).iter().copied().filter(|p| {
+                g.stage(*p) == Stage::PreOpt && module_of(*p).is_some_and(|o| modules.contains(&o))
+            }));
+        }
+        for id in counted {
             let stage = g.stage(id);
-            if stage == Stage::Bytecode && !pcs.contains_key(&id) {
-                continue; // another code object
-            }
             for &b in reached[id as usize].as_deref().unwrap_or(&[]) {
                 let e = entry(&mut rows, &body_names, b);
                 match stage {
@@ -476,7 +548,14 @@ impl StageInputs<'_> {
                 .and_then(source_body)
                 .and_then(|b| body_ids.get(b))
             {
-                entry(&mut rows, &body_names, *b).bytes_primary += u64::from(r.pc_end - r.pc_start);
+                let e = entry(&mut rows, &body_names, *b);
+                let bytes = u64::from(r.pc_end - r.pc_start);
+                e.bytes_primary += bytes;
+                let category = g
+                    .node(&r.instruction_key)
+                    .and_then(|n| g.category(n))
+                    .unwrap_or("(none)");
+                *e.primary_by_category.entry(category.into()).or_default() += bytes;
             }
         }
         let mut out: Vec<BodyExpansion> = rows
@@ -493,7 +572,7 @@ impl StageInputs<'_> {
 
     /// Content-address the chain from every HIR construct that is the
     /// primary source of emitted bytes, and group constructs by address.
-    pub fn chain_classes(&self, n: usize) -> Result<Vec<ChainClass>> {
+    pub fn chain_classes(&self, n: usize) -> Result<(Vec<ChainClass>, Vec<ConstructExpansion>)> {
         let g = self.graph;
         let mut by_primary: BTreeMap<u32, Vec<&DetailsRow>> = BTreeMap::new();
         for r in self.rows {
@@ -508,6 +587,7 @@ impl StageInputs<'_> {
         )?;
         let facet = Facet::structure_only(policy.policy_id());
         let mut classes: BTreeMap<String, ChainClass> = BTreeMap::new();
+        let mut constructs: Vec<ConstructExpansion> = Vec::new();
         for (h, rows) in by_primary {
             let pcs: Vec<u32> = rows
                 .iter()
@@ -536,6 +616,13 @@ impl StageInputs<'_> {
             for m in &members {
                 *stages.entry(g.stage(*m).as_str().into()).or_default() += 1;
             }
+            constructs.push(ConstructExpansion {
+                span: self.span_of(g.key(h)),
+                chain: address.clone(),
+                bytes,
+                preopt: self.preopt_from_mir(&members),
+                nodes_by_stage: stages.clone(),
+            });
             let class = classes
                 .entry(address.clone())
                 .or_insert_with(|| ChainClass {
@@ -551,6 +638,8 @@ impl StageInputs<'_> {
             class.total_bytes += bytes;
             *class.spans.entry(self.span_of(g.key(h))).or_default() += 1;
         }
+        constructs.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.span.cmp(&b.span)));
+        constructs.truncate(n);
         let mut out: Vec<ChainClass> = classes.into_values().filter(|c| c.constructs > 1).collect();
         out.sort_by(|a, b| {
             b.total_bytes
@@ -573,8 +662,18 @@ impl StageInputs<'_> {
                 c.spans = v.into_iter().take(8).collect();
             }
         }
-        Ok(out)
+        Ok((out, constructs))
     }
+}
+
+/// One HIR construct's traced chain: its bytes, and the nodes per stage.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConstructExpansion {
+    pub span: String,
+    pub chain: String,
+    pub bytes: u64,
+    pub preopt: u64,
+    pub nodes_by_stage: BTreeMap<String, u64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -589,6 +688,8 @@ pub struct BodyExpansion {
     pub instructions_reaching: u64,
     pub bytes_reaching: u64,
     pub bytes_primary: u64,
+    /// `bytes_primary` by the trace's instruction category.
+    pub primary_by_category: BTreeMap<String, u64>,
 }
 
 /// HIR constructs whose traced chains have one address at the Structure
@@ -614,6 +715,10 @@ pub struct FeStagesReport {
     pub selections: Vec<StageReport>,
     pub expansion_by_body: Vec<BodyExpansion>,
     pub chain_classes: Vec<ChainClass>,
+    /// The HIR constructs that are the primary source of the most bytes.
+    pub top_constructs: Vec<ConstructExpansion>,
+    /// Bytes by the trace's instruction category per emitted function.
+    pub category_by_function: Vec<(String, u64, BTreeMap<String, u64>)>,
 }
 
 /// Non-overlapping byte ranges matching `pattern` (hex, `??` any byte),
@@ -715,7 +820,18 @@ pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
                 )
             })
             .collect();
-        let _ = writeln!(out, "   nodes by stage: {}", stages.join(", "));
+        let _ = writeln!(
+            out,
+            "   nodes by stage: {}; pre-opt from traced MIR {}",
+            stages.join(", "),
+            s.preopt_from_traced_mir
+        );
+        let cats: Vec<String> = s
+            .by_category
+            .iter()
+            .map(|(k, t)| format!("{k} {}", t.bytes))
+            .collect();
+        let _ = writeln!(out, "   bytes by trace category: {}", cats.join(", "));
         let _ = writeln!(out, "   edges: {:?}", s.edges_by_phase);
         let ends: Vec<String> = s
             .provenance_ends_at
@@ -763,6 +879,44 @@ pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
             "   {:>6}  {:>4} {:>5} {:>5} {:>5} {:>5}  {:>6}  {name}",
             b.bytes_reaching, b.hir, b.mir, b.preopt, b.postopt, b.vcode, b.bytes_primary
         );
+    }
+    let _ = writeln!(
+        out,
+        "\n== expansion by Fe body, by primary bytes (bytes primary; hir, mir, preopt, postopt, vcode; post-opt per pre-opt)"
+    );
+    let mut by_primary: Vec<&BodyExpansion> = report.expansion_by_body.iter().collect();
+    by_primary.sort_by(|a, b| {
+        b.bytes_primary
+            .cmp(&a.bytes_primary)
+            .then_with(|| a.body.cmp(&b.body))
+    });
+    for b in by_primary.into_iter().take(n) {
+        let name: String = b.body.chars().take(90).collect();
+        let ratio = if b.preopt > 0 {
+            format!("{:.2}", b.postopt as f64 / b.preopt as f64)
+        } else {
+            "-".into()
+        };
+        let _ = writeln!(
+            out,
+            "   {:>6}  {:>4} {:>5} {:>5} {:>5} {:>5}  {ratio:>5}  {name}",
+            b.bytes_primary, b.hir, b.mir, b.preopt, b.postopt, b.vcode
+        );
+    }
+    let _ = writeln!(
+        out,
+        "\n== top constructs by primary bytes (bytes; pre-opt; stages)"
+    );
+    for c in report.top_constructs.iter().take(n) {
+        let _ = writeln!(
+            out,
+            "   {:>6}  {:>4}  {:?}  {}",
+            c.bytes, c.preopt, c.nodes_by_stage, c.span
+        );
+    }
+    let _ = writeln!(out, "\n== bytes by trace category per emitted function");
+    for (name, total, cats) in report.category_by_function.iter().take(n) {
+        let _ = writeln!(out, "   {total:>6}  {cats:?}  {name}");
     }
     let _ = writeln!(
         out,

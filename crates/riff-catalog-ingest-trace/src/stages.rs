@@ -121,6 +121,8 @@ pub struct StageGraph {
     extent: HashMap<u32, (u32, u32)>,
     span: HashMap<u32, SpanRef>,
     gap: HashMap<u32, String>,
+    /// The trace's `instruction_category` per instruction.
+    category: HashMap<u32, String>,
     /// Instruction node to its function key (from `instruction` facts).
     function_of: HashMap<u32, String>,
     /// Function key to its name (from `function` facts).
@@ -139,7 +141,8 @@ fn wire(v: &serde_json::Value, name: &str, line: usize) -> Result<String, Ledger
     Ok(key.text())
 }
 
-const STAGE_FACTS: [&str; 8] = [
+const STAGE_FACTS: [&str; 9] = [
+    "instruction_category",
     "origin_node",
     "origin_edge",
     "instruction",
@@ -292,6 +295,12 @@ impl StageGraph {
                         g.function_names.insert(function, name.to_string());
                     }
                 }
+                "instruction_category" => {
+                    let inst = g.id(wire(&v, "instruction", line)?);
+                    if let Some(c) = v.get("category").and_then(|c| c.as_str()) {
+                        g.category.insert(inst, c.to_string());
+                    }
+                }
                 "attribution_gap" => {
                     let inst = g.id(wire(&v, "instruction", line)?);
                     if let Some(reason) = v.get("reason").and_then(|r| r.as_str()) {
@@ -361,6 +370,12 @@ impl StageGraph {
 
     pub fn span(&self, id: u32) -> Option<&SpanRef> {
         self.span.get(&id)
+    }
+
+    /// The trace's instruction category (Fe derives it from the opcode for
+    /// EVM code: arithmetic, load, store, jump, branch, move, unknown).
+    pub fn category(&self, id: u32) -> Option<&str> {
+        self.category.get(&id).map(String::as_str)
     }
 
     pub fn gap(&self, id: u32) -> Option<&str> {
