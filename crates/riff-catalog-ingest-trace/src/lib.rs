@@ -1,5 +1,6 @@
 //! riff-catalog-ingest-trace: turn an fe origin/provenance trace bundle into
-//! riff-catalog graphs, with no hashing engine in sight.
+//! riff-catalog graphs, with no hashing engine in sight. The [`bytes`] module
+//! reads the same bundle's instruction facts into a byte ledger.
 //!
 //! fe emits a JSONL trace bundle: one JSON object per line, each tagged with a
 //! `record` discriminator (`"fact"` or `"metadata"`) and, for facts, a `type`
@@ -37,6 +38,8 @@
 //! form without perturbing the fingerprint the catalog dedups on. This crate does
 //! no hashing itself; hand the returned graphs to `riff_catalog::ingest_graph`.
 
+pub mod bytes;
+
 use serde::Deserialize;
 
 use riff_catalog_schema::{
@@ -51,9 +54,12 @@ const ORIGIN_GRAPH_DEFAULT_OWNER: &str = "bundle";
 const ORIGIN_GRAPH_LOCAL: &str = "origins";
 /// Field name that carries an origin edge's introducing compiler phase.
 const INTRODUCED_BY_FIELD: &str = "introduced_by";
-/// Fe trace-bundle schema understood by this reader. This is distinct from
-/// Riffcat's canonical hashing schema version.
-pub const SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 1;
+/// Newest Fe trace-bundle schema understood by this reader. This is distinct
+/// from Riffcat's canonical hashing schema version. Version 2 only added the
+/// `attribution_gap` fact kind, which this reader skips like any other
+/// non-origin kind, so versions 1 and 2 are both accepted.
+pub const SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 2;
+const OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 1;
 
 /// Error raised while reading a trace bundle.
 #[derive(Debug, thiserror::Error)]
@@ -149,14 +155,15 @@ pub fn ingest_trace_bundle(jsonl: &str) -> Result<Vec<Graph>, IngestError> {
             serde_json::from_str(text).map_err(|source| IngestError::Json { line, source })?;
 
         if value.get("record").and_then(|r| r.as_str()) == Some("metadata") {
-            if let Some(found) = value.get("schema_version").and_then(|v| v.as_u64()) {
-                if found != SUPPORTED_TRACE_SCHEMA_VERSION {
-                    return Err(IngestError::UnsupportedSchema {
-                        line,
-                        found,
-                        supported: SUPPORTED_TRACE_SCHEMA_VERSION,
-                    });
-                }
+            if let Some(found) = value.get("schema_version").and_then(|v| v.as_u64())
+                && !(OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION..=SUPPORTED_TRACE_SCHEMA_VERSION)
+                    .contains(&found)
+            {
+                return Err(IngestError::UnsupportedSchema {
+                    line,
+                    found,
+                    supported: SUPPORTED_TRACE_SCHEMA_VERSION,
+                });
             }
             if let Some(path) = value.get("input_path").and_then(|p| p.as_str()) {
                 input_path = Some(path.to_string());

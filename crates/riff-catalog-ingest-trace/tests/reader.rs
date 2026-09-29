@@ -91,14 +91,25 @@ fn blank_lines_are_ignored_and_bad_json_is_located() {
 #[test]
 fn rejects_a_future_trace_schema_before_interpreting_known_records() {
     let future = concat!(
-        "{\"record\":\"metadata\",\"schema_version\":2,\"input_path\":\"future.fe\"}\n",
+        "{\"record\":\"metadata\",\"schema_version\":3,\"input_path\":\"future.fe\"}\n",
         "{\"record\":\"fact\",\"type\":\"origin_node\",\"key\":{\"kind\":\"hir.expr\",\"owner_key\":\"o\",\"local_key\":\"n\"}}\n"
     );
     let err = ingest_trace_bundle(future).unwrap_err();
     assert!(
         err.to_string()
-            .contains("unsupported trace schema version 2"),
+            .contains("unsupported trace schema version 3"),
         "got: {err}"
     );
-    assert_eq!(SUPPORTED_TRACE_SCHEMA_VERSION, 1);
+    assert_eq!(SUPPORTED_TRACE_SCHEMA_VERSION, 2);
+}
+
+#[test]
+fn accepts_schema_two_which_only_added_a_skipped_fact_kind() {
+    let v2 = concat!(
+        "{\"record\":\"metadata\",\"schema_version\":2,\"input_path\":\"v2.fe\"}\n",
+        "{\"record\":\"fact\",\"type\":\"origin_node\",\"key\":{\"kind\":\"hir.expr\",\"owner_key\":\"o\",\"local_key\":\"n\"}}\n",
+        "{\"record\":\"fact\",\"type\":\"attribution_gap\",\"instruction\":{\"kind\":\"bytecode.pc\",\"owner_key\":\"o\",\"local_key\":\"pc:0\"},\"reason\":\"synthetic\"}\n"
+    );
+    let graphs = ingest_trace_bundle(v2).unwrap();
+    assert_eq!(graphs[0].nodes.len(), 1);
 }
