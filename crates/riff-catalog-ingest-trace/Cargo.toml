@@ -1,6 +1,6 @@
 [package]
 name = "riff-catalog-ingest-trace"
-description = "Reads an fe origin/provenance trace bundle (JSONL) into riff-catalog graphs. Ingests the origin graph only; every other trace fact kind is skipped. No hashing engine, so a producer can turn a bundle into graphs without linking riff-catalog-core."
+description = "Reads an fe trace bundle (JSONL): the origin graph as riff-catalog graphs, and a byte ledger joining emitted EVM bytes to Fe's own attribution. No hashing engine, so a producer can use it without linking riff-catalog-core."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,3 +14,4 @@ riff-catalog-schema.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
 thiserror.workspace = true
+blake3.workspace = true

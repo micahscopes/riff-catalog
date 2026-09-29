@@ -1037,6 +1037,7 @@ dependencies = [
 name = "riff-catalog-ingest-trace"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "riff-catalog-schema",
  "serde",
  "serde_json",
