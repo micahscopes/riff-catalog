@@ -193,6 +193,264 @@ pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
     })
 }
 
+/// Bytes of DUP, SWAP and POP.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchedulingBytes {
+    pub total: u64,
+    pub dup: u64,
+    pub swap: u64,
+    pub pop: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FunctionScheduling {
+    pub name: String,
+    pub bytes: u64,
+    pub scheduling: SchedulingBytes,
+}
+
+/// One facet's census of whole blocks: blocks with equal addresses are one
+/// class. `extra` is a class's bytes minus its smallest copy; `hidden` is the
+/// part of `extra` that the exact flat facet does not already group (copies
+/// whose bytes differ).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlockFacetCensus {
+    pub facet: String,
+    pub min_block_bytes: u32,
+    pub classes: usize,
+    pub covered: u64,
+    pub extra: u64,
+    pub hidden: u64,
+    /// Largest classes by `hidden`, then `extra`.
+    pub top: Vec<BlockClass>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlockClass {
+    pub address: String,
+    pub copies: usize,
+    pub extra: u64,
+    pub hidden: u64,
+    pub flat_variants: usize,
+    pub sizes: Vec<u32>,
+    pub starts: Vec<u32>,
+    /// Function name to copies in it.
+    pub functions: std::collections::BTreeMap<String, usize>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DataflowReport {
+    pub schema: String,
+    pub code_bytes: usize,
+    pub blocks: usize,
+    pub scheduling: SchedulingBytes,
+    /// Scheduling bytes inside instructions with no source link, and all
+    /// bytes with no source link, when attribution details were given.
+    pub scheduling_in_no_source: Option<SchedulingBytes>,
+    pub no_source_bytes: Option<u64>,
+    pub by_function: Vec<FunctionScheduling>,
+    pub facets: Vec<BlockFacetCensus>,
+}
+
+pub const EVM_DATAFLOW_REPORT_SCHEMA: &str = "riffcat-evm-dataflow-report/1";
+
+fn add_scheduling(s: &mut SchedulingBytes, opcode: u8, len: u64) {
+    match opcode {
+        0x50 => s.pop += len,
+        0x80..=0x8f => s.dup += len,
+        0x90..=0x9f => s.swap += len,
+        _ => return,
+    }
+    s.total += len;
+}
+
+/// Summarize lifted blocks: scheduling bytes (overall, per function, and
+/// inside no-source instructions) and a whole-block census per facet.
+/// `functions` are (name, start, end) regions; `no_source` lists the pc
+/// ranges with no source link.
+pub fn dataflow_report(
+    blocks: &DataflowBlocks,
+    code: &[u8],
+    functions: &[(String, u32, u32)],
+    no_source: Option<&[(u32, u32)]>,
+    min_block_bytes: &[u32],
+    top: usize,
+) -> DataflowReport {
+    use std::collections::{BTreeMap, HashSet};
+    let mut functions = functions.to_vec();
+    functions.sort_by_key(|f| f.1);
+    let function_of = |pc: u32| -> String {
+        let i = functions.partition_point(|f| f.1 <= pc);
+        match i.checked_sub(1).map(|i| &functions[i]) {
+            Some((name, start, end)) if *start <= pc && pc < *end => name.clone(),
+            _ => "(outside functions)".to_string(),
+        }
+    };
+    let no_source_pcs: Option<HashSet<u32>> =
+        no_source.map(|ranges| ranges.iter().map(|r| r.0).collect());
+    let mut scheduling = SchedulingBytes::default();
+    let mut in_no_source = SchedulingBytes::default();
+    let mut per_function: BTreeMap<String, FunctionScheduling> = BTreeMap::new();
+    let block_function: Vec<String> = blocks.blocks.iter().map(|b| function_of(b.start)).collect();
+    for (b, name) in blocks.blocks.iter().zip(&block_function) {
+        let entry = per_function
+            .entry(name.clone())
+            .or_insert_with(|| FunctionScheduling {
+                name: name.clone(),
+                bytes: 0,
+                scheduling: SchedulingBytes::default(),
+            });
+        entry.bytes += u64::from(b.bytes);
+        for inst in decode(&code[b.start as usize..b.end as usize]) {
+            let len = u64::from(inst.len);
+            add_scheduling(&mut scheduling, inst.opcode, len);
+            add_scheduling(&mut entry.scheduling, inst.opcode, len);
+            if no_source_pcs
+                .as_ref()
+                .is_some_and(|set| set.contains(&(b.start + inst.pc)))
+            {
+                add_scheduling(&mut in_no_source, inst.opcode, len);
+            }
+        }
+    }
+    let mut by_function: Vec<FunctionScheduling> = per_function.into_values().collect();
+    by_function.sort_by(|a, b| {
+        b.scheduling
+            .total
+            .cmp(&a.scheduling.total)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+
+    let mut facets = Vec::new();
+    for facet in blocks.facets.keys() {
+        for &min in min_block_bytes {
+            let mut groups: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+            for (i, b) in blocks.blocks.iter().enumerate() {
+                if b.bytes >= min && b.instructions >= 2 {
+                    groups
+                        .entry(b.addresses[facet].as_str())
+                        .or_default()
+                        .push(i);
+                }
+            }
+            let extra_of = |members: &[usize]| -> u64 {
+                let sum: u64 = members
+                    .iter()
+                    .map(|&i| u64::from(blocks.blocks[i].bytes))
+                    .sum();
+                let min = members
+                    .iter()
+                    .map(|&i| u64::from(blocks.blocks[i].bytes))
+                    .min()
+                    .unwrap_or(0);
+                sum - min
+            };
+            let mut classes = Vec::new();
+            for (address, members) in groups {
+                if members.len() < 2 {
+                    continue;
+                }
+                let mut flat: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+                for &i in &members {
+                    flat.entry(blocks.blocks[i].addresses["flat"].as_str())
+                        .or_default()
+                        .push(i);
+                }
+                let extra = extra_of(&members);
+                let flat_extra: u64 = flat
+                    .values()
+                    .filter(|m| m.len() > 1)
+                    .map(|m| extra_of(m))
+                    .sum();
+                let mut functions = BTreeMap::new();
+                for &i in &members {
+                    *functions.entry(block_function[i].clone()).or_insert(0) += 1;
+                }
+                classes.push(BlockClass {
+                    address: address.to_string(),
+                    copies: members.len(),
+                    extra,
+                    hidden: extra - flat_extra,
+                    flat_variants: flat.len(),
+                    sizes: members.iter().map(|&i| blocks.blocks[i].bytes).collect(),
+                    starts: members.iter().map(|&i| blocks.blocks[i].start).collect(),
+                    functions,
+                });
+            }
+            let covered = classes
+                .iter()
+                .flat_map(|c| c.sizes.iter())
+                .map(|s| u64::from(*s))
+                .sum();
+            let extra = classes.iter().map(|c| c.extra).sum();
+            let hidden = classes.iter().map(|c| c.hidden).sum();
+            let count = classes.len();
+            classes.sort_by(|a, b| {
+                (b.hidden, b.extra, &a.address).cmp(&(a.hidden, a.extra, &b.address))
+            });
+            classes.truncate(top);
+            facets.push(BlockFacetCensus {
+                facet: facet.clone(),
+                min_block_bytes: min,
+                classes: count,
+                covered,
+                extra,
+                hidden,
+                top: classes,
+            });
+        }
+    }
+    DataflowReport {
+        schema: EVM_DATAFLOW_REPORT_SCHEMA.into(),
+        code_bytes: blocks.code_bytes,
+        blocks: blocks.blocks.len(),
+        scheduling,
+        scheduling_in_no_source: no_source.map(|_| in_no_source),
+        no_source_bytes: no_source.map(|r| r.iter().map(|(a, b)| u64::from(b - a)).sum()),
+        by_function,
+        facets,
+    }
+}
+
+/// Plain-text rendering of the report's headline tables.
+pub fn render_dataflow_report(report: &DataflowReport, top: usize) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    let s = &report.scheduling;
+    let _ = writeln!(
+        out,
+        "blocks {}, code bytes {}; DUP/SWAP/POP bytes {} (DUP {}, SWAP {}, POP {})",
+        report.blocks, report.code_bytes, s.total, s.dup, s.swap, s.pop
+    );
+    if let (Some(n), Some(total)) = (&report.scheduling_in_no_source, report.no_source_bytes) {
+        let _ = writeln!(
+            out,
+            "no-source bytes {total}; DUP/SWAP/POP among them {} (DUP {}, SWAP {}, POP {})",
+            n.total, n.dup, n.swap, n.pop
+        );
+    }
+    let _ = writeln!(out, "\nscheduling bytes / function bytes, top {top}:");
+    for f in report.by_function.iter().take(top) {
+        let _ = writeln!(
+            out,
+            "{:>7} / {:>7}  {}",
+            f.scheduling.total, f.bytes, f.name
+        );
+    }
+    let _ = writeln!(
+        out,
+        "\nfacet, min block bytes: classes covered extra hidden"
+    );
+    for f in &report.facets {
+        let _ = writeln!(
+            out,
+            "{:48} {:>3}: {:>5} {:>7} {:>7} {:>7}",
+            f.facet, f.min_block_bytes, f.classes, f.covered, f.extra, f.hidden
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,5 +498,30 @@ mod tests {
             addr(0, "dataflow_constants_blind"),
             addr(2, "dataflow_constants_blind")
         );
+    }
+
+    #[test]
+    fn report_counts_scheduling_and_hidden_repeats() {
+        let code = [
+            0x60, 4, 0x35, 0x60, 0x80, 0x52, 0x00, // push-first
+            0x5b, 0x60, 0x80, 0x60, 4, 0x35, 0x90, 0x52, 0x00, // swap
+            0x5b, 0x60, 1, 0x60, 0, 0x55, 0x00,
+        ];
+        let blocks = evm_dataflow_blocks(&code).unwrap();
+        let functions = vec![
+            ("f".to_string(), 0, 7),
+            ("g".to_string(), 7, code.len() as u32),
+        ];
+        let no_source = [(13u32, 14u32)];
+        let report = dataflow_report(&blocks, &code, &functions, Some(&no_source), &[4], 5);
+        assert_eq!(report.scheduling.total, 1);
+        assert_eq!(report.scheduling.swap, 1);
+        assert_eq!(report.scheduling_in_no_source.as_ref().unwrap().swap, 1);
+        assert_eq!(report.no_source_bytes, Some(1));
+        let at = |facet: &str| report.facets.iter().find(|f| f.facet == facet).unwrap();
+        assert_eq!(at("flat").classes, 0);
+        let df = at("dataflow");
+        assert_eq!((df.classes, df.covered, df.extra, df.hidden), (1, 16, 9, 9));
+        assert_eq!(df.top[0].functions.len(), 2);
     }
 }

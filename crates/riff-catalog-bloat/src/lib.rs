@@ -25,8 +25,10 @@ pub use census_store::{
     replay_census, save_census,
 };
 pub use evm_dataflow::{
-    BlockRecord, DataflowBlocks, EVM_DATAFLOW_BLOCKS_SCHEMA, MEMORY_OFFSETS_BLIND_VIEW,
-    PORT_ORDER_BLIND_VIEW, evm_dataflow_blocks,
+    BlockClass, BlockFacetCensus, BlockRecord, DataflowBlocks, DataflowReport,
+    EVM_DATAFLOW_BLOCKS_SCHEMA, EVM_DATAFLOW_REPORT_SCHEMA, FunctionScheduling,
+    MEMORY_OFFSETS_BLIND_VIEW, PORT_ORDER_BLIND_VIEW, SchedulingBytes, dataflow_report,
+    evm_dataflow_blocks, render_dataflow_report,
 };
 pub use fe::{FeImport, import_fe_trace};
 pub use fe_events::{FeEventsImport, import_fe_events};

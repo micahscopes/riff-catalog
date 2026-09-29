@@ -150,17 +150,55 @@ struct DetailsFile {
     instruction_origin_index: Vec<DetailsRow>,
 }
 
-#[derive(Deserialize)]
-struct DetailsRow {
-    instruction_key: String,
-    code_object: Option<String>,
-    pc_start: u32,
-    pc_end: u32,
-    primary_source: Option<String>,
-    all_origins: Vec<String>,
-    classification: String,
-    classification_reason: Option<String>,
-    confidence: String,
+/// One instruction of Fe's attribution details file.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DetailsRow {
+    pub instruction_key: String,
+    pub code_object: Option<String>,
+    pub pc_start: u32,
+    pub pc_end: u32,
+    pub primary_source: Option<String>,
+    pub all_origins: Vec<String>,
+    pub classification: String,
+    pub classification_reason: Option<String>,
+    pub confidence: String,
+}
+
+impl DetailsRow {
+    /// No source link at all: neither one exact source nor generated code
+    /// tied to the source it was made for.
+    pub fn has_no_source(&self) -> bool {
+        !(self.classification == "source_mapped"
+            || self.classification_reason.as_deref() == Some("SyntheticFor"))
+    }
+}
+
+/// Read Fe's attribution details and keep the rows of `contract`'s runtime
+/// code object (its key ends in `runtime` and names `:contract:<contract>:`).
+pub fn read_runtime_details(
+    attribution_details_json: &str,
+    contract: &str,
+) -> Result<Vec<DetailsRow>, LedgerError> {
+    let details: DetailsFile = serde_json::from_str(attribution_details_json)
+        .map_err(|e| LedgerError::Details(e.to_string()))?;
+    if details.schema_version != ATTRIBUTION_DETAILS_SCHEMA {
+        return Err(LedgerError::Details(format!(
+            "unsupported schema {} (expected {ATTRIBUTION_DETAILS_SCHEMA})",
+            details.schema_version
+        )));
+    }
+    let marker = format!(":contract:{contract}:");
+    let mut rows: Vec<DetailsRow> = details
+        .instruction_origin_index
+        .into_iter()
+        .filter(|r| {
+            r.code_object
+                .as_deref()
+                .is_some_and(|c| c.ends_with("runtime") && c.contains(&marker))
+        })
+        .collect();
+    rows.sort_by_key(|r| r.pc_start);
+    Ok(rows)
 }
 
 /// Which code object to read: the runtime section of this contract.

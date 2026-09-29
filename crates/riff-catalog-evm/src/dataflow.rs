@@ -12,9 +12,12 @@
 //!   child `value`.
 //! - `evm.input` node per entry item that is read. Structure `slot` (0 = top
 //!   at entry).
-//! - `evm.op` node per operation. Structure `opcode`; children `arg`
-//!   (ordinal 0 = the operand popped first).
-//! - `evm.const` node per distinct PUSH value. Constants: `memory_offset`
+//! - `evm.op` node per operation. Structure `opcode`, and `effect_index` for
+//!   effectful operations; children `arg` (ordinal 0 = the operand popped
+//!   first).
+//! - `evm.const` node per distinct PUSH value. Structure: `constant_port`,
+//!   numbered by first use, so the facets that forget values still keep
+//!   which constants are equal. Constants: `memory_offset`
 //!   when every use of the value is a memory or calldata address (directly,
 //!   or through ADDs; see [`MEMORY_ADDRESS_OPERANDS`]), else `value`. The
 //!   bytes have leading zeros removed, so `PUSH1 0x20` and `PUSH2 0x0020`
@@ -29,8 +32,13 @@
 //! and their order is kept. Values that nothing uses are not in the graph.
 //!
 //! Anonymous-shape digests of these graphs compare the computation of two
-//! blocks, not their bytes. Merkle digests unfold shared nodes, but the
-//! graph digest also counts nodes, so sharing still separates most shapes.
+//! blocks, not their bytes. Core's Merkle fold identifies a child by its
+//! content, so two distinct nodes with equal content would be
+//! interchangeable: a consumer of one would hash like a consumer of the
+//! other. The lowering therefore gives every node a distinct Structure
+//! identity (inputs by slot, labels and constants by first-use port, effects
+//! by index, and pure operations are hash-consed), which makes the digest
+//! determine the DAG, sharing included, at every facet that keeps Structure.
 //! A match is structural correspondence, not an equivalence proof.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -381,6 +389,8 @@ pub fn lift_block(
     )?;
     graph.add_field(&root, Dimension::Structure, "falls_through", falls_through)?;
 
+    let effect_index: HashMap<usize, usize> =
+        effects.iter().enumerate().map(|(i, id)| (*id, i)).collect();
     let mut keys: HashMap<Val, NodeKey> = HashMap::new();
     let mut label_ports: BTreeMap<u32, u64> = BTreeMap::new();
     let mut constants = 0usize;
@@ -411,6 +421,12 @@ pub fn lift_block(
                 }
                 Val::Const(c) => {
                     graph.add_node(key.clone(), "evm.const")?;
+                    graph.add_field(
+                        &key,
+                        Dimension::Structure,
+                        "constant_port",
+                        constants as u64,
+                    )?;
                     constants += 1;
                     let class = if is_memory_offset(c) {
                         memory_offset_constants += 1;
@@ -430,6 +446,14 @@ pub fn lift_block(
                     let op = &ops[*id];
                     graph.add_node(key.clone(), "evm.op")?;
                     graph.add_field(&key, Dimension::Structure, "opcode", u64::from(op.opcode))?;
+                    if let Some(index) = effect_index.get(id) {
+                        graph.add_field(
+                            &key,
+                            Dimension::Structure,
+                            "effect_index",
+                            *index as u64,
+                        )?;
+                    }
                     debug_assert!(op.kind != OpKind::Pure || live[*id]);
                     for (k, a) in op.args.iter().enumerate() {
                         let child = keys[a].clone();
