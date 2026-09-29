@@ -4,6 +4,7 @@
 //! artifact measurements, and compatibility traces. Missing evidence stays
 //! absent. It is never silently converted to zero.
 
+mod byte_causes;
 mod census;
 mod census_store;
 mod compare_functions;
@@ -19,6 +20,10 @@ mod solc_functions;
 mod sonatina_functions;
 mod validate;
 
+pub use byte_causes::{
+    BYTE_CAUSES_SCHEMA, ByteCauses, CauseDelta, CauseTally, apportion_excess, classify_bytes,
+    compare_causes,
+};
 pub use census::{
     ArtifactCensus, CensusCaptureContext, CensusRegion, EvmRunOptions, EvmRunPorts, EvmRunSummary,
     PatternGroup, RegionManifest, RegionSpec, census_capture, census_file, census_regions,
@@ -29,7 +34,7 @@ pub use census_store::{
     replay_census, save_census,
 };
 pub use compare_functions::{
-    FunctionComparison, FunctionPair, compare_functions, render_function_comparison,
+    FunctionComparison, FunctionPair, compare_functions, render_function_comparison, residual_row,
 };
 pub use evm_dataflow::{
     BlockClass, BlockFacetCensus, BlockRecord, CrossFacet, DataflowBlocks, DataflowReport,

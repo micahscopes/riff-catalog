@@ -9,7 +9,8 @@ use anyhow::{Context, Result, ensure};
 use riff_catalog_evm::runs::decode;
 use riff_catalog_solc::SolcOutput;
 use riff_catalog_solc::sourcemap::{
-    SourceOwner, attribute, function_spans, parse_source_map, solidity_source_ids,
+    SourceOwner, attribute, function_spans, generated_function_spans, parse_source_map,
+    solidity_source_ids,
 };
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +71,10 @@ pub fn solc_functions(
         entries.len(),
         insts.len()
     );
-    let (functions, contracts) = function_spans(output);
+    let (mut functions, contracts) = function_spans(output);
+    if let Some(deployed) = raw.pointer(&pointer("").trim_end_matches('/').to_string()) {
+        functions.extend(generated_function_spans(deployed));
+    }
     let owners = attribute(
         &entries,
         &functions,
