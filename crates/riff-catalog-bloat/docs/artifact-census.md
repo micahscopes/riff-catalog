@@ -123,9 +123,10 @@ sidecar until a future explicitly versioned scope extension is warranted.
 A manifest may declare `"evm_runs": {"min_run_bytes": 32}`. The artifact is
 then read as EVM bytecode, and repeated instruction runs are reported inside
 each `function` region (runs never cross a function region) as `evm_run`
-regions and pattern groups with policy
-`evm-run/relative-internal-labels/external-label-ports/1`
-(`riff_catalog_evm::runs`). Two runs match when:
+regions and pattern groups (`riff_catalog_evm::runs`). Each copy is lowered
+into a core graph at level `evm-run/1` (`run_graph`), and a class is a core
+facet address of that graph: Structure plus Constants for the exact key
+(policy name `evm-run/1 facet structure+constants`). Two runs match when:
 
 - opcodes and non-label PUSH immediates are equal, in order;
 - a jump label that targets code inside the run targets the same offset from
@@ -134,9 +135,10 @@ regions and pattern groups with policy
   The per-copy targets are bindings, and `evm_ports` counts ports and how many
   of them differ between copies.
 
-With `"constants_as_ports": true` (CLI `--constants-as-ports`), non-label
-PUSH values are compared as ports too, under policy
-`evm-run/relative-internal-labels/external-label-ports/constant-ports/1`.
+With `"constants_as_ports": true` (CLI `--constants-as-ports`), the facet is
+Structure only (`evm-run/1 facet structure`): PUSH values are forgotten, but
+which constants are equal to each other is Structure, so they behave like
+ports numbered by first use.
 That groups copies that differ only in constants (the same error path with
 another selector): code a parameter could share, not identical code.
 `evm_ports.constant_ports` and `varying_constant_ports` count them.
@@ -152,8 +154,9 @@ dataflow wiring, given the same stack at entry. A label is a PUSH1..PUSH4 whose
 value is a JUMPDEST pc. That is a heuristic; a constant misread as a label can
 only split a class (inside) or show up as a port binding (outside).
 
-Candidates come from maximal repeats (suffix array and LCP intervals) and are
-then partitioned by the exact key. The selection is greedy by covered bytes on
+Candidates come from maximal repeats (suffix array and LCP intervals) and a
+fast token key; each candidate group is then partitioned by the core facet
+address, which decides the classes (a test checks the two partitions agree). The selection is greedy by covered bytes on
 still-unclaimed bytes, so selected groups never overlap each other and their
 `covered_bytes` add up. It is not an optimal cover. A partially claimed
 occurrence is dropped, not trimmed. A group is structural correspondence, not

@@ -42,23 +42,56 @@
 //! covered bytes add up. Greedy selection is not an optimal cover, and a
 //! partially claimed occurrence is dropped rather than trimmed.
 //!
-//! With `constants_as_ports`, non-label PUSH values are compared the way
-//! outside labels are: as ports numbered by first use, with the values
-//! returned as bindings ([`RUN_POLICY_CONSTANT_PORTS`]).
+//! ## Classes are core facet addresses
+//!
+//! Each copy is lowered into a core graph ([`run_graph`], level [`RUN_LEVEL`])
+//! and its class is its core facet address: Structure plus Constants for the
+//! exact key ([`RUN_POLICY`]), Structure only for the constants-blind key
+//! ([`RUN_POLICY_CONSTANT_PORTS`], `constants_as_ports`). The suffix array and
+//! the per-occurrence token key only propose candidate groups quickly; the
+//! core address decides them. With the constants-blind facet, non-label PUSH
+//! values are also returned as bindings, in first-use order.
 //!
 //! A match is structural correspondence under this key. It is not a proof that
 //! the copies behave the same or that sharing them is safe or smaller.
 
 use std::collections::{BTreeMap, BinaryHeap, HashMap};
 
-/// Versioned policy name for the run key described in the module docs.
-pub const RUN_POLICY: &str = "evm-run/relative-internal-labels/external-label-ports/1";
-/// The same key, except that non-label PUSH values also become ports
-/// (numbered by first use, equal values share a port). It groups copies that
-/// differ only in constants, such as the same error path with different
-/// selectors: code that a parameter could share, not code that is identical.
-pub const RUN_POLICY_CONSTANT_PORTS: &str =
-    "evm-run/relative-internal-labels/external-label-ports/constant-ports/1";
+use riff_catalog_core::{
+    CyclePolicy, DigestRequest, Dimension, EntityKey, Facet, Graph, GraphKey, HashPolicy, NodeKey,
+    ViewMode, digest_graph,
+};
+
+/// Versioned lowering of one run into a core graph ([`run_graph`]). Run
+/// classes are equal core facet addresses of these graphs.
+pub const RUN_LEVEL: &str = "evm-run/1";
+/// Human-readable name of the exact facet: Structure plus Constants.
+pub const RUN_POLICY: &str = "evm-run/1 facet structure+constants";
+/// Human-readable name of the constants-blind facet: Structure only. It
+/// groups copies that differ only in PUSH values, such as the same error path
+/// with different selectors: code that a parameter could share, not code that
+/// is identical. The equality pattern among constants is Structure (see
+/// [`run_graph`]), so a class still needs one parameter per distinct value.
+pub const RUN_POLICY_CONSTANT_PORTS: &str = "evm-run/1 facet structure";
+
+/// The hash policy of [`RUN_LEVEL`] graphs: anonymous shape (pcs and node keys
+/// never enter a digest), acyclic (a run graph is a sequence).
+pub fn run_hash_policy() -> HashPolicy {
+    HashPolicy::new(RUN_LEVEL, ViewMode::AnonymousShape, CyclePolicy::Reject)
+        .expect("static run policy is valid")
+}
+
+/// The core facet a run census compares on: Structure plus Constants
+/// (exact), or Structure only (constants blind).
+pub fn run_facet(constants_blind: bool) -> Facet {
+    let policy_id = run_hash_policy().policy_id();
+    if constants_blind {
+        Facet::structure_only(policy_id)
+    } else {
+        Facet::new(policy_id, [Dimension::Structure, Dimension::Constants])
+            .expect("non-empty dimensions")
+    }
+}
 
 const JUMPDEST: u8 = 0x5b;
 /// Default cap on label-token visits while partitioning candidates.
@@ -149,7 +182,7 @@ pub struct RunOccurrence {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunClass {
-    /// blake3 over the policy name and the normalized run bytes.
+    /// Core facet address (hex) of the class's run graph ([`run_graph`]).
     pub digest: String,
     pub bytes_per_copy: u32,
     pub instructions_per_copy: u32,
@@ -178,7 +211,10 @@ impl RunClass {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunCensus {
+    /// Name of the facet the classes were compared on.
     pub policy: &'static str,
+    /// The core facet id (hex) behind `policy`.
+    pub facet_id: String,
     pub min_run_bytes: u32,
     /// Selected classes, in selection order (descending covered bytes).
     pub classes: Vec<RunClass>,
@@ -379,6 +415,8 @@ struct Candidate {
     positions: Vec<usize>,
     len: usize,
     bytes: u32,
+    /// Core facet address shared by every position.
+    address: riff_catalog_core::Digest,
 }
 
 /// Per-occurrence key: internal labels as relative offsets, outside labels
@@ -434,6 +472,106 @@ fn occurrence_key(stream: &Stream, position: usize, len: usize, visits: &mut u64
     out
 }
 
+/// Lower one run into a core graph at [`RUN_LEVEL`]: an `evm.run` root whose
+/// ordered `instruction` children are `evm.instruction` nodes. Each run is
+/// given with, per instruction, its code-label target (if it is a label PUSH).
+///
+/// - Structure: `opcode`; for a label PUSH, `internal_target` (byte offset of a
+///   target inside the run) or `outside_port` (port numbered by first use; the
+///   target itself is a binding, not a field); for any other PUSH with an
+///   immediate, `constant_port` (first-use number over the run's distinct
+///   values, so the equality pattern among constants is structure).
+/// - Constants: that PUSH's `immediate` bytes.
+///
+/// Structure plus Constants is the exact run key; Structure alone forgets the
+/// values but keeps which constants are equal.
+pub fn run_graph(code: &[u8], run: &[(Instruction, Option<u32>)]) -> Graph {
+    let build = || -> Result<Graph, riff_catalog_core::CatalogError> {
+        let owner = EntityKey::new("evm.run", "run", "root")?;
+        let mut graph = Graph::new(GraphKey::new(owner.clone(), "run")?);
+        let root = NodeKey::entity(owner.clone());
+        graph.add_node(root.clone(), "evm.run")?;
+        let Some((first, _)) = run.first() else {
+            return Ok(graph);
+        };
+        let start_pc = first.pc;
+        let end_pc = run.last().map_or(start_pc, |(i, _)| i.pc + i.len);
+        let mut outside: BTreeMap<u32, u64> = BTreeMap::new();
+        let mut constants: BTreeMap<&[u8], u64> = BTreeMap::new();
+        for (k, (inst, label)) in run.iter().enumerate() {
+            let node = NodeKey::derived(owner.clone(), k.to_string())?;
+            graph.add_node(node.clone(), "evm.instruction")?;
+            graph.add_field(
+                &node,
+                Dimension::Structure,
+                "opcode",
+                u64::from(inst.opcode),
+            )?;
+            let bytes = &code[inst.pc as usize..(inst.pc + inst.len) as usize];
+            if let Some(target) = label {
+                if (start_pc..end_pc).contains(target) {
+                    graph.add_field(
+                        &node,
+                        Dimension::Structure,
+                        "internal_target",
+                        u64::from(target - start_pc),
+                    )?;
+                } else {
+                    let next = outside.len() as u64;
+                    let port = *outside.entry(*target).or_insert(next);
+                    graph.add_field(&node, Dimension::Structure, "outside_port", port)?;
+                }
+            } else if bytes.len() > 1 {
+                let value = &bytes[1..];
+                let next = constants.len() as u64;
+                let port = *constants.entry(value).or_insert(next);
+                graph.add_field(&node, Dimension::Structure, "constant_port", port)?;
+                graph.add_field(&node, Dimension::Constants, "immediate", value.to_vec())?;
+            }
+            graph.add_child(&root, "instruction", k as u32, &node)?;
+        }
+        Ok(graph)
+    };
+    build().expect("run graph keys and fields are well formed")
+}
+
+/// The address of a run graph at `facet`: equal addresses are one class.
+pub fn run_address(graph: &Graph, facet: &Facet) -> riff_catalog_core::Digest {
+    let request = DigestRequest::new(
+        graph.graph_key.clone(),
+        run_hash_policy(),
+        facet.dimensions.iter().copied(),
+    )
+    .expect("facet has dimensions");
+    digest_graph(&request, graph)
+        .expect("run graphs are acyclic trees")
+        .hashes
+        .facet_address(facet)
+        .expect("facet matches the run policy")
+        .address_digest()
+}
+
+fn stream_run(stream: &Stream, position: usize, len: usize) -> Vec<(Instruction, Option<u32>)> {
+    (position..position + len)
+        .map(|p| {
+            (
+                stream.insts[p].expect("runs never include sentinels"),
+                stream.label[p],
+            )
+        })
+        .collect()
+}
+
+fn stream_address(
+    code: &[u8],
+    stream: &Stream,
+    position: usize,
+    len: usize,
+    facet: &Facet,
+) -> riff_catalog_core::Digest {
+    run_address(&run_graph(code, &stream_run(stream, position, len)), facet)
+}
+
 /// Find repeated runs and select a non-overlapping set of them.
 ///
 /// `scopes` must be sorted-compatible, non-overlapping and inside the code.
@@ -468,6 +606,7 @@ pub fn census_runs(
     } else {
         RUN_POLICY
     };
+    let facet = run_facet(options.constants_as_ports);
     let scoped_bytes = *stream.byte_prefix.last().unwrap();
     let n = stream.tokens.len();
     let sa = suffix_array(&stream.tokens);
@@ -507,7 +646,22 @@ pub fn census_runs(
             }
             groups.entry(key).or_default().push(position);
         }
-        for (_, mut positions) in groups {
+        // The fast key above only proposes groups; the core facet address of
+        // each copy's run graph decides the classes.
+        let mut classes_by_address: BTreeMap<riff_catalog_core::Digest, Vec<usize>> =
+            BTreeMap::new();
+        for (_, positions) in groups {
+            if positions.len() < 2 {
+                continue;
+            }
+            for position in positions {
+                classes_by_address
+                    .entry(stream_address(code, &stream, position, len, &facet))
+                    .or_default()
+                    .push(position);
+            }
+        }
+        for (address, mut positions) in classes_by_address {
             if positions.len() < 2 {
                 continue;
             }
@@ -528,6 +682,7 @@ pub fn census_runs(
                 positions,
                 len,
                 bytes,
+                address,
             });
         }
     }
@@ -607,9 +762,8 @@ pub fn census_runs(
                     .any(|o| o.constant_bindings[k] != occurrences[0].constant_bindings[k])
             })
             .count();
-        let first = positions[0];
         classes.push(RunClass {
-            digest: run_digest(code, &stream, first, candidate.len, policy),
+            digest: candidate.address.to_hex(),
             bytes_per_copy: candidate.bytes,
             instructions_per_copy: candidate.len as u32,
             occurrences,
@@ -622,37 +776,13 @@ pub fn census_runs(
     }
     Ok(RunCensus {
         policy,
+        facet_id: facet.facet_id().to_hex(),
         min_run_bytes: options.min_run_bytes,
         classes,
         candidate_classes,
         scoped_bytes,
         selected_bytes,
     })
-}
-
-/// Digest of the normalized run: policy name, then each instruction's bytes
-/// with label immediates (and constants compared as ports) replaced by their
-/// per-occurrence encoding.
-fn run_digest(code: &[u8], stream: &Stream, position: usize, len: usize, policy: &str) -> String {
-    let mut visits = 0;
-    let key = occurrence_key(stream, position, len, &mut visits).key;
-    let mut specials = key.chunks(2).map(|c| (c[0] as usize, c[1]));
-    let mut next = specials.next();
-    let mut hasher = blake3::Hasher::new_derive_key(policy);
-    for offset in 0..len {
-        let inst = stream.insts[position + offset].unwrap();
-        match next {
-            Some((at, encoded)) if at == offset => {
-                hasher.update(&[inst.opcode, 0xff]);
-                hasher.update(&encoded.to_be_bytes());
-                next = specials.next();
-            }
-            _ => {
-                hasher.update(&code[inst.pc as usize..(inst.pc + inst.len) as usize]);
-            }
-        }
-    }
-    hasher.finalize().to_hex().to_string()
 }
 
 #[cfg(test)]
@@ -1012,5 +1142,66 @@ mod tests {
         };
         assert_eq!(capped(2), 1);
         assert_eq!(capped(1), 0);
+    }
+
+    /// Every window of every length: the fast per-occurrence key partitions
+    /// windows exactly like the core facet address does, for both facets.
+    #[test]
+    fn fast_key_partitions_like_the_core_facet_address() {
+        let mut code = relocatable_copy(0);
+        let at = code.len() as u16;
+        code.extend(relocatable_copy(at));
+        code.extend(body(1));
+        code.extend(body(2));
+        code.extend([PUSH1, 5, DUP1, PUSH1, 5, ADD, PUSH1, 6, MUL, POP]);
+        code.extend([PUSH1, 7, DUP1, PUSH1, 7, ADD, PUSH1, 8, MUL, POP]);
+        for blind in [false, true] {
+            let stream = build_stream(&code, &whole(&code), blind);
+            let facet = run_facet(blind);
+            let positions = stream.insts.iter().filter(|i| i.is_some()).count();
+            for len in 2..8usize {
+                let mut by_fast: HashMap<(Vec<u32>, Vec<u64>), usize> = HashMap::new();
+                let mut by_core: HashMap<riff_catalog_core::Digest, usize> = HashMap::new();
+                let mut pairs = Vec::new();
+                for p in 0..=positions.saturating_sub(len) {
+                    let mut visits = 0;
+                    let fast = (
+                        stream.tokens[p..p + len].to_vec(),
+                        occurrence_key(&stream, p, len, &mut visits).key,
+                    );
+                    let core = stream_address(&code, &stream, p, len, &facet);
+                    let next = by_fast.len();
+                    let f = *by_fast.entry(fast).or_insert(next);
+                    let next = by_core.len();
+                    let c = *by_core.entry(core).or_insert(next);
+                    pairs.push((f, c));
+                }
+                for a in &pairs {
+                    for b in &pairs {
+                        assert_eq!(a.0 == b.0, a.1 == b.1, "blind={blind} len={len}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn exact_facet_keeps_constants_and_blind_facet_forgets_them() {
+        let run = |code: &[u8]| -> Vec<(Instruction, Option<u32>)> {
+            decode(code).into_iter().map(|i| (i, None)).collect()
+        };
+        let a = [PUSH1, 1, DUP1, ADD];
+        let b = [PUSH1, 2, DUP1, ADD];
+        let ga = run_graph(&a, &run(&a));
+        let gb = run_graph(&b, &run(&b));
+        assert_ne!(
+            run_address(&ga, &run_facet(false)),
+            run_address(&gb, &run_facet(false))
+        );
+        assert_eq!(
+            run_address(&ga, &run_facet(true)),
+            run_address(&gb, &run_facet(true))
+        );
+        assert_ne!(run_facet(false).facet_id(), run_facet(true).facet_id());
     }
 }
