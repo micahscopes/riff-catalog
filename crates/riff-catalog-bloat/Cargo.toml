@@ -20,5 +20,7 @@ riff-catalog-core.workspace = true
 riff-catalog-evm.workspace = true
 riff-catalog-view.workspace = true
 riff-catalog-ingest-trace.workspace = true
+riff-catalog-solc.workspace = true
+riff-catalog-sonatina.workspace = true
 
 [dev-dependencies]

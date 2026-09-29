@@ -125,7 +125,7 @@ pub fn lower_bytecode(
 /// `<code> <cbor blob> <2-byte big-endian length of the cbor blob>`. Returns
 /// the code length and the trailer bytes (cbor + length suffix) when a
 /// plausible trailer is present, else the whole length and `None`.
-fn split_metadata(bytecode: &[u8]) -> (usize, Option<&[u8]>) {
+pub fn split_metadata(bytecode: &[u8]) -> (usize, Option<&[u8]>) {
     let n = bytecode.len();
     if n < 3 {
         return (n, None);

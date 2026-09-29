@@ -130,6 +130,70 @@ enum Command {
         #[arg(long, default_value_t = 12)]
         top: usize,
     },
+    /// Function regions of a solc runtime from its source map and AST, as a
+    /// riffcat-regions/1 manifest the census and dataflow commands take.
+    SolcFunctions {
+        /// solc standard-JSON output with ASTs and deployedBytecode.sourceMap.
+        #[arg(long)]
+        standard_output: PathBuf,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        contract: String,
+        /// Where to write the runtime bytes.
+        #[arg(long)]
+        artifact_out: PathBuf,
+        #[arg(long)]
+        manifest_out: PathBuf,
+        #[arg(long)]
+        json_out: Option<PathBuf>,
+        /// Ask the manifest for EVM runs of at least this many bytes.
+        #[arg(long)]
+        min_run_bytes: Option<u32>,
+        #[arg(long, default_value_t = 20)]
+        top: usize,
+    },
+    /// Compare bytes per source function between a Fe stage report and solc
+    /// function reports over a pairing file.
+    CompareFunctions {
+        /// `fe-trace-stages --json-out` report.
+        #[arg(long)]
+        fe_stages: PathBuf,
+        /// `name=path` of a `solc-functions --json-out` report; repeatable.
+        #[arg(long)]
+        solc: Vec<String>,
+        /// JSON list of pairs: {label, fe: [bodies], solc: {build: [names]}, confidence}.
+        #[arg(long)]
+        pairs: PathBuf,
+        #[arg(long)]
+        json_out: Option<PathBuf>,
+    },
+    /// Blocks two artifacts share at each facet (from `evm-dataflow --out`).
+    EvmDataflowCompare {
+        #[arg(long)]
+        left: PathBuf,
+        #[arg(long)]
+        right: PathBuf,
+        #[arg(long, value_delimiter = ',', default_value = "8,16,32")]
+        min_block_bytes: Vec<u32>,
+        #[arg(long)]
+        json_out: Option<PathBuf>,
+        #[arg(long, default_value_t = 10)]
+        top: usize,
+    },
+    /// Group a Sonatina IR module's functions by facet (exact, types blind,
+    /// types and constants blind), with emitted bytes from a regions manifest.
+    SonatinaFunctions {
+        #[arg(long)]
+        ir: PathBuf,
+        /// riffcat-regions/1 manifest whose `function` regions name emitted functions.
+        #[arg(long)]
+        regions: Option<PathBuf>,
+        #[arg(long)]
+        json_out: Option<PathBuf>,
+        #[arg(long, default_value_t = 12)]
+        top: usize,
+    },
     /// Byte census of one Fe EVM contract from `fe dev trace emit` plus
     /// `fe dev debug emit --attribution-details`, checked against the artifact.
     FeTraceBytes {
@@ -531,6 +595,7 @@ fn main() -> Result<()> {
                     ));
                 }
             }
+            let (chain_classes, top_constructs) = inputs.chain_classes(top.max(40))?;
             let report = FeStagesReport {
                 schema: FE_STAGES_SCHEMA.into(),
                 contract: contract.clone(),
@@ -540,12 +605,143 @@ fn main() -> Result<()> {
                     .map(|s| inputs.report(s, &clamp, &spill, top))
                     .collect(),
                 expansion_by_body: inputs.expansion_by_body(),
-                chain_classes: inputs.chain_classes(top.max(40))?,
+                chain_classes,
+                top_constructs,
+                category_by_function: inputs.category_by_function(
+                    &functions
+                        .iter()
+                        .map(|f| (f.name.clone(), f.start as u32, f.end as u32))
+                        .collect::<Vec<_>>(),
+                ),
             };
             if let Some(path) = json_out {
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_fe_stages(&report, top));
+        }
+        Command::SolcFunctions {
+            standard_output,
+            source,
+            contract,
+            artifact_out,
+            manifest_out,
+            json_out,
+            min_run_bytes,
+            top,
+        } => {
+            let raw: serde_json::Value = serde_json::from_slice(&fs::read(&standard_output)?)?;
+            let output = riff_catalog_solc::SolcOutput::new(raw);
+            let evm_runs = min_run_bytes.map(|m| EvmRunOptions {
+                min_run_bytes: m,
+                constants_as_ports: false,
+                min_run_instructions: 2,
+                memory_offsets_as_ports: false,
+            });
+            let (code, report, manifest) = solc_functions(&output, &source, &contract, evm_runs)?;
+            fs::write(&artifact_out, &code)?;
+            fs::write(&manifest_out, serde_json::to_vec_pretty(&manifest)?)?;
+            if let Some(path) = json_out {
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+            }
+            println!(
+                "{} {}: {} runtime bytes, code ends at {}",
+                source, contract, report.runtime_bytes, report.code_end
+            );
+            for (owner, bytes) in report.by_owner.iter().take(top) {
+                println!("{bytes:>7}  {owner}");
+            }
+        }
+        Command::CompareFunctions {
+            fe_stages,
+            solc,
+            pairs,
+            json_out,
+        } => {
+            let fe: FeStagesReport = serde_json::from_slice(&fs::read(&fe_stages)?)?;
+            let mut builds = Vec::new();
+            let mut tables = BTreeMap::new();
+            for item in &solc {
+                let (name, path) = item.split_once('=').context("--solc name=path")?;
+                let table: SolcFunctions = serde_json::from_slice(&fs::read(path)?)?;
+                builds.push(name.to_string());
+                tables.insert(name.to_string(), table);
+            }
+            let pairs: Vec<FunctionPair> = serde_json::from_slice(&fs::read(&pairs)?)?;
+            let rows = compare_functions(&fe, &tables, &pairs);
+            if let Some(path) = json_out {
+                fs::write(&path, serde_json::to_vec_pretty(&rows)?)?;
+            }
+            print!("{}", render_function_comparison(&rows, &builds));
+        }
+        Command::EvmDataflowCompare {
+            left,
+            right,
+            min_block_bytes,
+            json_out,
+            top,
+        } => {
+            let l: DataflowBlocks = serde_json::from_slice(&fs::read(&left)?)?;
+            let r: DataflowBlocks = serde_json::from_slice(&fs::read(&right)?)?;
+            let cmp = compare_blocks(&l, &r, &min_block_bytes, top);
+            if let Some(path) = json_out {
+                fs::write(&path, serde_json::to_vec_pretty(&cmp)?)?;
+            }
+            println!(
+                "facet, min block bytes: shared addresses; left blocks/bytes; right blocks/bytes"
+            );
+            for c in &cmp {
+                println!(
+                    "{:48} {:>3}: {:>5}; {:>5} {:>7}; {:>5} {:>7}",
+                    c.facet,
+                    c.min_block_bytes,
+                    c.shared_addresses,
+                    c.left_blocks,
+                    c.left_bytes,
+                    c.right_blocks,
+                    c.right_bytes
+                );
+            }
+        }
+        Command::SonatinaFunctions {
+            ir,
+            regions,
+            json_out,
+            top,
+        } => {
+            let source = fs::read_to_string(&ir)?;
+            let mut bytes: BTreeMap<String, u64> = BTreeMap::new();
+            if let Some(path) = regions {
+                let manifest: RegionManifest = serde_json::from_slice(&fs::read(path)?)?;
+                for r in manifest.regions.iter().filter(|r| r.kind == "function") {
+                    *bytes.entry(r.name.clone()).or_default() += (r.end - r.start) as u64;
+                }
+            }
+            let census = sonatina_function_facets(&source, &bytes)?;
+            if let Some(path) = json_out {
+                fs::write(&path, serde_json::to_vec_pretty(&census)?)?;
+            }
+            for c in &census {
+                println!(
+                    "\n== {}: {} functions, {} classes of 2+, upper-bound saving {} bytes",
+                    c.facet,
+                    c.functions,
+                    c.classes.len(),
+                    c.upper_bound_saving
+                );
+                for class in c.classes.iter().take(top) {
+                    let names: Vec<String> = class
+                        .functions
+                        .iter()
+                        .map(|(n, b)| format!("{n} {}", b.map_or("-".into(), |b| b.to_string())))
+                        .collect();
+                    println!(
+                        "   {:>6} of {:>6}  {}",
+                        class.upper_bound_saving,
+                        class.emitted_bytes,
+                        names.join(", ")
+                    );
+                }
+            }
         }
         Command::FeTraceBytes {
             trace,
