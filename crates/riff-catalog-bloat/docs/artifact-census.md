@@ -239,3 +239,32 @@ These are model proofs and executable bridge checks, not a proof of the Rust
 sort-and-sweep implementation or of WGSL lowering. They justify narrow accounting
 and interpretation rules, not compiler transformations. Before changing codegen,
 run the relevant independent behavior oracle on the exact saved artifacts.
+
+## EVM facets, stage tracing and excess ledgers
+
+These commands work on any EVM runtime with a `riffcat-regions/1` manifest
+(from `fe-trace-bytes --census-dir` for Fe, `solc-functions` for solc).
+
+- `evm-dataflow` lifts basic blocks into `evm-dataflow/1` graphs
+  (`riff_catalog_evm::dataflow`) and addresses each block at seven facets:
+  flat exact, flat constants blind, flat memory-offsets blind, dataflow
+  exact, dataflow constants blind, and the `riffcat-view/1` plans that erase
+  the field classes `constants.memory_offset` and `structure.slot`. The
+  report counts DUP/SWAP/POP bytes and whole-block classes per facet.
+  `evm-dataflow-compare` lists blocks two artifacts share at each facet.
+- `fe-trace-stages` reads the trace's origin graph by stage
+  (`riff_catalog_ingest_trace::stages`) and follows named selections of
+  emitted bytes back to HIR: nodes per stage, edge phases, where provenance
+  ends, post-opt operations, MIR forms and instances, and a mechanism per
+  instruction. Chains from HIR constructs to their bytes are content
+  addressed at level `fe-stage-chain/1`.
+- `sonatina-functions` groups a Sonatina module's functions by facet
+  (exact, types blind, types and constants blind).
+- `evm-byte-causes` puts every byte in one bucket: named causes in the
+  order given, then role buckets by opcode. `evm-byte-causes-compare`
+  subtracts two ledgers and checks that the differences add up to the size
+  difference. Role buckets describe what leftover bytes do; they are not
+  causes, and the apportioned estimate it prints is an estimate.
+
+A shared address is structural correspondence at a facet, never a proof
+that two pieces of code behave alike.
