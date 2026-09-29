@@ -965,6 +965,8 @@ dependencies = [
  "anyhow",
  "blake3",
  "clap",
+ "riff-catalog-evm",
+ "riff-catalog-ingest-trace",
  "serde",
  "serde_json",
  "sha2",

@@ -8,14 +8,16 @@ mod census;
 mod census_store;
 mod fe;
 mod fe_events;
+mod fe_trace;
 mod manifest;
 mod model;
 mod report;
 mod validate;
 
 pub use census::{
-    ArtifactCensus, CensusCaptureContext, CensusRegion, PatternGroup, RegionManifest, RegionSpec,
-    census_capture, census_file, census_regions, census_wgsl, render_census,
+    ArtifactCensus, CensusCaptureContext, CensusRegion, EvmRunOptions, EvmRunPorts, PatternGroup,
+    RegionManifest, RegionSpec, census_capture, census_file, census_regions, census_wgsl,
+    render_census,
 };
 pub use census_store::{
     CensusComparison, CensusFile, CensusSource, compare_censuses, render_census_comparison,
@@ -23,6 +25,10 @@ pub use census_store::{
 };
 pub use fe::{FeImport, import_fe_trace};
 pub use fe_events::{FeEventsImport, import_fe_events};
+pub use fe_trace::{
+    BodyInfo, FE_TRACE_REGIONS_ADAPTER, FeTraceBytesReport, Row, RunInfo, RunOccurrenceInfo,
+    body_name, decode_artifact, emitted_function_manifest, fe_trace_bytes, render_fe_trace_bytes,
+};
 pub use manifest::{artifact_digest, capture_id, load_capture, save_capture, verify_artifacts};
 pub use model::*;
 pub use report::{CompareReport, Report, compare, render_compare_table, render_table, report};
