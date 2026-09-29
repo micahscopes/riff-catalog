@@ -559,7 +559,7 @@ pub fn fe_trace_bytes(
             .and_then(|(f, l)| source_line(f, l));
     }
 
-    let (arm_of, arms) = recv_arms(&ledger);
+    let (arm_of, arms) = recv_arms(&ledger, &manifest);
     let by_recv_arm = rows(
         tally_by(&ledger, |i| {
             arm_of
@@ -768,7 +768,24 @@ fn arms_of(inst: &LedgerInstruction) -> BTreeSet<&str> {
 /// alone falls inside the region; otherwise the arm's inlined bytes stay
 /// unassigned, with a note. Blocks reached from several arms (shared tails,
 /// the dispatch itself) stay unassigned by construction.
-fn recv_arms(ledger: &ByteLedger) -> (BTreeMap<u32, String>, Vec<ArmInfo>) {
+fn recv_arms(
+    ledger: &ByteLedger,
+    manifest: &RegionManifest,
+) -> (BTreeMap<u32, String>, Vec<ArmInfo>) {
+    // An arm's own function is its whole region, entry and unlinked bytes
+    // included, like every other by-position table.
+    let functions: Vec<&RegionSpec> = manifest
+        .regions
+        .iter()
+        .filter(|r| r.kind == "function")
+        .collect();
+    let region_of = |pc: u32| -> Option<&str> {
+        let at = functions.partition_point(|r| r.start <= pc as usize);
+        at.checked_sub(1)
+            .map(|i| functions[i])
+            .filter(|r| (pc as usize) < r.end)
+            .map(|r| r.name.as_str())
+    };
     let mut arm_of: BTreeMap<u32, String> = BTreeMap::new();
     let mut arms: BTreeMap<String, ArmInfo> = BTreeMap::new();
     let new_arm = |arm: &str| ArmInfo {
@@ -857,7 +874,7 @@ fn recv_arms(ledger: &ByteLedger) -> (BTreeMap<u32, String>, Vec<ArmInfo>) {
             .postopt_block
             .as_deref()
             .and_then(|b| block_arm.get(b).copied());
-        let own = inst.emitted_function.as_deref().and_then(own_function);
+        let own = region_of(inst.pc_start).and_then(own_function);
         let Some(arm) = inlined.or(own) else { continue };
         let info = arms.entry(arm.to_string()).or_insert_with(|| new_arm(arm));
         if inlined.is_some() {
@@ -1311,5 +1328,85 @@ mod tests {
         assert_eq!(decode_artifact(b"0x6080\n").unwrap(), vec![0x60, 0x80]);
         assert_eq!(decode_artifact(b"6080").unwrap(), vec![0x60, 0x80]);
         assert_eq!(decode_artifact(&[0x60, 0x80]).unwrap(), vec![0x60, 0x80]);
+    }
+
+    fn inst(pc_start: u32, pc_end: u32, f: Option<&str>) -> LedgerInstruction {
+        LedgerInstruction {
+            pc_start,
+            pc_end,
+            mnemonic: String::new(),
+            immediate: None,
+            emitted_function: f.map(str::to_string),
+            postopt_block: None,
+            classification: "unmapped".into(),
+            classification_reason: None,
+            confidence: "unmapped".into(),
+            primary_source: None,
+            all_origins: Vec::new(),
+        }
+    }
+
+    fn ledger(instructions: Vec<LedgerInstruction>) -> ByteLedger {
+        ByteLedger {
+            contract: "C".into(),
+            code_object: "code".into(),
+            code_hash: None,
+            code_len: instructions.last().unwrap().pc_end,
+            instructions,
+            source_spans: BTreeMap::new(),
+            source_files: BTreeMap::new(),
+            cfgs: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn an_unlinked_entry_joins_its_function_but_a_shared_tail_does_not() {
+        // root: PUSH2 0x0005, JUMP, STOP | gap: JUMPDEST | f: PUSH0, STOP
+        let code = [0x61, 0x00, 0x05, 0x56, 0x00, 0x5b, 0x5f, 0x00];
+        let l = ledger(vec![
+            inst(0, 3, Some("root")),
+            inst(3, 4, Some("root")),
+            inst(4, 5, Some("root")),
+            inst(5, 6, None),
+            inst(6, 7, Some("f")),
+            inst(7, 8, Some("f")),
+        ]);
+        let m = emitted_function_manifest(&l, &code, None);
+        let spans: Vec<_> = m
+            .regions
+            .iter()
+            .map(|r| (r.kind.as_str(), r.name.as_str(), r.start, r.end))
+            .collect();
+        assert_eq!(
+            spans,
+            vec![("function", "root", 0, 5), ("function", "f", 5, 8)]
+        );
+
+        // gap: JUMPDEST, JUMPDEST where root also pushes the second one: a
+        // shared target, so the gap stays between functions.
+        let code = [0x61, 0x00, 0x06, 0x56, 0x00, 0x5b, 0x5b, 0x5f, 0x00];
+        let l = ledger(vec![
+            inst(0, 3, Some("root")),
+            inst(3, 4, Some("root")),
+            inst(4, 5, Some("root")),
+            inst(5, 6, None),
+            inst(6, 7, None),
+            inst(7, 8, Some("f")),
+            inst(8, 9, Some("f")),
+        ]);
+        let m = emitted_function_manifest(&l, &code, None);
+        let kinds: Vec<_> = m
+            .regions
+            .iter()
+            .map(|r| (r.kind.as_str(), r.start, r.end))
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ("function", 0, 5),
+                ("unattributed", 5, 7),
+                ("function", 7, 9)
+            ]
+        );
     }
 }
