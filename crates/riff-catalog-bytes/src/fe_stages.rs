@@ -28,6 +28,8 @@ use riff_catalog_ingest_trace::stages::{Stage, StageGraph};
 use serde::{Deserialize, Serialize};
 
 pub const FE_STAGES_SCHEMA: &str = "riffcat-fe-stages/2";
+/// The index `fe-trace-stages --mechanisms-out` writes next to its pc sets.
+pub const MECHANISMS_SCHEMA: &str = "riffcat-fe-mechanisms/1";
 /// Level of chain graphs ([`StageGraph::chain_graph`]).
 pub const STAGE_CHAIN_LEVEL: &str = "fe-stage-chain/1";
 

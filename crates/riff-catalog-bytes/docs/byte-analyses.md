@@ -118,7 +118,8 @@ explicit `mload`/`mstore`, or call and return transport. With `--library
 LABEL=name|name` a bucket also names the first library whose names occur in
 the operation's primary body or MIR instance; the command knows no library
 names of its own. `--mechanisms-out DIR` writes one pc set per mechanism for
-`evm-byte-causes`.
+`evm-byte-causes`, and an `index.json` (schema `riffcat-fe-mechanisms/1`)
+naming each file and the code it describes.
 
 Chains from each HIR construct to its bytes are content addressed at level
 `fe-stage-chain/1`; constructs with one address expanded the same way through
