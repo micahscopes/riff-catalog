@@ -364,6 +364,21 @@ pub fn fe_trace_bytes(
     ArtifactCensus,
     FeTraceBytesReport,
 )> {
+    let (ledger, check) = read_checked_ledger(trace, attribution_details_json, contract, artifact)?;
+    let (manifest, census, report) =
+        census_ledger(&ledger, &check, contract, artifact, run_options)?;
+    Ok((ledger, manifest, census, report))
+}
+
+/// Read the byte ledger of `contract` and check it against the artifact
+/// ([`ByteLedger::verify_artifact`]): the trace, the attribution details
+/// and the artifact must describe the same code.
+pub fn read_checked_ledger(
+    trace: impl std::io::BufRead,
+    attribution_details_json: &str,
+    contract: &str,
+    artifact: &[u8],
+) -> Result<(ByteLedger, ArtifactCheck)> {
     let ledger = ByteLedger::read(
         trace,
         attribution_details_json,
@@ -375,9 +390,7 @@ pub fn fe_trace_bytes(
     let check = ledger
         .verify_artifact(artifact)
         .map_err(|e| anyhow::anyhow!("trace does not describe this artifact: {e}"))?;
-    let (manifest, census, report) =
-        census_ledger(&ledger, &check, contract, artifact, run_options)?;
-    Ok((ledger, manifest, census, report))
+    Ok((ledger, check))
 }
 
 /// The census of a ledger already checked against `artifact`.

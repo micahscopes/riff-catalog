@@ -46,7 +46,8 @@ pub use fe_stages::{
 };
 pub use fe_trace::{
     ArmInfo, ArmReach, BodyInfo, FE_TRACE_REGIONS_ADAPTER, FeTraceBytesReport, Row, RunInfo,
-    RunOccurrenceInfo, body_name, emitted_function_manifest, fe_trace_bytes, render_fe_trace_bytes,
+    RunOccurrenceInfo, body_name, emitted_function_manifest, fe_trace_bytes, read_checked_ledger,
+    render_fe_trace_bytes,
 };
 pub use regions::{FunctionRegion, FunctionRegions, OUTSIDE_FUNCTIONS};
 pub use selection::{

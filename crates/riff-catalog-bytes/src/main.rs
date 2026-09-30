@@ -297,17 +297,25 @@ fn main() -> Result<()> {
             top,
         } => {
             let artifact_bytes = load_artifact(&artifact)?;
-            let code = artifact_bytes.clone();
-            let rows = riff_catalog_ingest_trace::bytes::read_runtime_details(
-                &fs::read_to_string(&attribution)?,
-                &contract,
-            )?;
-            let code_len = rows.last().map_or(0, |r| r.pc_end as usize);
-            let code = &code[..code_len.min(code.len())];
-            let reader = std::io::BufReader::new(
-                fs::File::open(&trace).with_context(|| format!("open {}", trace.display()))?,
+            let details = fs::read_to_string(&attribution)
+                .with_context(|| format!("read {}", attribution.display()))?;
+            let open = || -> Result<_> {
+                Ok(std::io::BufReader::new(
+                    fs::File::open(&trace).with_context(|| format!("open {}", trace.display()))?,
+                ))
+            };
+            // The trace, the details and the artifact must describe the same
+            // code before any stage is traced.
+            let (ledger, _) = read_checked_ledger(open()?, &details, &contract, &artifact_bytes)?;
+            let rows = riff_catalog_ingest_trace::bytes::read_runtime_details(&details, &contract)?;
+            ensure!(
+                rows.iter()
+                    .all(|r| r.code_object.as_deref() == Some(ledger.code_object.as_str())),
+                "the attribution rows for contract `{contract}` are not from the code object the trace names for it"
             );
-            let graph = riff_catalog_ingest_trace::stages::StageGraph::read(reader)?;
+            let code = &artifact_bytes[..ledger.code_len as usize];
+            let graph = riff_catalog_ingest_trace::stages::StageGraph::read(open()?)
+                .with_context(|| format!("read {}", trace.display()))?;
             let manifest = load_regions(&regions, &artifact_bytes)?;
             let functions = FunctionRegions::from_manifest(&manifest);
             let patterns = pattern
