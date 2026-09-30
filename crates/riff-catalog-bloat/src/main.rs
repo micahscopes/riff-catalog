@@ -121,10 +121,6 @@ enum Command {
         /// tags). The name `backend_spill` feeds the memory-origin buckets.
         #[arg(long)]
         pc_set: Vec<String>,
-        /// For every --pattern, also trace the nearest later instruction that
-        /// lowers from this post-opt operation (for example `evm_malloc`).
-        #[arg(long)]
-        anchor_op: Option<String>,
         /// Write every instruction's mechanism as pc sets: a directory with
         /// one JSON array of pcs per mechanism, plus an index.
         #[arg(long)]
@@ -482,7 +478,6 @@ fn main() -> Result<()> {
             function_prefix,
             pattern,
             pc_set,
-            anchor_op,
             mechanisms_out,
             json_out,
             top,
@@ -520,11 +515,6 @@ fn main() -> Result<()> {
                     clamp = sel.pcs.clone();
                 }
                 selections.push(sel);
-                selections.push(pattern_next_selection(
-                    &format!("{name} (next instruction after each copy)"),
-                    code,
-                    hex,
-                )?);
             }
             let mut spill = std::collections::BTreeSet::new();
             for p in &pc_set {
@@ -626,18 +616,6 @@ fn main() -> Result<()> {
                     index.insert(name, file);
                 }
                 fs::write(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
-            }
-            if let Some(op) = &anchor_op {
-                for p in &pattern {
-                    let (name, hex) = p.split_once('=').context("--pattern name=hex")?;
-                    let ranges = pattern_matches(code, hex)?;
-                    selections.push(inputs.nearest_after(
-                        &format!("{name} (nearest later instruction lowering from {op})"),
-                        &ranges,
-                        op,
-                        48,
-                    ));
-                }
             }
             let (chain_classes, top_constructs) = inputs.chain_classes(top.max(40))?;
             let report = FeStagesReport {

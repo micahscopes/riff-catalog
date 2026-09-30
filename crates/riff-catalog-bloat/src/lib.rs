@@ -50,8 +50,7 @@ pub use fe::{FeImport, import_fe_trace};
 pub use fe_events::{FeEventsImport, import_fe_events};
 pub use fe_stages::{
     BodyExpansion, ChainClass, ConstructExpansion, FE_STAGES_SCHEMA, FeStagesReport,
-    MEMORY_OPCODES, STAGE_CHAIN_LEVEL, StageInputs, StageReport, memory_bucket,
-    pattern_next_selection, render_fe_stages,
+    MEMORY_OPCODES, STAGE_CHAIN_LEVEL, StageInputs, StageReport, memory_bucket, render_fe_stages,
 };
 pub use fe_trace::{
     BodyInfo, FE_TRACE_REGIONS_ADAPTER, FeTraceBytesReport, Row, RunInfo, RunOccurrenceInfo,
