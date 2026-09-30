@@ -61,8 +61,6 @@ pub struct BodyInfo {
     pub file: Option<String>,
     pub first_line: Option<u32>,
     pub last_line: Option<u32>,
-    /// Text of the first line, when the file is a readable local `file://` URI.
-    pub first_line_text: Option<String>,
 }
 
 /// Readable name for a HIR body id such as
@@ -517,7 +515,6 @@ fn census_ledger(
             file: Some(file.clone()),
             first_line: Some(span.start_line),
             last_line: Some(span.end_line),
-            first_line_text: None,
         });
         if info.file.as_deref() == Some(file.as_str()) {
             info.first_line = info.first_line.map(|l| l.min(span.start_line));
@@ -533,18 +530,9 @@ fn census_ledger(
                     file: None,
                     first_line: None,
                     last_line: None,
-                    first_line_text: None,
                 });
             }
         }
-    }
-
-    for info in bodies.values_mut() {
-        info.first_line_text = info
-            .file
-            .as_deref()
-            .zip(info.first_line)
-            .and_then(|(f, l)| source_line(f, l));
     }
 
     let (arm_of, arms) = recv_arms(ledger, &functions);
@@ -664,7 +652,7 @@ fn census_ledger(
     }
 
     let report = FeTraceBytesReport {
-        schema: "riffcat-fe-trace-bytes/1".into(),
+        schema: "riffcat-fe-trace-bytes/2".into(),
         contract: contract.to_string(),
         artifact_bytes: artifact.len() as u64,
         artifact_blake3: census.artifact_blake3.clone(),
@@ -705,24 +693,6 @@ pub const TRAILING_DATA: &str = "(data after the code: no instruction in the tra
 
 /// Row label for bytes no recv arm owns.
 pub const NO_ARM: &str = "(no single recv arm: dispatch, shared code or not assigned)";
-
-fn source_line(file: &str, line: u32) -> Option<String> {
-    let path = file.strip_prefix("file://")?;
-    let text = std::fs::read_to_string(path).ok()?;
-    let lines: Vec<&str> = text.lines().collect();
-    let at = line.checked_sub(1)? as usize;
-    let first = lines.get(at)?.trim();
-    // A body often starts at its brace; show the header line above it.
-    if first.chars().all(|c| matches!(c, '{' | ')' | ' ')) {
-        for back in (at.saturating_sub(16)..at).rev() {
-            let l = lines[back].trim();
-            if l.contains("::") || l.starts_with("fn ") || l.starts_with("pub fn ") {
-                return Some(l.to_string());
-            }
-        }
-    }
-    Some(first.to_string())
-}
 
 /// Recv-arm bodies (`contract_recv$...`) among an instruction's origins.
 fn arms_of(inst: &LedgerInstruction) -> BTreeSet<&str> {
@@ -1065,25 +1035,16 @@ fn check_totals(report: &FeTraceBytesReport) -> Result<()> {
 pub fn render_fe_trace_bytes(report: &FeTraceBytesReport, top: usize) -> String {
     let pct = |b: u64| 100.0 * b as f64 / report.artifact_bytes.max(1) as f64;
     let body_label = |key: &str| match report.bodies.get(key) {
-        Some(info) => {
-            let mut label = match (&info.file, info.first_line) {
-                (Some(f), Some(l)) => format!(
-                    "{}  [{}:{}-{}]",
-                    info.name,
-                    f.rsplit('/').next().unwrap_or(f),
-                    l,
-                    info.last_line.unwrap_or(l)
-                ),
-                _ => info.name.clone(),
-            };
-            if info.body.starts_with("contract_recv$")
-                && let Some(text) = &info.first_line_text
-            {
-                let short: String = text.chars().take(60).collect();
-                label.push_str(&format!("  {short}"));
-            }
-            label
-        }
+        Some(info) => match (&info.file, info.first_line) {
+            (Some(f), Some(l)) => format!(
+                "{}  [{}:{}-{}]",
+                info.name,
+                f.rsplit('/').next().unwrap_or(f),
+                l,
+                info.last_line.unwrap_or(l)
+            ),
+            _ => info.name.clone(),
+        },
         None => key.to_string(),
     };
     let mut out = format!(
@@ -1338,6 +1299,51 @@ mod tests {
         let functions = FunctionRegions::from_manifest(&manifest);
         assert_eq!(functions.len(), 3);
         assert_eq!(function_bytes(&functions)["root"], 3);
+    }
+
+    #[test]
+    fn the_report_does_not_read_source_files() {
+        let dir = std::env::temp_dir().join(format!("riffcat-bytes-src-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("lib.fe");
+        let origin = "hir.expr\u{1f}hir-body:contract_recv$L$d$d$contract$C$0$0\u{1f}0";
+        let mut l = ledger(vec![inst(0, 1, Some("root"))]);
+        l.instructions[0].primary_source = Some(origin.into());
+        l.source_spans.insert(
+            origin.into(),
+            riff_catalog_ingest_trace::bytes::LedgerSpan {
+                file: "f".into(),
+                start_byte: 0,
+                end_byte: 1,
+                start_line: 1,
+                end_line: 1,
+            },
+        );
+        l.source_files
+            .insert("f".into(), format!("file://{}", file.display()));
+        let check = ArtifactCheck {
+            instruction_bytes: 1,
+            trailing_bytes: 0,
+            code_hash_checked: false,
+        };
+        let options = EvmRunOptions {
+            min_run_bytes: 32,
+            constants_as_ports: false,
+            min_run_instructions: 2,
+            memory_offsets_as_ports: false,
+        };
+        let json = || {
+            let (_, _, report) = census_ledger(&l, &check, "C", &[0x33], &options).unwrap();
+            (
+                serde_json::to_string(&report).unwrap(),
+                render_fe_trace_bytes(&report, 10),
+            )
+        };
+        let without = json();
+        std::fs::write(&file, "fn recv_arm_zero() {}\n").unwrap();
+        let with = json();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(without, with, "the report read the source file");
     }
 
     #[test]
