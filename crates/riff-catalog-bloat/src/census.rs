@@ -811,12 +811,9 @@ pub struct EvmRunSummary {
     pub policy: String,
     pub classes: usize,
     pub covered: u64,
-    /// Bytes beyond the first copy of each class: an upper bound.
+    /// Bytes beyond the first copy of each class. Not a savings estimate:
+    /// sharing has its own call, return and parameter costs.
     pub extra: u64,
-    /// A rough estimate, not a measurement: per class, the extra bytes minus
-    /// 8 bytes of call cost per copy (two PUSH2, JUMP, JUMPDEST) and 3 bytes
-    /// per copy for each port whose binding differs, floored at zero.
-    pub rough_net: u64,
 }
 
 pub fn evm_run_summary(report: &ArtifactCensus) -> Option<EvmRunSummary> {
@@ -831,19 +828,12 @@ pub fn evm_run_summary(report: &ArtifactCensus) -> Option<EvmRunSummary> {
         classes: runs.len(),
         covered: 0,
         extra: 0,
-        rough_net: 0,
     };
     for p in runs {
         let copies = p.occurrences as u64;
         let per = p.covered_bytes as u64 / copies.max(1);
-        let extra = per * copies.saturating_sub(1);
-        let varying = p
-            .evm_ports
-            .as_ref()
-            .map_or(0, |e| (e.varying_ports + e.varying_constant_ports) as u64);
         sum.covered += p.covered_bytes as u64;
-        sum.extra += extra;
-        sum.rough_net += extra.saturating_sub(copies * 8 + copies * 3 * varying);
+        sum.extra += per * copies.saturating_sub(1);
     }
     Some(sum)
 }
@@ -859,8 +849,8 @@ pub fn render_census(report: &ArtifactCensus, top: usize) -> String {
     );
     if let Some(sum) = evm_run_summary(report) {
         out.push_str(&format!(
-            "EVM run classes ({}): {}, covered {}, beyond the first copy {}, rough net after call cost {}\n",
-            sum.policy, sum.classes, sum.covered, sum.extra, sum.rough_net
+            "EVM run classes ({}): {}, covered {}, beyond the first copy {}\n",
+            sum.policy, sum.classes, sum.covered, sum.extra
         ));
     }
     let mut regions: Vec<_> = report
