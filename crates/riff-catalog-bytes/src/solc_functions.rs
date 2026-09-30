@@ -26,7 +26,8 @@ pub struct SolcFunctions {
     pub contract: String,
     pub runtime_bytes: usize,
     pub runtime_blake3: String,
-    /// End of the instructions (the CBOR metadata trailer starts here).
+    /// End of the instructions: the start of embedded data after them, or of
+    /// the CBOR metadata trailer.
     pub code_end: usize,
     /// Bytes by owner: `Contract.function`, `(contract) C`, `(file) N`,
     /// `(generated yul)`, `(no source)`, and `(metadata)`.
@@ -45,19 +46,22 @@ pub fn solc_functions(
 ) -> Result<(Vec<u8>, SolcFunctions, RegionManifest)> {
     let code = output.deployed_bytecode(source, contract)?;
     let map = output.deployed_source_map(source, contract)?;
-    let (code_end, _) = riff_catalog_evm::split_metadata(&code);
-    let insts = decode(&code[..code_end]);
+    let (metadata_start, _) = riff_catalog_evm::split_metadata(&code);
+    let decoded = decode(&code[..metadata_start]);
     let entries = parse_source_map(map)?;
-    // One entry per instruction; solc leaves a final INVALID without one.
-    let final_invalid = insts.last().is_some_and(|i| i.opcode == 0xfe);
+    // One entry per instruction. The map stops before an INVALID that solc
+    // places after the code: the last byte, or the separator before data
+    // the runtime carries (another contract's creation code, long
+    // constants). That INVALID has no entry; what follows it is data.
+    let separator = decoded.get(entries.len()).filter(|i| i.opcode == 0xfe);
     ensure!(
-        !entries.is_empty()
-            && (entries.len() == insts.len()
-                || (final_invalid && entries.len() + 1 == insts.len())),
+        !entries.is_empty() && (entries.len() == decoded.len() || separator.is_some()),
         "source map has {} entries for {} instructions: it does not describe this bytecode",
         entries.len(),
-        insts.len()
+        decoded.len()
     );
+    let insts = &decoded[..decoded.len().min(entries.len() + 1)];
+    let code_end = insts.last().map_or(0, |i| (i.pc + i.len) as usize);
     let (mut functions, contracts) = function_spans(output);
     functions.extend(generated_function_spans(output.deployed(source, contract)?));
     let owners = attribute(
@@ -92,13 +96,25 @@ pub fn solc_functions(
             }),
         }
     }
-    if code_end < code.len() {
-        *by_owner.entry("(metadata)".into()).or_default() += (code.len() - code_end) as u64;
+    if code_end < metadata_start {
+        *by_owner
+            .entry("(embedded code and data)".into())
+            .or_default() += (metadata_start - code_end) as u64;
         regions.push(RegionSpec {
             id: format!("data:{code_end}"),
             kind: "data".into(),
-            name: "CBOR metadata".into(),
+            name: "embedded code and data".into(),
             start: code_end,
+            end: metadata_start,
+        });
+    }
+    if metadata_start < code.len() {
+        *by_owner.entry("(metadata)".into()).or_default() += (code.len() - metadata_start) as u64;
+        regions.push(RegionSpec {
+            id: format!("data:{metadata_start}"),
+            kind: "data".into(),
+            name: "CBOR metadata".into(),
+            start: metadata_start,
             end: code.len(),
         });
     }

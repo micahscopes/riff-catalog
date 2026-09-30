@@ -919,3 +919,68 @@ fn region_manifests_are_validated_like_the_census_validates_them() {
         }
     }
 }
+
+#[test]
+fn solc_functions_reads_a_runtime_that_embeds_another_contract() {
+    let dir = scratch("solc-factory");
+    for build in ["out-true.json", "out-false.json"] {
+        let artifact = dir.join(format!("{build}.bin"));
+        let manifest = dir.join(format!("{build}.regions.json"));
+        let report = dir.join(format!("{build}.report.json"));
+        ok(&[
+            "solc-functions",
+            "--standard-output",
+            &fixture(&format!("solc-factory/{build}")),
+            "--source",
+            "f.sol",
+            "--contract",
+            "Factory",
+            "--artifact-out",
+            artifact.to_str().unwrap(),
+            "--manifest-out",
+            manifest.to_str().unwrap(),
+            "--json-out",
+            report.to_str().unwrap(),
+        ]);
+        let code = std::fs::read(&artifact).unwrap();
+        let manifest: riff_catalog_bloat::RegionManifest =
+            serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        // The regions tile the runtime, and the embedded code is data that
+        // runs on to the metadata.
+        let mut end = 0;
+        for r in &manifest.regions {
+            assert_eq!(r.start, end, "{build}: {r:?}");
+            end = r.end;
+        }
+        assert_eq!(end, code.len());
+        let data: Vec<_> = manifest
+            .regions
+            .iter()
+            .filter(|r| r.kind == "data")
+            .collect();
+        assert_eq!(data.len(), 2, "{build}: {data:?}");
+        assert_eq!(data[1].end, code.len());
+        assert_eq!(
+            code[data[0].start - 1],
+            0xfe,
+            "{build}: the data follows an INVALID"
+        );
+        let report: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+        assert_eq!(report["code_end"], data[0].start);
+        // The default code end stops before the embedded code.
+        let blocks = dir.join("blocks.json");
+        ok(&[
+            "evm-dataflow",
+            "--artifact",
+            artifact.to_str().unwrap(),
+            "--regions",
+            dir.join(format!("{build}.regions.json")).to_str().unwrap(),
+            "--blocks-out",
+            blocks.to_str().unwrap(),
+        ]);
+        let blocks: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&blocks).unwrap()).unwrap();
+        assert_eq!(blocks["code_bytes"], data[0].start);
+    }
+}

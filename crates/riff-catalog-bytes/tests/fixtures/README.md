@@ -10,3 +10,8 @@
 - `solc/`: `a.sol` and `b.sol`, and `out-true.json`, the standard-JSON output
   of solc 0.8.33 with viaIR and the optimizer (200 runs) for them, with ASTs,
   deployed bytecode, source maps and generated sources.
+- `solc-factory/`: `f.sol`, whose contract `Factory` embeds another
+  contract's creation code (`new Child()`, `type(Child).creationCode`), and
+  its solc 0.8.33 standard-JSON output with the optimizer (200 runs), with
+  viaIR (`out-true.json`) and without (`out-false.json`).
+
