@@ -753,6 +753,20 @@ mod tests {
         }
     }
 
+    /// The documented example view is the same plan as the built-in one.
+    #[test]
+    fn the_example_view_file_is_the_memory_offsets_view() {
+        use riff_catalog_view::ViewPlan;
+        let file =
+            include_str!("../../../examples/views/evm-dataflow-memory-offsets-blind.riffview");
+        assert_eq!(
+            ViewPlan::parse(file).unwrap().plan_id(),
+            ViewPlan::parse(MEMORY_OFFSETS_BLIND_VIEW)
+                .unwrap()
+                .plan_id()
+        );
+    }
+
     #[test]
     fn blocks_split_at_jumpdest_and_terminators() {
         let code = [PUSH1, 5, 0x56, 0x5b, 0x5b, STOP, 0x5b, PUSH1, 1];

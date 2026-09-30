@@ -9,11 +9,8 @@ See [results and next gates](artifact-census-results.md) for the production pilo
 From the main riff-cat checkout:
 
 ```sh
-export TMPDIR=/workspace/tmp SCCACHE_DIR=/workspace/.sccache
-export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0
-export CARGO_TARGET_DIR=/workspace/scratch/target-riffcat-mainline
-cargo build -p riff-catalog-bloat -j 1
-RIFFCAT=$CARGO_TARGET_DIR/debug/riffcat-bloat
+cargo build -p riff-catalog-bloat
+RIFFCAT=target/debug/riffcat-bloat
 ```
 
 On any saved WGSL file:
@@ -89,7 +86,7 @@ same-directory hard-link support; unsupported filesystems fail explicitly.
 ## Adapter interface for other artifacts
 
 Use `census ARTIFACT --regions MANIFEST.json`. No compiler dependency is required.
-The manifest schema is `riffcat-regions/1`:
+The manifest schema is `riffcat-regions/1` (or `/2` with `evm_runs`, below):
 
 ```json
 {
@@ -120,103 +117,65 @@ sidecar until a future explicitly versioned scope extension is warranted.
 
 ## EVM bytecode runs
 
-A manifest may declare `"evm_runs": {"min_run_bytes": 32}`. The artifact is
-then read as EVM bytecode, and repeated instruction runs are reported inside
-each `function` region (runs never cross a function region) as `evm_run`
-regions and pattern groups (`riff_catalog_evm::runs`). Each copy is lowered
-into a core graph at level `evm-run/1` (`run_graph`), and a class is a core
-facet address of that graph: Structure plus Constants for the exact key
-(policy name `evm-run/1 facet structure+constants`). Two runs match when:
+A manifest may ask for repeated instruction runs with `evm_runs`; it is then a
+`riffcat-regions/2` manifest (version 1 has no `evm_runs`, and both versions
+are read), and its census is `riffcat-artifact-census/2`:
 
-- opcodes and non-label PUSH immediates are equal, in order;
-- a jump label that targets code inside the run targets the same offset from
-  the run start, so relocated copies still match;
-- labels that target code outside the run become ports numbered by first use.
-  The per-copy targets are bindings, and `evm_ports` counts ports and how many
-  of them differ between copies.
+```json
+{"schema": "riffcat-regions/2", "artifact_blake3": "...", "adapter": "...",
+ "regions": [...],
+ "evm_runs": {"min_run_bytes": 32, "run_key": "exact", "min_run_instructions": 2}}
+```
 
-With `"constants_as_ports": true` (CLI `--constants-as-ports`), the facet is
-Structure only (`evm-run/1 facet structure`): PUSH values are forgotten, but
-which constants are equal to each other is Structure, so they behave like
-ports numbered by first use.
-That groups copies that differ only in constants (the same error path with
-another selector): code a parameter could share, not identical code.
-`evm_ports.constant_ports` and `varying_constant_ports` count them.
-`"memory_offsets_as_ports": true` (CLI `--memory-offsets-as-ports`) keeps
-every constant except those `riff_catalog_evm::dataflow` classes as memory or
-calldata offsets (a constant whose every use in its basic block is an MLOAD,
-MSTORE, MSTORE8, CALLDATALOAD or CALLDATACOPY address, directly or through
-ADDs). Those are lowered as the Constants field class `memory_offset` and
-erased by the `riffcat-view/1` plan `evm-run.memory-offsets-blind/1`, so the
-key groups the same code for different struct layouts (policy name
-`evm-run/1 view memory-offsets-blind facet structure+constants`). It replaces
-an earlier cap on the number of differing constants, which worked around long
-runs of fixed-offset memory moves matching each other with every constant
-different. Runs shorter than
-`min_run_instructions` (default 2) are not reported: a single PUSH32 is not
-a shape.
+The artifact is then read as EVM bytecode, and repeated instruction runs are
+reported inside each `function` region (runs never cross a function region)
+as `evm_run` regions and pattern groups (`riff_catalog_evm::runs`). Each copy
+is lowered into a core graph at level `evm-run/1`, and a class is a core facet
+address of that graph. `run_key` chooses the key:
+
+- `exact` (the default; policy `evm-run/1 facet structure+constants`):
+  opcodes and non-label PUSH immediates are equal, in order; a jump label that
+  targets code inside the run targets the same offset from the run start, so
+  relocated copies still match; labels that target code outside the run become
+  ports numbered by first use. The per-copy targets are bindings, and
+  `evm_ports` counts ports and how many of them differ between copies.
+- `constants-blind` (policy `evm-run/1 facet structure`): PUSH values are
+  forgotten, but which constants are equal to each other is Structure, so they
+  behave like ports numbered by first use. That groups copies that differ only
+  in constants (the same error path with another selector): code a parameter
+  could share, not identical code. `evm_ports.constant_ports` and
+  `varying_constant_ports` count them.
+- `memory-offsets-blind` (policy `evm-run/1 view memory-offsets-blind/2 facet
+  structure+constants`): like `exact`, except for constants that
+  `riff_catalog_evm::dataflow` classes as memory or calldata offsets (every use
+  in the basic block is an MLOAD, MSTORE, MSTORE8, CALLDATALOAD or
+  CALLDATACOPY address, directly or through ADDs whose every use is such an
+  address). Those are lowered as the Constants field class `memory_offset` and
+  erased by the `riffcat-view/1` plan `evm-run.memory-offsets-blind/2`, so the
+  key groups the same code for different struct layouts.
+
+Runs shorter than `min_run_instructions` (default 2) are not reported: a
+single PUSH32 is not a shape. A PUSH cut off by the end of the code is never
+part of a run.
 
 DUP, SWAP and POP are instructions, so equal runs also have equal internal
-dataflow wiring, given the same stack at entry. A label is a PUSH1..PUSH4 whose
-value is a JUMPDEST pc. That is a heuristic; a constant misread as a label can
-only split a class (inside) or show up as a port binding (outside).
+dataflow wiring, given the same stack at entry. A label is a PUSH1..PUSH4 with
+its full immediate whose value is a JUMPDEST pc. That is a heuristic; a
+constant misread as a label can only split a class (inside) or show up as a
+port binding (outside).
 
 Candidates come from maximal repeats (suffix array and LCP intervals) and a
 fast token key; each candidate group is then partitioned by the core facet
-address, which decides the classes (a test checks the two partitions agree). The selection is greedy by covered bytes on
-still-unclaimed bytes, so selected groups never overlap each other and their
-`covered_bytes` add up. It is not an optimal cover. A partially claimed
-occurrence is dropped, not trimmed. A group is structural correspondence, not
-proof that the copies behave alike or that sharing them is safe or smaller.
+address, which decides the classes (a test checks the two partitions agree).
+The selection is greedy by covered bytes on still-unclaimed bytes, so selected
+groups never overlap each other and their `covered_bytes` add up. It is not an
+optimal cover. A partially claimed occurrence is dropped, not trimmed. A group
+is structural correspondence, not proof that the copies behave alike or that
+sharing them is safe or smaller.
 
-## Fe EVM contracts from the compiler trace
-
-`fe-trace-bytes` builds the manifest above from Fe's own outputs and reports
-where every runtime byte goes:
-
-```sh
-fe dev trace emit INGOT -O 1 --out trace.jsonl
-fe dev debug emit --format ethdebug --from trace.jsonl --out ethdebug.json \
-  --attribution-details attribution.json
-"$RIFFCAT" fe-trace-bytes --trace trace.jsonl --attribution attribution.json \
-  --contract NAME --artifact NAME.runtime.bin --census-dir OUT --json-out report.json
-"$RIFFCAT" census OUT/runtime.bin --regions OUT/regions.json   # replayable run census
-```
-
-The trace must describe the given artifact exactly: its length, the trace's
-code hash and every PUSH immediate are checked first. Attribution is Fe's
-`PrimarySourceV1` decision from the details file, not re-derived here. Tables:
-
-- by Fe classification, confidence and reason; by emitted function (final code
-  layout, from `bytecode.pc -> evm.vcode.inst`); by primary source body and
-  file; by recv arm, with and without the functions only one arm reaches.
-  Each of these adds up to the artifact length. Bytes after the code that the
-  trace's code hash covers but no instruction describes (constant data) are a
-  row of their own.
-- by source body anywhere among a byte's origins. These overlap by design.
-
-Emitted functions by position: a function's region runs from its first to
-its last linked byte. The unlinked gap directly before it joins it when the
-gap starts with a JUMPDEST and its other JUMPDESTs are reached only from the
-gap or the function (the entry JUMPDEST and argument set-up carry no vcode
-link). Other gaps stay "between functions". On Seaport this agrees, byte for
-byte, with the compiler's own pc map for 192 of 196 functions of a
-near-identical build.
-
-Recv arms: an arm left as its own function owns that function. An arm inlined
-into the dispatcher owns the post-optimization blocks dominated by its region
-entry, the nearest common dominator of the blocks whose instructions come only
-from that arm. The assignment is dropped, with a note, if the region would
-contain a block that comes only from another arm. Shared blocks stay in the
-"no single recv arm" row. Blocks are labeled with the recv-arm bodies found
-among their instructions' origins (Fe's attribution). Functions each arm
-reaches come from calls inferred from label pushes whose value is a
-function's first byte, walked with the capture model's `reachable_union`;
-computed jumps are not seen, so the graph is declared incomplete.
-
-Runs are joined back per occurrence: emitted function, recv arm, the source
-body with the most primary-attributed bytes, and how many instructions have the
-same primary source in every copy (the same Fe source emitted more than once).
+The byte analyses that produce EVM manifests from compiler output (Fe traces,
+solc source maps) and use these runs are in `riffcat-bytes`: see
+[where an EVM runtime's bytes come from](../../riff-catalog-bytes/docs/byte-analyses.md).
 
 ## Formal boundary and regression checks
 
@@ -239,32 +198,3 @@ These are model proofs and executable bridge checks, not a proof of the Rust
 sort-and-sweep implementation or of WGSL lowering. They justify narrow accounting
 and interpretation rules, not compiler transformations. Before changing codegen,
 run the relevant independent behavior oracle on the exact saved artifacts.
-
-## EVM facets, stage tracing and excess ledgers
-
-These commands work on any EVM runtime with a `riffcat-regions/1` manifest
-(from `fe-trace-bytes --census-dir` for Fe, `solc-functions` for solc).
-
-- `evm-dataflow` lifts basic blocks into `evm-dataflow/1` graphs
-  (`riff_catalog_evm::dataflow`) and addresses each block at seven facets:
-  flat exact, flat constants blind, flat memory-offsets blind, dataflow
-  exact, dataflow constants blind, and the `riffcat-view/1` plans that erase
-  the field classes `constants.memory_offset` and `structure.slot`. The
-  report counts DUP/SWAP/POP bytes and whole-block classes per facet.
-  `evm-dataflow-compare` lists blocks two artifacts share at each facet.
-- `fe-trace-stages` reads the trace's origin graph by stage
-  (`riff_catalog_ingest_trace::stages`) and follows named selections of
-  emitted bytes back to HIR: nodes per stage, edge phases, where provenance
-  ends, post-opt operations, MIR forms and instances, and a mechanism per
-  instruction. Chains from HIR constructs to their bytes are content
-  addressed at level `fe-stage-chain/1`.
-- `sonatina-functions` groups a Sonatina module's functions by facet
-  (exact, types blind, types and constants blind).
-- `evm-byte-causes` puts every byte in one bucket: named causes in the
-  order given, then role buckets by opcode. `evm-byte-causes-compare`
-  subtracts two ledgers and checks that the differences add up to the size
-  difference. Role buckets describe what leftover bytes do; they are not
-  causes, and the apportioned estimate it prints is an estimate.
-
-A shared address is structural correspondence at a facet, never a proof
-that two pieces of code behave alike.

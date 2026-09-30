@@ -105,3 +105,11 @@ The lexical matcher has no claimed binding-aware equivalence proof.
 5. Gate binding-aware body/specialization comparison, full interval-refinement
    proofs and lower token-memory use as separate slices. Causal IR/Naga/source
    attribution still requires producer-supplied lineage.
+
+## Fe emitted-function regions against the compiler's pc map
+
+`fe-trace-bytes` places each emitted function by position (first to last
+linked byte, plus an unlinked entry gap that starts with a JUMPDEST). On a Fe
+port of Seaport, those regions agreed byte for byte with the compiler's own pc
+map for 192 of 196 functions of a near-identical build. That check was made by
+hand on saved outputs; no test here repeats it.

@@ -198,6 +198,15 @@ for the `riffcat-view/1` syntax.
 defines a second facet without Rust changes. It retains only reachable blocks
 and their control-flow structure.
 
+A view can also forget one field class inside a retained dimension:
+`erase constants.memory_offset` drops the Constants fields named
+`memory_offset` and keeps every other constant. The dimension must be one the
+view retains. Erasures are part of the plan digest; a plan without them keeps
+the digest it had before `erase` existed.
+[`examples/views/evm-dataflow-memory-offsets-blind.riffview`](examples/views/evm-dataflow-memory-offsets-blind.riffview)
+is the EVM dataflow view that groups the same code for different struct
+layouts.
+
 The `language` directive reserves an explicit syntax version. Other ways of
 defining facets can be evaluated later without changing the graph contract.
 ## Sonatina analysis facets

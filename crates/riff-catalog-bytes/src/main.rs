@@ -34,7 +34,7 @@ enum Command {
         /// Write every block with its facet addresses as JSON.
         #[arg(long)]
         blocks_out: PathBuf,
-        /// riffcat-regions/1 manifest whose `function` regions name functions.
+        /// riffcat-regions manifest whose `function` regions name functions.
         #[arg(long)]
         regions: Option<PathBuf>,
         /// Fe attribution details, to count scheduling bytes with no source.
@@ -68,7 +68,7 @@ enum Command {
         /// hex digits, else raw bytes), `hex` or `raw`.
         #[arg(long, value_enum, default_value = "auto")]
         artifact_format: ArtifactFormat,
-        /// riffcat-regions/1 manifest with `function` regions.
+        /// riffcat-regions manifest with `function` regions.
         #[arg(long)]
         regions: PathBuf,
         /// Census output (`census --json`) whose EVM run classes to trace.
@@ -114,7 +114,7 @@ enum Command {
         top: usize,
     },
     /// Function regions of a solc runtime from its source map and AST, as a
-    /// riffcat-regions/1 manifest the census and dataflow commands take.
+    /// riffcat-regions manifest the census and dataflow commands take.
     SolcFunctions {
         /// solc standard-JSON output with ASTs and deployedBytecode.sourceMap.
         #[arg(long)]
@@ -157,7 +157,7 @@ enum Command {
         #[arg(long)]
         json_out: Option<PathBuf>,
     },
-    /// Blocks two artifacts share at each facet (from `evm-dataflow --out`).
+    /// Blocks two artifacts share at each facet (from `evm-dataflow --blocks-out`).
     EvmDataflowCompare {
         #[arg(long)]
         left: PathBuf,
@@ -175,7 +175,7 @@ enum Command {
     SonatinaFunctions {
         #[arg(long)]
         ir: PathBuf,
-        /// riffcat-regions/1 manifest whose `function` regions name emitted functions.
+        /// riffcat-regions manifest whose `function` regions name emitted functions.
         #[arg(long)]
         regions: Option<PathBuf>,
         #[arg(long)]
@@ -196,7 +196,7 @@ enum Command {
         /// data region, else of a solc metadata trailer, else the end.
         #[arg(long)]
         code_end: Option<usize>,
-        /// riffcat-regions/1 manifest with `function` regions.
+        /// riffcat-regions manifest with `function` regions.
         #[arg(long)]
         regions: PathBuf,
         /// A named cause, in priority order: `pcs:NAME=path.json` (an array
