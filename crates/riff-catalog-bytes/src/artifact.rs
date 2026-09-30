@@ -75,6 +75,44 @@ pub fn code_end(
     Ok(data.unwrap_or_else(|| riff_catalog_evm::split_metadata(artifact).0))
 }
 
+/// Read Fe attribution details for `contract` and check them against the
+/// instructions `code` decodes to: the rows must be exactly those
+/// instructions, from pc 0 to the end of `code`. Without a trace there are
+/// no opcodes to compare; boundaries are what the details can show.
+pub fn load_details(
+    path: &Path,
+    contract: &str,
+    code: &[u8],
+) -> Result<Vec<riff_catalog_ingest_trace::bytes::DetailsRow>> {
+    let text = std::str::from_utf8(&read_file(path)?)
+        .with_context(|| format!("{} is not UTF-8", path.display()))?
+        .to_string();
+    let rows = riff_catalog_ingest_trace::bytes::read_runtime_details(&text, contract)
+        .with_context(|| format!("read {}", path.display()))?;
+    let insts = riff_catalog_evm::decode::decode(code);
+    ensure!(
+        rows.len() == insts.len(),
+        "{} has {} rows for contract `{contract}`, but the code decodes to {} instructions ({} bytes)",
+        path.display(),
+        rows.len(),
+        insts.len(),
+        code.len()
+    );
+    for (row, inst) in rows.iter().zip(&insts) {
+        ensure!(
+            row.pc_start == inst.pc && row.pc_end == inst.pc + inst.len,
+            "{}: row {}..{} is not an instruction of this artifact (the instruction at pc {} is {}..{})",
+            path.display(),
+            row.pc_start,
+            row.pc_end,
+            inst.pc,
+            inst.pc,
+            inst.pc + inst.len
+        );
+    }
+    Ok(rows)
+}
+
 /// Refuse a report whose `schema` is not the one this reader understands.
 pub fn check_schema(found: &str, expected: &str, path: &Path) -> Result<()> {
     ensure!(

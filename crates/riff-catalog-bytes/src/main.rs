@@ -263,14 +263,11 @@ fn main() -> Result<()> {
                 .unwrap_or_default();
             let no_source: Option<Vec<(u32, u32)>> = match (&attribution, &contract) {
                 (Some(path), Some(contract)) => Some(
-                    riff_catalog_ingest_trace::bytes::read_runtime_details(
-                        &fs::read_to_string(path)?,
-                        contract,
-                    )?
-                    .iter()
-                    .filter(|r| r.has_no_source())
-                    .map(|r| (r.pc_start, r.pc_end))
-                    .collect(),
+                    load_details(path, contract, &bytes[..end])?
+                        .iter()
+                        .filter(|r| r.has_no_source())
+                        .map(|r| (r.pc_start, r.pc_end))
+                        .collect(),
                 ),
                 _ => None,
             };
@@ -543,10 +540,7 @@ fn main() -> Result<()> {
             let end = riff_catalog_bytes::code_end(&code, code_end, Some(&manifest))?;
             let functions = FunctionRegions::from_manifest(&manifest);
             let rows = match (&attribution, &contract) {
-                (Some(p), Some(c)) => Some(riff_catalog_ingest_trace::bytes::read_runtime_details(
-                    &fs::read_to_string(p)?,
-                    c,
-                )?),
+                (Some(path), Some(contract)) => Some(load_details(path, contract, &code[..end])?),
                 _ => None,
             };
             let inputs = CauseInputs {
