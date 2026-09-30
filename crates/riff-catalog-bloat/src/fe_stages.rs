@@ -15,13 +15,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::regions::FunctionRegions;
+use crate::selection::Selection;
 use anyhow::{Context, Result};
 use riff_catalog_core::{CyclePolicy, DigestRequest, Facet, HashPolicy, ViewMode, digest_graph};
 pub use riff_catalog_evm::decode::MEMORY_OPCODES;
-use riff_catalog_evm::decode::decode;
-
-use crate::regions::FunctionRegions;
-use crate::selection::{Selection, pattern_matches};
 use riff_catalog_ingest_trace::bytes::{DetailsRow, Tally, source_body};
 use riff_catalog_ingest_trace::stages::{Stage, StageGraph};
 use serde::{Deserialize, Serialize};
@@ -212,39 +210,6 @@ impl StageInputs<'_> {
                 format!("{file}:{}", s.start_line)
             })
             .unwrap_or_else(|| "(no span)".into())
-    }
-
-    /// For each range, the first instruction at or after its end (within
-    /// `limit` instructions) that lowers from a post-opt operation named
-    /// `op`. It ties code with no provenance of its own (such as the
-    /// allocation clamp) to the operation it was emitted for.
-    pub fn nearest_after(
-        &self,
-        name: &str,
-        ranges: &[(u32, u32)],
-        op: &str,
-        limit: usize,
-    ) -> Selection {
-        let g = self.graph;
-        let mut pcs = BTreeSet::new();
-        for (_, end) in ranges {
-            let first = self.rows.partition_point(|r| r.pc_start < *end);
-            for row in self.rows[first..].iter().take(limit) {
-                let lowers = g.node(&row.instruction_key).is_some_and(|n| {
-                    g.trace_back([n]).into_iter().any(|m| {
-                        g.stage(m) == Stage::PostOpt && g.operation(m).as_deref() == Some(op)
-                    })
-                });
-                if lowers {
-                    pcs.insert(row.pc_start);
-                    break;
-                }
-            }
-        }
-        Selection {
-            name: name.into(),
-            pcs,
-        }
     }
 
     /// Trace one selection back through the stages.
@@ -730,19 +695,6 @@ pub struct FeStagesReport {
     pub category_by_function: Vec<(String, u64, BTreeMap<String, u64>)>,
 }
 
-/// pcs of the first instruction after each match of `pattern`: the code a
-/// pattern with no provenance of its own sits in front of.
-pub fn pattern_next_selection(name: &str, code: &[u8], pattern: &str) -> Result<Selection> {
-    let starts: BTreeSet<u32> = decode(code).iter().map(|i| i.pc).collect();
-    Ok(Selection {
-        name: name.into(),
-        pcs: pattern_matches(code, pattern)?
-            .into_iter()
-            .filter_map(|(_, end)| starts.range(end..).next().copied())
-            .collect(),
-    })
-}
-
 /// Render the headline numbers.
 pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
     use std::fmt::Write;
@@ -878,13 +830,6 @@ pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn pattern_next_selection_takes_the_instruction_after_each_match() {
-        let code = [0x60, 0x40, 0x51, 0x00, 0x60, 0x41, 0x51];
-        let next = pattern_next_selection("n", &code, "60 40 51").unwrap();
-        assert_eq!(next.pcs.into_iter().collect::<Vec<_>>(), vec![3]);
-    }
 
     #[test]
     fn memory_buckets_follow_the_rules_in_order() {
