@@ -85,12 +85,12 @@ pub const RUN_POLICY_CONSTANT_PORTS: &str = "evm-run/1 facet structure";
 /// only in the constant offsets they load, store or copy at, such as the
 /// same decoder for two struct layouts.
 pub const RUN_POLICY_MEMORY_OFFSET_PORTS: &str =
-    "evm-run/1 view memory-offsets-blind facet structure+constants";
+    "evm-run/1 view memory-offsets-blind/2 facet structure+constants";
 
 /// The `riffcat-view/1` plan behind [`RUN_POLICY_MEMORY_OFFSET_PORTS`].
 pub const MEMORY_OFFSETS_BLIND_RUN_VIEW: &str = r#"
 language "riffcat-view/1"
-view "evm-run.memory-offsets-blind/1"
+view "evm-run.memory-offsets-blind/2"
 input "evm-run/1"
 root node-kind "evm.run"
 traverse children
