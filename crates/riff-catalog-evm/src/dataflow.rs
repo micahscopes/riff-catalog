@@ -20,7 +20,9 @@
 //!   numbered by first use, so the facets that forget values still keep
 //!   which constants are equal. Constants: `memory_offset`
 //!   when every use of the value is a memory or calldata address (directly,
-//!   or through ADDs; see [`MEMORY_ADDRESS_OPERANDS`]), else `value`. The
+//!   or through ADDs whose every use is an address, including no use as a
+//!   value left for the next block; see [`MEMORY_ADDRESS_OPERANDS`]), else
+//!   `value`. The
 //!   bytes have leading zeros removed, so `PUSH1 0x20` and `PUSH2 0x0020`
 //!   are the same constant.
 //! - `evm.label` node per distinct code label (a PUSH1..PUSH4 whose value is a
@@ -363,22 +365,34 @@ pub fn lift_block(
         }
     }
 
-    // Memory-offset classification: a constant is an address part when it is
-    // an address operand, or an operand of an ADD that is one (recursively).
-    let mut address_ops = vec![false; ops.len()];
-    let mut address_uses: HashMap<Vec<u8>, (usize, usize)> = HashMap::new(); // (address, all)
-    // Walk ops in reverse creation order so an ADD is marked before its operands.
+    // Memory-offset classification: a value is an address when every use of
+    // it is an address operand or an operand of an ADD that is itself an
+    // address (recursively). Uses are (address uses, all uses); a value left
+    // on the stack is used by another block, as a value.
+    let mut op_uses = vec![(0usize, 0usize); ops.len()];
+    for v in &outputs {
+        if let Val::Op(id) = v {
+            op_uses[*id].1 += 1;
+        }
+    }
+    let mut address_uses: HashMap<Vec<u8>, (usize, usize)> = HashMap::new();
+    // Every consumer of an op is created after it, so walking in reverse
+    // creation order sees all uses of an ADD before deciding about it.
     for id in (0..ops.len()).rev() {
         if !live[id] {
             continue;
         }
         let op = &ops[id];
+        let (address, all) = op_uses[id];
+        let is_address_add = op.opcode == ADD && all > 0 && address == all;
         for (k, a) in op.args.iter().enumerate() {
-            let is_address = MEMORY_ADDRESS_OPERANDS.contains(&(op.opcode, k))
-                || (op.opcode == ADD && address_ops[id]);
+            let is_address = MEMORY_ADDRESS_OPERANDS.contains(&(op.opcode, k)) || is_address_add;
             match a {
-                Val::Op(child) if is_address && ops[*child].opcode == ADD => {
-                    address_ops[*child] = true;
+                Val::Op(child) => {
+                    op_uses[*child].1 += 1;
+                    if is_address {
+                        op_uses[*child].0 += 1;
+                    }
                 }
                 Val::Const(c) => {
                     let e = address_uses.entry(c.clone()).or_insert((0, 0));
@@ -645,7 +659,41 @@ mod tests {
         };
         let exact = [Dimension::Structure, Dimension::Constants];
         assert_ne!(at(0, &exact), at(0x10, &exact));
-        assert_eq!(at(0, &[Dimension::Structure]), at(0x10, &[Dimension::Structure]));
+        assert_eq!(
+            at(0, &[Dimension::Structure]),
+            at(0x10, &[Dimension::Structure])
+        );
+    }
+
+    /// An ADD is an address only when every use of it is: here
+    /// `x = add(in0, C)` is loaded from and also stored as a value, so C is
+    /// not a memory offset.
+    #[test]
+    fn an_add_also_used_as_a_value_is_not_an_address() {
+        let shared = [
+            PUSH1, 0x20, DUP2, 0x01, DUP1, MLOAD, SWAP1, PUSH1, 0x40, MSTORE, STOP,
+        ];
+        // Only the free-pointer slot 0x40 (pc 7) is an offset, not C (pc 0).
+        assert_eq!(lift_code(&shared).unwrap()[0].memory_offset_pushes, vec![7]);
+        // Loaded from only: C is an offset.
+        let address_only = [PUSH1, 0x20, DUP2, 0x01, MLOAD, STOP];
+        assert_eq!(
+            lift_code(&address_only).unwrap()[0].memory_offset_pushes,
+            vec![0]
+        );
+        // Through two ADDs that are both addresses only.
+        let chain = [PUSH1, 0x20, DUP2, 0x01, PUSH1, 0x04, 0x01, MLOAD, STOP];
+        assert_eq!(
+            lift_code(&chain).unwrap()[0].memory_offset_pushes,
+            vec![0, 4]
+        );
+        // An ADD left on the stack is used as a value by the next block.
+        let escapes = [PUSH1, 0x20, DUP2, 0x01, DUP1, MLOAD, 0x56];
+        assert!(
+            lift_code(&escapes).unwrap()[0]
+                .memory_offset_pushes
+                .is_empty()
+        );
     }
 
     #[test]
@@ -698,7 +746,7 @@ mod tests {
             ),
             (
                 crate::runs::MEMORY_OFFSETS_BLIND_RUN_VIEW,
-                "45d0793a00821a9413c532476371d9f816cf576367e9d9baf28f6b44bb75c26e",
+                "a1d52a157066c8081bc95f35ac0b3c006f54bfd6388c0a03266fb75bc4b9d31b",
             ),
         ] {
             assert_eq!(id(text), expected);
