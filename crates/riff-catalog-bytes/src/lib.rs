@@ -49,7 +49,8 @@ pub use evm_dataflow::{
 };
 pub use fe_stages::{
     BodyExpansion, ChainClass, ConstructExpansion, FE_STAGES_SCHEMA, FeStagesReport,
-    STAGE_CHAIN_LEVEL, StageInputs, StageReport, StageRequest, memory_bucket, render_fe_stages,
+    MECHANISMS_SCHEMA, STAGE_CHAIN_LEVEL, StageInputs, StageReport, StageRequest, memory_bucket,
+    render_fe_stages,
 };
 pub use fe_trace::{
     ArmInfo, ArmReach, BodyInfo, FE_TRACE_REGIONS_ADAPTER, FeTraceBytesReport, Row, RunInfo,

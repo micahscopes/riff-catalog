@@ -442,6 +442,11 @@ fn main() -> Result<()> {
                     write_file(dir.join(&file), serde_json::to_vec(&pcs)?)?;
                     index.insert(name, file);
                 }
+                let index = serde_json::json!({
+                    "schema": MECHANISMS_SCHEMA,
+                    "code_blake3": blake3::hash(code).to_hex().to_string(),
+                    "mechanisms": index,
+                });
                 write_file(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
             }
             let report = inputs.stage_report(&request)?;

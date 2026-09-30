@@ -780,3 +780,31 @@ fn solc_functions_tiles_the_real_runtime() {
     assert!(manifest.regions.iter().any(|r| r.name == "B.g"));
     riff_catalog_bloat::census_regions(&code, manifest).unwrap();
 }
+
+#[test]
+fn the_mechanism_index_names_its_schema_and_code() {
+    let dir = scratch("mechanisms");
+    let regions = base_regions(&dir);
+    let mech = dir.join("mech");
+    let mut args = base_args("fe-trace-stages", &fixture("fe-base/runtime.bin"));
+    args.extend([
+        "--regions".to_string(),
+        regions,
+        "--mechanisms-out".into(),
+        mech.to_str().unwrap().into(),
+    ]);
+    ok(&strs(&args));
+    let index: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(mech.join("index.json")).unwrap()).unwrap();
+    assert_eq!(index["schema"], "riffcat-fe-mechanisms/1");
+    assert_eq!(
+        index["code_blake3"],
+        blake3::hash(&[0x60, 0x80, 0x52, 0x00]).to_hex().to_string()
+    );
+    for file in index["mechanisms"].as_object().unwrap().values() {
+        let pcs: Vec<u32> =
+            serde_json::from_slice(&std::fs::read(mech.join(file.as_str().unwrap())).unwrap())
+                .unwrap();
+        assert!(!pcs.is_empty());
+    }
+}
