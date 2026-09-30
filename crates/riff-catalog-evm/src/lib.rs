@@ -13,6 +13,7 @@
 //! (an *exact/full match*). The dial they already run in production, generalized.
 
 pub mod dataflow;
+pub mod decode;
 pub mod runs;
 
 use riff_catalog_core::{Dimension, EntityKey, Graph, GraphKey, NodeKey};
@@ -64,10 +65,10 @@ pub fn lower_bytecode(
     // instructions (the trailer becomes one provenance node below).
     let (code_end, metadata) = split_metadata(bytecode);
 
-    let mut pc = 0usize;
     let mut index = 0u32;
-    while pc < code_end {
-        let opcode = bytecode[pc];
+    for inst in decode::decode(&bytecode[..code_end]) {
+        let pc = inst.pc as usize;
+        let opcode = inst.opcode;
         let node = NodeKey::entity(EntityKey::new(
             "evm.instruction",
             owner,
@@ -80,18 +81,15 @@ pub fn lower_bytecode(
             "opcode",
             format!("0x{opcode:02x}"),
         )?;
-        let immediate_len = push_immediate_len(opcode);
-        if immediate_len > 0 {
-            let end = (pc + 1 + immediate_len).min(code_end);
-            let mut immediate = String::with_capacity(2 + immediate_len * 2);
+        if decode::push_len(opcode) > 0 {
+            let mut immediate = String::with_capacity(2 * inst.len as usize);
             immediate.push_str("0x");
-            for byte in &bytecode[pc + 1..end] {
+            for byte in &bytecode[pc + 1..pc + inst.len as usize] {
                 immediate.push_str(&format!("{byte:02x}"));
             }
             graph.add_field(&node, Dimension::Constants, "immediate", immediate)?;
         }
         graph.add_child(&root, "instruction", index, &node)?;
-        pc += 1 + immediate_len;
         index += 1;
     }
 
@@ -142,14 +140,6 @@ pub fn split_metadata(bytecode: &[u8]) -> (usize, Option<&[u8]>) {
         return (n, None);
     }
     (cbor_start, Some(&bytecode[cbor_start..n]))
-}
-
-fn push_immediate_len(opcode: u8) -> usize {
-    if (0x60..=0x7f).contains(&opcode) {
-        (opcode - 0x5f) as usize
-    } else {
-        0
-    }
 }
 
 #[cfg(test)]

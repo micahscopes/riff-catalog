@@ -48,7 +48,7 @@ use riff_catalog_core::{
     HashPolicy, NodeKey, ViewMode, digest_graph,
 };
 
-use crate::runs::{Instruction, decode};
+use crate::decode::{Instruction, JUMPDEST, decode, jumpdests, push_len, push_value};
 
 /// The versioned level string for this lowering (invariant I10).
 pub const EVM_DATAFLOW_LEVEL: &str = "evm-dataflow/1";
@@ -66,7 +66,6 @@ pub const MEMORY_ADDRESS_OPERANDS: &[(u8, usize)] = &[
     (0x37, 1),
 ];
 
-const JUMPDEST: u8 = 0x5b;
 const ADD: u8 = 0x01;
 
 /// Stack effect and kind of one opcode.
@@ -113,14 +112,6 @@ fn op_info(opcode: u8) -> (usize, usize, OpKind) {
         0xff => (1, 0, Terminator),
         // INVALID and undefined opcodes halt.
         _ => (0, 0, Terminator),
-    }
-}
-
-fn push_len(opcode: u8) -> usize {
-    if (0x5f..=0x7f).contains(&opcode) {
-        (opcode - 0x5f) as usize
-    } else {
-        0
     }
 }
 
@@ -241,11 +232,7 @@ pub fn basic_blocks(code: &[u8]) -> Vec<Vec<Instruction>> {
 
 /// Lift every block of `code`. `jumpdests` should come from the same code.
 pub fn lift_code(code: &[u8]) -> Result<Vec<Block>, CatalogError> {
-    let jumpdests: HashSet<u32> = decode(code)
-        .into_iter()
-        .filter(|i| i.opcode == JUMPDEST)
-        .map(|i| i.pc)
-        .collect();
+    let jumpdests = jumpdests(code);
     basic_blocks(code)
         .iter()
         .map(|insts| lift_block(code, insts, &jumpdests))
@@ -284,14 +271,7 @@ pub fn lift_block(
             0x5f..=0x7f => {
                 bytes.push += inst.len;
                 let imm = &raw[1..];
-                let n = push_len(opcode);
-                let value = (1..=4)
-                    .contains(&n)
-                    .then(|| imm.iter().fold(0u64, |a, b| (a << 8) | u64::from(*b)))
-                    .filter(|v| imm.len() == n && *v <= u64::from(u32::MAX))
-                    .map(|v| v as u32)
-                    .filter(|v| jumpdests.contains(v));
-                if let Some(target) = value {
+                if let Some(target) = push_value(code, inst).filter(|v| jumpdests.contains(v)) {
                     stack.push(Val::Label(target));
                 } else {
                     let first = imm.iter().position(|b| *b != 0).unwrap_or(imm.len());

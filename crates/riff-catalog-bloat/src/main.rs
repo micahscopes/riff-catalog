@@ -594,7 +594,7 @@ fn main() -> Result<()> {
                     selections.push(range_selection(&name, code, &ranges));
                 }
             }
-            let insts = riff_catalog_evm::runs::decode(code);
+            let insts = riff_catalog_evm::decode::decode(code);
             for prefix in &function_prefix {
                 for f in functions
                     .iter()
@@ -605,19 +605,10 @@ fn main() -> Result<()> {
                         code,
                         &[(f.start as u32, f.end as u32)],
                     ));
-                    let entry = f.start as u64;
+                    let entry = f.start as u32;
                     let callers: std::collections::BTreeSet<u32> = insts
                         .iter()
-                        .filter(|i| {
-                            (0x60..=0x63).contains(&i.opcode)
-                                && i.len as usize == usize::from(i.opcode - 0x5e)
-                        })
-                        .filter(|i| {
-                            code[i.pc as usize + 1..(i.pc + i.len) as usize]
-                                .iter()
-                                .fold(0u64, |a, b| (a << 8) | u64::from(*b))
-                                == entry
-                        })
+                        .filter(|i| riff_catalog_evm::decode::push_value(code, i) == Some(entry))
                         .map(|i| i.pc)
                         .collect();
                     selections.push(Selection {
@@ -836,7 +827,7 @@ fn main() -> Result<()> {
                 )?),
                 _ => None,
             };
-            let insts = riff_catalog_evm::runs::decode(&code[..end]);
+            let insts = riff_catalog_evm::decode::decode(&code[..end]);
             let mut causes = Vec::new();
             let mut details = Vec::new();
             for (is_detail, spec) in cause

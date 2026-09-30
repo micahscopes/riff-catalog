@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Context, Result, ensure};
-use riff_catalog_evm::runs::decode;
+use riff_catalog_evm::decode::decode;
 use riff_catalog_solc::SolcOutput;
 use riff_catalog_solc::sourcemap::{
     SourceOwner, attribute, function_spans, generated_function_spans, parse_source_map,

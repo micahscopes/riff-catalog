@@ -65,6 +65,9 @@ use riff_catalog_core::{
 };
 use riff_catalog_view::ViewPlan;
 
+pub use crate::decode::{Instruction, decode};
+use crate::decode::{jump_labels, jumpdests, push_value};
+
 /// Versioned lowering of one run into a core graph ([`run_graph`]). Run
 /// classes are equal core facet addresses of these graphs.
 pub const RUN_LEVEL: &str = "evm-run/1";
@@ -222,42 +225,8 @@ pub fn run_facet(constants_blind: bool) -> Facet {
     }
 }
 
-const JUMPDEST: u8 = 0x5b;
 /// Default cap on label-token visits while partitioning candidates.
 pub const DEFAULT_WORK_BUDGET: u64 = 400_000_000;
-
-/// One decoded instruction: its pc, total byte length and opcode.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Instruction {
-    pub pc: u32,
-    pub len: u32,
-    pub opcode: u8,
-}
-
-/// Linear-sweep decode. A truncated trailing PUSH is clamped to the code end.
-pub fn decode(code: &[u8]) -> Vec<Instruction> {
-    let mut out = Vec::new();
-    let mut pc = 0usize;
-    while pc < code.len() {
-        let opcode = code[pc];
-        let len = (1 + push_len(opcode)).min(code.len() - pc);
-        out.push(Instruction {
-            pc: pc as u32,
-            len: len as u32,
-            opcode,
-        });
-        pc += len;
-    }
-    out
-}
-
-fn push_len(opcode: u8) -> usize {
-    if (0x60..=0x7f).contains(&opcode) {
-        (opcode - 0x5f) as usize
-    } else {
-        0
-    }
-}
 
 /// A half-open pc range that occurrences must stay inside.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -401,11 +370,7 @@ struct Stream {
 
 fn build_stream(code: &[u8], scopes: &[Scope], keyer: &RunKeyer) -> Stream {
     let insts = decode(code);
-    let jumpdests: std::collections::HashSet<u32> = insts
-        .iter()
-        .filter(|i| i.opcode == JUMPDEST)
-        .map(|i| i.pc)
-        .collect();
+    let jumpdests = jumpdests(code);
     let mut interned: HashMap<Vec<u8>, u32> = HashMap::new();
     let mut stream = Stream {
         tokens: Vec::new(),
@@ -425,16 +390,7 @@ fn build_stream(code: &[u8], scopes: &[Scope], keyer: &RunKeyer) -> Stream {
         while cursor < insts.len() && insts[cursor].pc + insts[cursor].len <= scope.end {
             let inst = insts[cursor];
             let bytes = &code[inst.pc as usize..(inst.pc + inst.len) as usize];
-            let n = push_len(inst.opcode);
-            let target = (1..=4).contains(&n).then(|| {
-                bytes[1..]
-                    .iter()
-                    .fold(0u64, |acc, b| (acc << 8) | u64::from(*b))
-            });
-            let target = target
-                .filter(|v| bytes.len() == 1 + n && *v <= u64::from(u32::MAX))
-                .map(|v| v as u32)
-                .filter(|v| jumpdests.contains(v));
+            let target = push_value(code, &inst).filter(|v| jumpdests.contains(v));
             let as_port = target.is_none() && bytes.len() > 1 && keyer.constant_is_port(inst.pc);
             let key = if target.is_some() {
                 vec![inst.opcode]
@@ -678,27 +634,10 @@ pub fn run_graph_classified(
 /// Pair each instruction with its code-label target, by this module's label
 /// rule (a PUSH1..PUSH4 whose value is the pc of a JUMPDEST in `code`).
 pub fn with_labels(code: &[u8], insts: &[Instruction]) -> Vec<(Instruction, Option<u32>)> {
-    let jumpdests: std::collections::HashSet<u32> = decode(code)
-        .iter()
-        .filter(|i| i.opcode == JUMPDEST)
-        .map(|i| i.pc)
-        .collect();
     insts
         .iter()
-        .map(|inst| {
-            let n = push_len(inst.opcode);
-            let bytes = &code[inst.pc as usize..(inst.pc + inst.len) as usize];
-            let target = ((1..=4).contains(&n) && bytes.len() == 1 + n)
-                .then(|| {
-                    bytes[1..]
-                        .iter()
-                        .fold(0u64, |a, b| (a << 8) | u64::from(*b))
-                })
-                .filter(|v| *v <= u64::from(u32::MAX))
-                .map(|v| v as u32)
-                .filter(|v| jumpdests.contains(v));
-            (*inst, target)
-        })
+        .copied()
+        .zip(jump_labels(code, insts))
         .collect()
 }
 
@@ -943,6 +882,7 @@ mod tests {
     const PUSH1: u8 = 0x60;
     const PUSH2: u8 = 0x61;
     const JUMP: u8 = 0x56;
+    const JUMPDEST: u8 = 0x5b;
     const ADD: u8 = 0x01;
     const MUL: u8 = 0x02;
     const DUP1: u8 = 0x80;
@@ -969,19 +909,6 @@ mod tests {
             min_run_bytes: min,
             ..RunCensusOptions::default()
         }
-    }
-
-    #[test]
-    fn decode_clamps_truncated_push() {
-        let insts = decode(&[PUSH2, 0x01]);
-        assert_eq!(
-            insts,
-            vec![Instruction {
-                pc: 0,
-                len: 2,
-                opcode: PUSH2
-            }]
-        );
     }
 
     #[test]
