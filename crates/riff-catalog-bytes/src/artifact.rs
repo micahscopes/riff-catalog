@@ -50,8 +50,8 @@ pub fn load_regions_unbound(path: &Path) -> Result<RegionManifest> {
 }
 
 /// Where the instructions of `artifact` end. A requested end may not pass
-/// the artifact. Without one: the start of the manifest's `data` region that
-/// runs to the end of the artifact, else the start of a Solidity CBOR
+/// the artifact. Without one: the start of the manifest's `data` regions
+/// that run, one after another, to the end of the artifact, else the start of a Solidity CBOR
 /// metadata trailer, else the whole artifact.
 pub fn code_end(
     artifact: &[u8],
@@ -66,12 +66,20 @@ pub fn code_end(
         );
         return Ok(end);
     }
+    // The start of the data regions that run, one after another, to the end.
     let data = manifest.and_then(|m| {
-        m.regions
+        let mut start = None;
+        let mut end = artifact.len();
+        while let Some(r) = m
+            .regions
             .iter()
-            .filter(|r| r.kind == "data" && r.end == artifact.len())
-            .map(|r| r.start)
-            .min()
+            .filter(|r| r.kind == "data" && r.end == end && r.start < end)
+            .min_by_key(|r| r.start)
+        {
+            start = Some(r.start);
+            end = r.start;
+        }
+        start
     });
     Ok(data.unwrap_or_else(|| riff_catalog_evm::split_metadata(artifact).0))
 }
