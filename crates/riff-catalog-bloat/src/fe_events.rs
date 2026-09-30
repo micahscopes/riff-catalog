@@ -707,7 +707,10 @@ mod tests {
         });
         value["prepared_structure"] = counts.clone();
         let new: RawCallable = serde_json::from_value(value).unwrap();
-        assert_eq!(serde_json::to_value(new.prepared_structure).unwrap(), counts);
+        assert_eq!(
+            serde_json::to_value(new.prepared_structure).unwrap(),
+            counts
+        );
 
         let old_decision = serde_json::json!({
             "kind": "backend_callable", "variants": 3, "instructions": 76,

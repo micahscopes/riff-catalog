@@ -6,10 +6,10 @@
 //! are occurrence context. This does not normalize arbitrary control flow, effects,
 //! function signatures, or unordered graphs.
 
-pub mod protocol;
 pub mod exact;
-pub mod yul_cfg;
+pub mod protocol;
 pub mod wl_observation;
+pub mod yul_cfg;
 
 use std::collections::{BTreeMap, BTreeSet};
 
