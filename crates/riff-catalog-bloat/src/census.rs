@@ -45,6 +45,75 @@ pub struct RegionManifest {
 }
 
 impl RegionManifest {
+    /// Check the manifest on its own and, when the artifact is given,
+    /// against it: a supported schema (`evm_runs` only in version 2), an
+    /// adapter, at most 100,000 regions, each with a kind, a unique id and a
+    /// non-empty half-open range, no range twice within a kind, and bounded
+    /// total region bytes. With the artifact, its blake3 must be the
+    /// manifest's and every range must lie inside it; without it, ranges
+    /// must still fit in 32 bits.
+    pub fn validate(&self, artifact: Option<&[u8]>) -> Result<()> {
+        ensure!(
+            self.schema == REGIONS_SCHEMA_V1 || self.schema == REGIONS_SCHEMA_V2,
+            "unsupported region schema `{}` (expected {REGIONS_SCHEMA_V1} or {REGIONS_SCHEMA_V2})",
+            self.schema
+        );
+        ensure!(
+            self.evm_runs.is_none() || self.schema == REGIONS_SCHEMA_V2,
+            "evm_runs needs a {REGIONS_SCHEMA_V2} manifest"
+        );
+        ensure!(!self.adapter.is_empty(), "adapter name/version is required");
+        if let Some(bytes) = artifact {
+            ensure!(
+                bytes.len() <= MAX_BYTES,
+                "artifact exceeds 64 MiB census limit"
+            );
+            let digest = blake3::hash(bytes).to_hex().to_string();
+            ensure!(
+                self.artifact_blake3 == digest,
+                "region manifest artifact digest mismatch"
+            );
+        }
+        ensure!(self.regions.len() <= MAX_REGIONS, "too many census regions");
+        let limit = artifact.map_or(u32::MAX as usize, <[u8]>::len);
+        let selection_budget = artifact.map_or(usize::MAX, |b| {
+            b.len().saturating_mul(8).min(256 * 1024 * 1024)
+        });
+        let mut ids = std::collections::BTreeSet::new();
+        let mut ranges = std::collections::BTreeSet::new();
+        let mut selected_bytes = 0usize;
+        for region in &self.regions {
+            ensure!(!region.kind.is_empty(), "region kind must not be empty");
+            ensure!(
+                !region.id.is_empty() && ids.insert(region.id.as_str()),
+                "empty or duplicate region ID"
+            );
+            ensure!(
+                region.start < region.end && region.end <= limit,
+                "invalid region range: {} ({}..{}{})",
+                region.id,
+                region.start,
+                region.end,
+                match artifact {
+                    Some(bytes) => format!(" in a {}-byte artifact", bytes.len()),
+                    None => String::new(),
+                }
+            );
+            ensure!(
+                ranges.insert((region.kind.as_str(), region.start, region.end)),
+                "duplicate range within region kind"
+            );
+            selected_bytes = selected_bytes
+                .checked_add(region.end - region.start)
+                .ok_or_else(|| anyhow::anyhow!("selected region bytes overflow"))?;
+            ensure!(
+                selected_bytes <= selection_budget,
+                "selected region bytes exceed 8x artifact / 256 MiB work budget"
+            );
+        }
+        Ok(())
+    }
+
     /// The schema a manifest with these EVM run options is written with.
     pub fn schema_for(evm_runs: Option<&EvmRunOptions>) -> &'static str {
         if evm_runs.is_some() {
@@ -193,60 +262,11 @@ fn union_bytes(mut spans: Vec<(usize, usize)>) -> usize {
 }
 
 pub fn census_regions(bytes: &[u8], manifest: RegionManifest) -> Result<ArtifactCensus> {
-    ensure!(
-        bytes.len() <= MAX_BYTES,
-        "artifact exceeds 64 MiB census limit"
-    );
-    ensure!(
-        manifest.schema == REGIONS_SCHEMA_V1 || manifest.schema == REGIONS_SCHEMA_V2,
-        "unsupported region schema `{}` (expected {REGIONS_SCHEMA_V1} or {REGIONS_SCHEMA_V2})",
-        manifest.schema
-    );
-    ensure!(
-        manifest.evm_runs.is_none() || manifest.schema == REGIONS_SCHEMA_V2,
-        "evm_runs needs a {REGIONS_SCHEMA_V2} manifest"
-    );
-    ensure!(
-        !manifest.adapter.is_empty(),
-        "adapter name/version is required"
-    );
+    manifest.validate(Some(bytes))?;
     let digest = blake3::hash(bytes).to_hex().to_string();
-    ensure!(
-        manifest.artifact_blake3 == digest,
-        "region manifest artifact digest mismatch"
-    );
-    ensure!(
-        manifest.regions.len() <= MAX_REGIONS,
-        "too many census regions"
-    );
     let evm_runs = manifest.evm_runs.clone();
-    let mut ids = std::collections::BTreeSet::new();
-    let mut ranges = std::collections::BTreeSet::new();
     let mut regions = Vec::new();
-    let mut selected_bytes = 0usize;
-    let selection_budget = bytes.len().saturating_mul(8).min(256 * 1024 * 1024);
     for region in manifest.regions {
-        ensure!(!region.kind.is_empty(), "region kind must not be empty");
-        ensure!(
-            !region.id.is_empty() && ids.insert(region.id.clone()),
-            "empty or duplicate region ID"
-        );
-        ensure!(
-            region.start < region.end && region.end <= bytes.len(),
-            "invalid region range: {}",
-            region.id
-        );
-        ensure!(
-            ranges.insert((region.kind.clone(), region.start, region.end)),
-            "duplicate range within region kind"
-        );
-        selected_bytes = selected_bytes
-            .checked_add(region.end - region.start)
-            .ok_or_else(|| anyhow::anyhow!("selected region bytes overflow"))?;
-        ensure!(
-            selected_bytes <= selection_budget,
-            "selected region bytes exceed 8x artifact / 256 MiB work budget"
-        );
         regions.push(CensusRegion {
             bytes: region.end - region.start,
             content_blake3: blake3::hash(&bytes[region.start..region.end])
