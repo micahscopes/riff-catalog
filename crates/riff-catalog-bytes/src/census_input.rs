@@ -193,7 +193,8 @@ mod tests {
                 .position(|r| r.region.kind == "evm_run")
                 .unwrap()
         };
-        let cases: Vec<(&str, Box<dyn Fn(&mut riff_catalog_bloat::ArtifactCensus)>)> = vec![
+        type Edit<'a> = Box<dyn Fn(&mut riff_catalog_bloat::ArtifactCensus) + 'a>;
+        let cases: Vec<(&str, Edit<'_>)> = vec![
             (
                 "past",
                 Box::new(|c| {
