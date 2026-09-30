@@ -52,7 +52,8 @@ enum Command {
         artifact: PathBuf,
         #[arg(long)]
         output: Option<PathBuf>,
-        /// Digest-bound riffcat-regions/1 manifest for arbitrary artifact formats.
+        /// Digest-bound riffcat-regions manifest (version 1, or 2 with
+        /// evm_runs) for arbitrary artifact formats.
         #[arg(long)]
         regions: Option<PathBuf>,
         #[arg(long)]
