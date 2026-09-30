@@ -26,8 +26,8 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use crate::bytes::key_text;
-use crate::bytes::{LedgerError, WireKey, fact_type, key_parts};
-use crate::{OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION, SUPPORTED_TRACE_SCHEMA_VERSION};
+use crate::bytes::{LedgerError, key_of, key_parts};
+use crate::scan::scan_trace;
 
 /// Compiler stages in pipeline order (earliest first).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -129,19 +129,10 @@ pub struct StageGraph {
     function_names: HashMap<String, String>,
 }
 
-fn wire(v: &serde_json::Value, name: &str, line: usize) -> Result<String, LedgerError> {
-    let raw = v.get(name).ok_or_else(|| LedgerError::Trace {
-        line,
-        message: format!("missing field `{name}`"),
-    })?;
-    let key: WireKey = serde_json::from_value(raw.clone()).map_err(|e| LedgerError::Trace {
-        line,
-        message: format!("field `{name}`: {e}"),
-    })?;
-    Ok(key.text())
-}
+use key_of as wire;
 
-const STAGE_FACTS: [&str; 9] = [
+const STAGE_FACTS: [&str; 10] = [
+    "source_file",
     "instruction_category",
     "origin_node",
     "origin_edge",
@@ -185,131 +176,103 @@ impl StageGraph {
         let mut g = Self::default();
         let mut files: BTreeMap<String, String> = BTreeMap::new();
         let mut spans: Vec<(u32, String, u32, u32)> = Vec::new();
-        for (index, raw) in trace.lines().enumerate() {
-            let line = index + 1;
-            let raw = raw?;
-            let text = raw.trim();
-            if text.is_empty() {
-                continue;
-            }
-            if text.starts_with("{\"record\":\"metadata\"") {
+        scan_trace(
+            trace,
+            true,
+            |kind| STAGE_FACTS.contains(&kind),
+            |line, kind, text| -> Result<(), LedgerError> {
                 let v: serde_json::Value =
                     serde_json::from_str(text).map_err(|e| LedgerError::Trace {
                         line,
                         message: e.to_string(),
                     })?;
-                if let Some(found) = v.get("schema_version").and_then(|v| v.as_u64())
-                    && !(OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION..=SUPPORTED_TRACE_SCHEMA_VERSION)
-                        .contains(&found)
-                {
-                    return Err(LedgerError::Trace {
-                        line,
-                        message: format!("unsupported trace schema version {found}"),
-                    });
+                if kind == "source_file" {
+                    let file = wire(&v, "file_key", line)?;
+                    let uri = v.get("uri").and_then(|u| u.as_str()).unwrap_or_default();
+                    files.insert(file, uri.to_string());
+                    return Ok(());
                 }
-                continue;
-            }
-            let Some(kind) = fact_type(text) else {
-                continue;
-            };
-            if kind == "source_file" {
-                let v: serde_json::Value =
-                    serde_json::from_str(text).map_err(|e| LedgerError::Trace {
-                        line,
-                        message: e.to_string(),
-                    })?;
-                let file = wire(&v, "file_key", line)?;
-                let uri = v.get("uri").and_then(|u| u.as_str()).unwrap_or_default();
-                files.insert(file, uri.to_string());
-                continue;
-            }
-            if !STAGE_FACTS.contains(&kind) {
-                continue;
-            }
-            let v: serde_json::Value =
-                serde_json::from_str(text).map_err(|e| LedgerError::Trace {
-                    line,
-                    message: e.to_string(),
-                })?;
-            match kind {
-                "origin_node" => {
-                    let key = wire(&v, "key", line)?;
-                    g.id(key);
-                }
-                "origin_edge" => {
-                    let from = g.id(wire(&v, "from", line)?);
-                    let to = g.id(wire(&v, "to", line)?);
-                    let label = v.get("label").and_then(|l| l.as_str()).unwrap_or("");
-                    let label = intern_small(&mut g.labels, label);
-                    let phase = v
-                        .get("introduced_by")
-                        .and_then(|p| p.as_str())
-                        .map(|p| intern_small(&mut g.phases, p));
-                    g.out[from as usize].push(OriginLink {
-                        target: to,
-                        label,
-                        phase,
-                    });
-                    g.into[to as usize].push(from);
-                }
-                "instruction" => {
-                    let inst = g.id(wire(&v, "instruction", line)?);
-                    if let Some(m) = v.get("mnemonic").and_then(|m| m.as_str()) {
-                        g.mnemonic.insert(inst, m.to_string());
+                match kind {
+                    "origin_node" => {
+                        let key = wire(&v, "key", line)?;
+                        g.id(key);
                     }
-                    if v.get("function").is_some_and(|f| !f.is_null()) {
-                        g.function_of.insert(inst, wire(&v, "function", line)?);
+                    "origin_edge" => {
+                        let from = g.id(wire(&v, "from", line)?);
+                        let to = g.id(wire(&v, "to", line)?);
+                        let label = v.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                        let label = intern_small(&mut g.labels, label);
+                        let phase = v
+                            .get("introduced_by")
+                            .and_then(|p| p.as_str())
+                            .map(|p| intern_small(&mut g.phases, p));
+                        g.out[from as usize].push(OriginLink {
+                            target: to,
+                            label,
+                            phase,
+                        });
+                        g.into[to as usize].push(from);
                     }
-                }
-                "opcode" => {
-                    let pc = g.id(wire(&v, "pc", line)?);
-                    if let Some(m) = v.get("opcode").and_then(|m| m.as_str()) {
-                        g.mnemonic.insert(pc, m.to_string());
+                    "instruction" => {
+                        let inst = g.id(wire(&v, "instruction", line)?);
+                        if let Some(m) = v.get("mnemonic").and_then(|m| m.as_str()) {
+                            g.mnemonic.insert(inst, m.to_string());
+                        }
+                        if v.get("function").is_some_and(|f| !f.is_null()) {
+                            g.function_of.insert(inst, wire(&v, "function", line)?);
+                        }
                     }
-                    if let Some(i) = v.get("immediate").and_then(|i| i.as_str()) {
-                        g.immediate.insert(pc, i.to_string());
+                    "opcode" => {
+                        let pc = g.id(wire(&v, "pc", line)?);
+                        if let Some(m) = v.get("opcode").and_then(|m| m.as_str()) {
+                            g.mnemonic.insert(pc, m.to_string());
+                        }
+                        if let Some(i) = v.get("immediate").and_then(|i| i.as_str()) {
+                            g.immediate.insert(pc, i.to_string());
+                        }
                     }
-                }
-                "instruction_extent" => {
-                    let pc = g.id(wire(&v, "instruction", line)?);
-                    let range = v.get("pc_range");
-                    let at = |n: &str| {
-                        range
-                            .and_then(|r| r.get(n))
-                            .and_then(|x| x.as_u64())
-                            .map(|x| x as u32)
-                    };
-                    if let (Some(start), Some(end)) = (at("start"), at("end")) {
-                        g.extent.insert(pc, (start, end));
+                    "instruction_extent" => {
+                        let pc = g.id(wire(&v, "instruction", line)?);
+                        let range = v.get("pc_range");
+                        let at = |n: &str| {
+                            range
+                                .and_then(|r| r.get(n))
+                                .and_then(|x| x.as_u64())
+                                .map(|x| x as u32)
+                        };
+                        if let (Some(start), Some(end)) = (at("start"), at("end")) {
+                            g.extent.insert(pc, (start, end));
+                        }
                     }
-                }
-                "source_span" => {
-                    let origin = g.id(wire(&v, "origin", line)?);
-                    let file = wire(&v, "file", line)?;
-                    let n = |k: &str| v.get(k).and_then(|x| x.as_u64()).unwrap_or(0) as u32;
-                    spans.push((origin, file, n("start_line"), n("end_line")));
-                }
-                "function" => {
-                    let function = wire(&v, "function", line)?;
-                    if let Some(name) = v.get("name").and_then(|n| n.as_str()) {
-                        g.function_names.insert(function, name.to_string());
+                    "source_span" => {
+                        let origin = g.id(wire(&v, "origin", line)?);
+                        let file = wire(&v, "file", line)?;
+                        let n = |k: &str| v.get(k).and_then(|x| x.as_u64()).unwrap_or(0) as u32;
+                        spans.push((origin, file, n("start_line"), n("end_line")));
                     }
-                }
-                "instruction_category" => {
-                    let inst = g.id(wire(&v, "instruction", line)?);
-                    if let Some(c) = v.get("category").and_then(|c| c.as_str()) {
-                        g.category.insert(inst, c.to_string());
+                    "function" => {
+                        let function = wire(&v, "function", line)?;
+                        if let Some(name) = v.get("name").and_then(|n| n.as_str()) {
+                            g.function_names.insert(function, name.to_string());
+                        }
                     }
-                }
-                "attribution_gap" => {
-                    let inst = g.id(wire(&v, "instruction", line)?);
-                    if let Some(reason) = v.get("reason").and_then(|r| r.as_str()) {
-                        g.gap.insert(inst, reason.to_string());
+                    "instruction_category" => {
+                        let inst = g.id(wire(&v, "instruction", line)?);
+                        if let Some(c) = v.get("category").and_then(|c| c.as_str()) {
+                            g.category.insert(inst, c.to_string());
+                        }
                     }
+                    "attribution_gap" => {
+                        let inst = g.id(wire(&v, "instruction", line)?);
+                        if let Some(reason) = v.get("reason").and_then(|r| r.as_str()) {
+                            g.gap.insert(inst, reason.to_string());
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
-            }
-        }
+                Ok(())
+            },
+        )?;
         for (origin, file, start_line, end_line) in spans {
             let file = files
                 .get(&file)
@@ -618,6 +581,33 @@ mod tests {
         assert_eq!(chain.nodes.len(), 5);
         assert_eq!(chain.children.len(), 4);
         chain.validate().unwrap();
+    }
+
+    #[test]
+    fn trace_schema_one_and_two_are_read_and_others_refused() {
+        let body = bundle();
+        let body = body.split_once('\n').unwrap().1;
+        for ok in [
+            r#"{"record":"metadata","schema_version":1}"#,
+            r#"{ "record": "metadata", "schema_version": 2 }"#,
+        ] {
+            StageGraph::read(format!("{ok}\n{body}").as_bytes()).unwrap();
+        }
+        for bad in [
+            r#"{ "record": "metadata", "schema_version": 99 }"#,
+            r#"{"schema_version":99,"record":"metadata"}"#,
+            r#"{"record":"metadata"}"#,
+            r#"{"record":"metadata","schema_version":"1"}"#,
+        ] {
+            assert!(
+                StageGraph::read(format!("{bad}\n{body}").as_bytes()).is_err(),
+                "{bad} accepted"
+            );
+        }
+        assert!(
+            StageGraph::read(body.as_bytes()).is_err(),
+            "no metadata accepted"
+        );
     }
 
     #[test]
