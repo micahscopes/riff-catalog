@@ -410,3 +410,66 @@ fn the_code_end_defaults_to_the_code_and_may_not_pass_the_artifact() {
     let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
     assert_eq!(v["code_end"], 353);
 }
+
+#[test]
+fn attribution_rows_must_be_the_artifacts_instructions() {
+    let dir = scratch("rows");
+    let details = fixture("fe-base/details.json");
+    let out = dir.join("out.json");
+    let out = out.to_str().unwrap();
+    // PUSH2 where the fixture has PUSH1: the rows no longer fall on
+    // instruction boundaries. And a longer artifact the rows do not cover.
+    for (name, bytes) in [
+        ("shifted.bin", vec![0x61u8, 0x80, 0x52, 0x00]),
+        ("longer.bin", vec![0x60u8, 0x80, 0x52, 0x00, 0x00]),
+    ] {
+        let path = dir.join(name);
+        std::fs::write(&path, &bytes).unwrap();
+        let regions = write(
+            &dir,
+            &format!("{name}.regions.json"),
+            &format!(
+                r#"{{"schema":"riffcat-regions/1","artifact_blake3":"{}","adapter":"t/1","regions":[]}}"#,
+                blake3::hash(&bytes).to_hex()
+            ),
+        );
+        let path = path.to_str().unwrap();
+        for args in [
+            vec![
+                "evm-dataflow",
+                path,
+                "--out",
+                out,
+                "--attribution",
+                &details,
+                "--contract",
+                "C",
+            ],
+            vec![
+                "evm-byte-causes",
+                path,
+                "--regions",
+                &regions,
+                "--attribution",
+                &details,
+                "--contract",
+                "C",
+                "--json-out",
+                out,
+            ],
+        ] {
+            let err = refused(&args);
+            assert!(err.contains("details.json"), "{name} {args:?}: {err}");
+        }
+    }
+    ok(&[
+        "evm-dataflow",
+        &fixture("fe-base/runtime.bin"),
+        "--out",
+        out,
+        "--attribution",
+        &details,
+        "--contract",
+        "C",
+    ]);
+}
