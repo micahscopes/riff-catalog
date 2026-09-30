@@ -84,9 +84,8 @@ fn blank_lines_are_ignored_and_bad_json_is_located() {
     assert!(ingest_trace_bundle("\n\n\n").unwrap().is_empty());
 
     // A malformed line reports its 1-based line number.
-    let err =
-        ingest_trace_bundle("{\"record\":\"metadata\",\"schema_version\":1}\nnot json\n")
-            .unwrap_err();
+    let err = ingest_trace_bundle("{\"record\":\"metadata\",\"schema_version\":1}\nnot json\n")
+        .unwrap_err();
     assert!(err.to_string().contains("line 2"), "got: {err}");
 }
 
