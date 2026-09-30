@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
-use riff_catalog_bloat::{REGIONS_SCHEMA_V1, REGIONS_SCHEMA_V2, RegionManifest};
+use riff_catalog_bloat::RegionManifest;
 use serde::de::DeserializeOwned;
 
 /// Read a file, naming it in the error.
@@ -25,7 +25,7 @@ pub fn load_artifact(path: &Path, format: ArtifactFormat) -> Result<Vec<u8>> {
 /// Read a region manifest and check that it describes `artifact`: a
 /// supported schema and the artifact's blake3.
 pub fn load_regions(path: &Path, artifact: &[u8]) -> Result<RegionManifest> {
-    let manifest = load_regions_unbound(path)?;
+    let manifest: RegionManifest = read_json(path)?;
     let actual = blake3::hash(artifact).to_hex().to_string();
     ensure!(
         manifest.artifact_blake3 == actual,
@@ -33,19 +33,19 @@ pub fn load_regions(path: &Path, artifact: &[u8]) -> Result<RegionManifest> {
         path.display(),
         manifest.artifact_blake3
     );
+    manifest
+        .validate(Some(artifact))
+        .with_context(|| format!("region manifest {}", path.display()))?;
     Ok(manifest)
 }
 
-/// Read a region manifest when no artifact is at hand (only the schema is
-/// checked).
+/// Read a region manifest when no artifact is at hand: everything but the
+/// artifact's hash and length is checked ([`RegionManifest::validate`]).
 pub fn load_regions_unbound(path: &Path) -> Result<RegionManifest> {
     let manifest: RegionManifest = read_json(path)?;
-    ensure!(
-        manifest.schema == REGIONS_SCHEMA_V1 || manifest.schema == REGIONS_SCHEMA_V2,
-        "{} is `{}`, expected `{REGIONS_SCHEMA_V1}` or `{REGIONS_SCHEMA_V2}`",
-        path.display(),
-        manifest.schema
-    );
+    manifest
+        .validate(None)
+        .with_context(|| format!("region manifest {}", path.display()))?;
     Ok(manifest)
 }
 

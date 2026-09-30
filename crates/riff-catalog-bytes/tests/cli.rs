@@ -847,3 +847,75 @@ fn the_fe_total_must_be_the_stage_reports_artifact() {
     }
     ok(&strs(&run("4")));
 }
+
+#[test]
+fn region_manifests_are_validated_like_the_census_validates_them() {
+    let dir = scratch("manifest-validate");
+    let runtime = fixture("fe-base/runtime.bin");
+    let hash = blake3::hash(&[0x60, 0x80, 0x52, 0x00]).to_hex().to_string();
+    let manifest = |schema: &str, regions: &str, extra: &str| {
+        format!(
+            r#"{{"schema":"{schema}","artifact_blake3":"{hash}","adapter":"t/1","regions":[{regions}]{extra}}}"#
+        )
+    };
+    let region = |start: u64, end: u64| {
+        format!(r#"{{"id":"f","kind":"function","name":"f","start":{start},"end":{end}}}"#)
+    };
+    let ir = write(
+        &dir,
+        "m.ir",
+        "target = \"evm-ethereum-osaka\"\n\nfunc public %f(v0.i256) -> i256 {\n    block0:\n        return v0;\n}\n",
+    );
+    let out = dir.join("out.json");
+    let out = out.to_str().unwrap();
+    for (name, text) in [
+        ("reversed", manifest("riffcat-regions/1", &region(3, 1), "")),
+        ("past", manifest("riffcat-regions/1", &region(2, 9), "")),
+        (
+            "wrap",
+            manifest("riffcat-regions/1", &region(4294967296, 4294967300), ""),
+        ),
+        (
+            "v1runs",
+            manifest(
+                "riffcat-regions/1",
+                &region(0, 4),
+                r#","evm_runs":{"min_run_bytes":4}"#,
+            ),
+        ),
+    ] {
+        let path = write(&dir, &format!("{name}.json"), &text);
+        for args in [
+            vec![
+                "evm-byte-causes",
+                "--artifact",
+                &runtime,
+                "--regions",
+                &path,
+                "--json-out",
+                out,
+            ],
+            vec![
+                "evm-dataflow",
+                "--artifact",
+                &runtime,
+                "--blocks-out",
+                out,
+                "--regions",
+                &path,
+            ],
+        ] {
+            let err = refused(&args);
+            assert!(
+                err.contains(&format!("{name}.json")),
+                "{name} {args:?}: {err}"
+            );
+        }
+        // sonatina-functions has no artifact, so only bounds it cannot know
+        // are left out; the rest are still refused, never a panic.
+        if name != "past" {
+            let err = refused(&["sonatina-functions", "--ir", &ir, "--regions", &path]);
+            assert!(!err.contains("panicked"), "{name}: {err}");
+        }
+    }
+}
