@@ -311,3 +311,102 @@ fn fe_trace_stages_checks_the_trace_against_the_artifact() {
     let err = refused(&strs(&args));
     assert!(err.contains("does not describe"), "{err}");
 }
+
+/// solc-functions on the committed solc output: the runtime, its manifest
+/// and its report.
+fn solc_build(dir: &Path) -> (String, String, String) {
+    let artifact = dir.join("solc.bin");
+    let manifest = dir.join("solc-regions.json");
+    let report = dir.join("solc.json");
+    ok(&[
+        "solc-functions",
+        "--standard-output",
+        &fixture("solc/out-true.json"),
+        "--source",
+        "a.sol",
+        "--contract",
+        "A",
+        "--artifact-out",
+        artifact.to_str().unwrap(),
+        "--manifest-out",
+        manifest.to_str().unwrap(),
+        "--json-out",
+        report.to_str().unwrap(),
+    ]);
+    (
+        artifact.to_str().unwrap().to_string(),
+        manifest.to_str().unwrap().to_string(),
+        report.to_str().unwrap().to_string(),
+    )
+}
+
+#[test]
+fn the_code_end_defaults_to_the_code_and_may_not_pass_the_artifact() {
+    let dir = scratch("code-end");
+    let (artifact, manifest, _) = solc_build(&dir);
+    let blocks = dir.join("blocks.json");
+    let blocks = blocks.to_str().unwrap();
+    let code_bytes = |args: &[&str]| {
+        ok(args);
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(blocks).unwrap()).unwrap();
+        v["code_bytes"].as_u64().unwrap()
+    };
+    // 406 bytes, of which the last 53 are solc's CBOR metadata.
+    assert_eq!(
+        code_bytes(&["evm-dataflow", &artifact, "--out", blocks]),
+        353
+    );
+    assert_eq!(
+        code_bytes(&[
+            "evm-dataflow",
+            &artifact,
+            "--out",
+            blocks,
+            "--regions",
+            &manifest
+        ]),
+        353
+    );
+    assert_eq!(
+        code_bytes(&[
+            "evm-dataflow",
+            &artifact,
+            "--out",
+            blocks,
+            "--code-end",
+            "100"
+        ]),
+        100
+    );
+    let err = refused(&[
+        "evm-dataflow",
+        &artifact,
+        "--out",
+        blocks,
+        "--code-end",
+        "407",
+    ]);
+    assert!(err.contains("407"), "{err}");
+    let out = dir.join("bc.json");
+    let err = refused(&[
+        "evm-byte-causes",
+        &artifact,
+        "--regions",
+        &manifest,
+        "--code-end",
+        "999",
+        "--json-out",
+        out.to_str().unwrap(),
+    ]);
+    assert!(err.contains("999"), "{err}");
+    ok(&[
+        "evm-byte-causes",
+        &artifact,
+        "--regions",
+        &manifest,
+        "--json-out",
+        out.to_str().unwrap(),
+    ]);
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+    assert_eq!(v["code_end"], 353);
+}

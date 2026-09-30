@@ -22,7 +22,8 @@ enum Command {
     EvmDataflow {
         /// Runtime artifact (raw bytes or hex).
         artifact: PathBuf,
-        /// Lift only the first N bytes (exclude trailing data or metadata).
+        /// Lift only the first N bytes. Default: up to the manifest's data
+        /// region, else up to a solc metadata trailer, else everything.
         #[arg(long)]
         code_end: Option<usize>,
         /// Write every block with its facet addresses as JSON.
@@ -158,7 +159,8 @@ enum Command {
     /// the order given, then role buckets by opcode.
     EvmByteCauses {
         artifact: PathBuf,
-        /// End of the instructions (defaults to the whole artifact).
+        /// End of the instructions. Default: the start of the manifest's
+        /// data region, else of a solc metadata trailer, else the end.
         #[arg(long)]
         code_end: Option<usize>,
         /// riffcat-regions/1 manifest with `function` regions.
@@ -248,13 +250,17 @@ fn main() -> Result<()> {
             top,
         } => {
             let bytes = load_artifact(&artifact)?;
-            let end = code_end.unwrap_or(bytes.len()).min(bytes.len());
+            let manifest = match &regions {
+                Some(path) => Some(load_regions(path, &bytes)?),
+                None => None,
+            };
+            let end = riff_catalog_bytes::code_end(&bytes, code_end, manifest.as_ref())?;
             let blocks = evm_dataflow_blocks(&bytes[..end])?;
             fs::write(&out, serde_json::to_vec(&blocks)?)?;
-            let functions = match &regions {
-                Some(path) => FunctionRegions::from_manifest(&load_regions(path, &bytes)?),
-                None => FunctionRegions::default(),
-            };
+            let functions = manifest
+                .as_ref()
+                .map(FunctionRegions::from_manifest)
+                .unwrap_or_default();
             let no_source: Option<Vec<(u32, u32)>> = match (&attribution, &contract) {
                 (Some(path), Some(contract)) => Some(
                     riff_catalog_ingest_trace::bytes::read_runtime_details(
@@ -533,8 +539,8 @@ fn main() -> Result<()> {
             json_out,
         } => {
             let code = load_artifact(&artifact)?;
-            let end = code_end.unwrap_or(code.len()).min(code.len());
             let manifest = load_regions(&regions, &code)?;
+            let end = riff_catalog_bytes::code_end(&code, code_end, Some(&manifest))?;
             let functions = FunctionRegions::from_manifest(&manifest);
             let rows = match (&attribution, &contract) {
                 (Some(p), Some(c)) => Some(riff_catalog_ingest_trace::bytes::read_runtime_details(
