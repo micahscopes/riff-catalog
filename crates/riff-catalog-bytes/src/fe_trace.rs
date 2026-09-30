@@ -26,7 +26,7 @@ use riff_catalog_ingest_trace::bytes::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
+use riff_catalog_bloat::{
     ArtifactCensus, CallGraphCompleteness, DirectCall, EvmRunOptions, Function, RegionManifest,
     RegionSpec, Stage, census_regions, reachable_union,
 };
@@ -552,7 +552,7 @@ pub fn fe_trace_bytes(
         let b = starts.partition_point(|p| *p < e);
         &ledger.instructions[a..b]
     };
-    let region_by_id: BTreeMap<&str, &crate::CensusRegion> = census
+    let region_by_id: BTreeMap<&str, &riff_catalog_bloat::CensusRegion> = census
         .regions
         .iter()
         .map(|r| (r.region.id.as_str(), r))

@@ -23,6 +23,7 @@ riff-catalog-evm = { path = "crates/riff-catalog-evm" }
 riff-catalog-sonatina = { path = "crates/riff-catalog-sonatina" }
 riff-catalog-fe-rmir = { path = "crates/riff-catalog-fe-rmir" }
 riff-catalog-bloat = { path = "crates/riff-catalog-bloat" }
+riff-catalog-bytes = { path = "crates/riff-catalog-bytes" }
 riff-catalog-sourcify = { path = "crates/riff-catalog-sourcify" }
 riff-catalog-view = { path = "crates/riff-catalog-view" }
 

@@ -14,7 +14,7 @@ use riff_catalog_solc::sourcemap::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::census::{EvmRunOptions, RegionManifest, RegionSpec};
+use riff_catalog_bloat::{EvmRunOptions, RegionManifest, RegionSpec};
 
 pub const SOLC_REGIONS_ADAPTER: &str = "solc-source-map-functions/1";
 

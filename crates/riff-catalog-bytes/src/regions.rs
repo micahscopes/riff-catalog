@@ -1,7 +1,7 @@
 //! Function regions of an artifact, read from a region manifest, and the
 //! lookup every per-function table uses.
 
-use crate::census::RegionManifest;
+use riff_catalog_bloat::RegionManifest;
 
 /// Row label for bytes no function region holds.
 pub const OUTSIDE_FUNCTIONS: &str = "(outside functions)";
