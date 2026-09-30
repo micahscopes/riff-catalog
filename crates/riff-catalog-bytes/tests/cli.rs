@@ -175,3 +175,95 @@ fn region_manifests_for_another_artifact_are_refused() {
         &regions,
     ]);
 }
+
+#[test]
+fn census_inputs_must_be_a_census_of_this_artifact_with_evm_runs() {
+    let dir = scratch("census");
+    let regions = base_regions(&dir);
+    let runtime = fixture("fe-base/runtime.bin");
+    let manifest: riff_catalog_bloat::RegionManifest =
+        serde_json::from_slice(&std::fs::read(&regions).unwrap()).unwrap();
+    let census = riff_catalog_bloat::census_regions(&[0x60, 0x80, 0x52, 0x00], manifest).unwrap();
+    let census_path = write(
+        &dir,
+        "census.json",
+        &serde_json::to_string(&census).unwrap(),
+    );
+    let other = dir.join("other.bin");
+    std::fs::write(&other, [0x60, 0x80, 0x53, 0x00]).unwrap();
+    let other_regions = write(
+        &dir,
+        "other-regions.json",
+        &format!(
+            r#"{{"schema":"riffcat-regions/1","artifact_blake3":"{}","adapter":"t/1","regions":[]}}"#,
+            blake3::hash(&[0x60, 0x80, 0x53, 0x00]).to_hex()
+        ),
+    );
+    let out = dir.join("out.json");
+    let causes = |artifact: &str, regions: &str, census: &str| {
+        vec![
+            "evm-byte-causes".to_string(),
+            artifact.to_string(),
+            "--regions".into(),
+            regions.to_string(),
+            "--cause".into(),
+            format!("repeats:r={census}"),
+            "--json-out".into(),
+            out.to_str().unwrap().to_string(),
+        ]
+    };
+    let args = |v: &Vec<String>| v.clone();
+    // A census of another artifact.
+    let err = refused(
+        &args(&causes(
+            other.to_str().unwrap(),
+            &other_regions,
+            &census_path,
+        ))
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>(),
+    );
+    assert!(err.contains("census.json"), "{err}");
+    // A region manifest passed where a census is expected.
+    let err = refused(
+        &args(&causes(&runtime, &regions, &regions))
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    );
+    assert!(err.contains("regions.json"), "{err}");
+    // A census of this artifact whose manifest asked for no EVM runs.
+    let mut plain: riff_catalog_bloat::RegionManifest =
+        serde_json::from_slice(&std::fs::read(&regions).unwrap()).unwrap();
+    plain.evm_runs = None;
+    plain.schema = "riffcat-regions/1".into();
+    let plain = riff_catalog_bloat::census_regions(&[0x60, 0x80, 0x52, 0x00], plain).unwrap();
+    let plain_path = write(&dir, "plain.json", &serde_json::to_string(&plain).unwrap());
+    let err = refused(
+        &args(&causes(&runtime, &regions, &plain_path))
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    );
+    assert!(err.contains("EVM run"), "{err}");
+    // The census itself is accepted, and so is the census file that
+    // `census --output` saves.
+    ok(&causes(&runtime, &regions, &census_path)
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>());
+    let sidecar = dir.join("sidecar.json");
+    riff_catalog_bloat::save_census(
+        &sidecar,
+        riff_catalog_bloat::CensusSource::Artifact {
+            path: runtime.clone().into(),
+            regions: Some(regions.clone().into()),
+        },
+    )
+    .unwrap();
+    ok(&causes(&runtime, &regions, sidecar.to_str().unwrap())
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>());
+}

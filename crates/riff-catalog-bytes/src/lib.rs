@@ -28,7 +28,7 @@ pub use byte_causes::{
     CauseInputs, CauseTally, apportion_excess, byte_cause_ledger, cause_selection, classify_bytes,
     compare_causes,
 };
-pub use census_input::{CensusRunClass, census_run_classes};
+pub use census_input::{CensusRunClass, census_run_classes, parse_census_runs};
 pub use compare_functions::{
     FUNCTION_COMPARISON_SCHEMA, FunctionComparison, FunctionComparisonReport, FunctionPair,
     compare_functions, render_function_comparison, residual_row,
