@@ -13,6 +13,43 @@ pub struct Selection {
     pub pcs: BTreeSet<u32>,
 }
 
+/// Split a `name=value` command-line argument.
+pub fn named<'a>(spec: &'a str, what: &str) -> Result<(&'a str, &'a str)> {
+    spec.split_once('=')
+        .with_context(|| format!("{what}: expected name=value, got `{spec}`"))
+}
+
+/// A pc set file: a JSON array of pcs, or an object whose `entries` are
+/// objects with a `pc` (for example Sonatina memory-plan tags).
+pub fn read_pc_set(name: &str, json: &[u8]) -> Result<Selection> {
+    let value: serde_json::Value = serde_json::from_slice(json)?;
+    let items = value
+        .as_array()
+        .or_else(|| value["entries"].as_array())
+        .context("pc set: expected an array or an object with entries")?;
+    Ok(Selection {
+        name: name.to_string(),
+        pcs: items
+            .iter()
+            .filter_map(|e| e.as_u64().or_else(|| e["pc"].as_u64()))
+            .map(|v| v as u32)
+            .collect(),
+    })
+}
+
+/// pcs of the full PUSH1..PUSH4 instructions whose value is `target` (for a
+/// function entry: its call sites).
+pub fn push_selection(name: &str, code: &[u8], target: u32) -> Selection {
+    Selection {
+        name: name.into(),
+        pcs: decode(code)
+            .iter()
+            .filter(|i| riff_catalog_evm::decode::push_value(code, i) == Some(target))
+            .map(|i| i.pc)
+            .collect(),
+    }
+}
+
 /// Non-overlapping byte ranges matching `pattern` (hex, `??` any byte),
 /// scanning left to right.
 pub fn pattern_matches(code: &[u8], pattern: &str) -> Result<Vec<(u32, u32)>> {

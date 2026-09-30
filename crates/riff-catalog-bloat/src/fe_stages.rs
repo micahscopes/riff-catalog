@@ -15,8 +15,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::census_input::CensusRunClass;
 use crate::regions::FunctionRegions;
-use crate::selection::Selection;
+use crate::selection::{
+    Selection, opcode_selection, pattern_selection, push_selection, range_selection,
+};
 use anyhow::{Context, Result};
 use riff_catalog_core::{CyclePolicy, DigestRequest, Facet, HashPolicy, ViewMode, digest_graph};
 pub use riff_catalog_evm::decode::MEMORY_OPCODES;
@@ -140,6 +143,24 @@ pub fn memory_bucket(
     format!("{mechanism} | {library}")
 }
 
+/// What `fe-trace-stages` traces besides its three built-in selections (all
+/// instructions, memory operations, no-source instructions).
+pub struct StageRequest<'a> {
+    pub contract: &'a str,
+    pub functions: &'a FunctionRegions,
+    /// Named byte patterns (`name`, hex with `??` for any byte).
+    pub patterns: &'a [(String, String)],
+    /// Named pc sets.
+    pub pc_sets: &'a [Selection],
+    /// EVM run classes from a census; the `runs` largest are traced.
+    pub census_runs: &'a [CensusRunClass],
+    pub runs: usize,
+    /// Trace every function whose name starts with one of these, and its
+    /// call sites.
+    pub function_prefixes: &'a [String],
+    pub top: usize,
+}
+
 /// The joined inputs: the stage graph, Fe's attribution rows, and the code.
 pub struct StageInputs<'a> {
     pub graph: &'a StageGraph,
@@ -163,6 +184,94 @@ fn mir_instance(key: &str) -> Option<String> {
 }
 
 impl StageInputs<'_> {
+    /// The selections of a request, with the pcs of the selections named
+    /// `free_pointer_clamp` and `backend_spill`.
+    pub fn selections(
+        &self,
+        request: &StageRequest,
+    ) -> Result<(Vec<Selection>, BTreeSet<u32>, BTreeSet<u32>)> {
+        let code = self.code;
+        let mut selections = vec![
+            range_selection("all", code, &[(0, code.len() as u32)]),
+            opcode_selection("memory_ops", code, &MEMORY_OPCODES),
+            Selection {
+                name: "no_source".into(),
+                pcs: self
+                    .rows
+                    .iter()
+                    .filter(|r| r.has_no_source())
+                    .map(|r| r.pc_start)
+                    .collect(),
+            },
+        ];
+        let mut clamp = BTreeSet::new();
+        for (name, hex) in request.patterns {
+            let sel = pattern_selection(name, code, hex)?;
+            if name == "free_pointer_clamp" {
+                clamp = sel.pcs.clone();
+            }
+            selections.push(sel);
+        }
+        let mut spill = BTreeSet::new();
+        for sel in request.pc_sets {
+            if sel.name == "backend_spill" {
+                spill = sel.pcs.clone();
+            }
+            selections.push(sel.clone());
+        }
+        let mut runs: Vec<&CensusRunClass> = request.census_runs.iter().collect();
+        runs.sort_by_key(|r| std::cmp::Reverse(r.covered_bytes));
+        for run in runs.into_iter().take(request.runs) {
+            let name = format!(
+                "run {} ({} copies x {} bytes)",
+                &run.digest[..12.min(run.digest.len())],
+                run.ranges.len(),
+                run.ranges.first().map_or(0, |r| r.1 - r.0)
+            );
+            selections.push(range_selection(&name, code, &run.ranges));
+        }
+        for prefix in request.function_prefixes {
+            for f in request
+                .functions
+                .iter()
+                .filter(|f| f.name.starts_with(prefix.as_str()))
+            {
+                selections.push(range_selection(
+                    &format!("function {}", f.name),
+                    code,
+                    &[(f.start, f.end)],
+                ));
+                selections.push(push_selection(
+                    &format!("call sites of {} (entry label pushes)", f.name),
+                    code,
+                    f.start,
+                ));
+            }
+        }
+        Ok((selections, clamp, spill))
+    }
+
+    /// The whole stage report for a request.
+    pub fn stage_report(&self, request: &StageRequest) -> Result<FeStagesReport> {
+        let (selections, clamp, spill) = self.selections(request)?;
+        let (chain_classes, chain_class_count, top_constructs) =
+            self.chain_classes(request.top.max(40))?;
+        Ok(FeStagesReport {
+            schema: FE_STAGES_SCHEMA.into(),
+            contract: request.contract.to_string(),
+            stage_graph_nodes: self.graph.len(),
+            selections: selections
+                .iter()
+                .map(|s| self.report(s, &clamp, &spill, request.top))
+                .collect(),
+            expansion_by_body: self.expansion_by_body(),
+            chain_class_count,
+            chain_classes,
+            top_constructs,
+            category_by_function: self.category_by_function(request.functions),
+        })
+    }
+
     fn pc_facts(&self, row: &DetailsRow) -> PcFacts {
         let g = self.graph;
         let node = g.node(&row.instruction_key);

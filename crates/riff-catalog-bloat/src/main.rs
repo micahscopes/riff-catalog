@@ -495,115 +495,38 @@ fn main() -> Result<()> {
             let graph = riff_catalog_ingest_trace::stages::StageGraph::read(reader)?;
             let manifest: RegionManifest = serde_json::from_slice(&fs::read(&regions)?)?;
             let functions = FunctionRegions::from_manifest(&manifest);
-            let mut selections = vec![
-                range_selection("all", code, &[(0, code.len() as u32)]),
-                opcode_selection("memory_ops", code, &MEMORY_OPCODES),
-                Selection {
-                    name: "no_source".into(),
-                    pcs: rows
-                        .iter()
-                        .filter(|r| r.has_no_source())
-                        .map(|r| r.pc_start)
-                        .collect(),
-                },
-            ];
-            let mut clamp = std::collections::BTreeSet::new();
-            for p in &pattern {
-                let (name, hex) = p.split_once('=').context("--pattern name=hex")?;
-                let sel = pattern_selection(name, code, hex)?;
-                if name == "free_pointer_clamp" {
-                    clamp = sel.pcs.clone();
-                }
-                selections.push(sel);
-            }
-            let mut spill = std::collections::BTreeSet::new();
-            for p in &pc_set {
-                let (name, path) = p.split_once('=').context("--pc-set name=path")?;
-                let value: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
-                let items = value
-                    .as_array()
-                    .or_else(|| value["entries"].as_array())
-                    .context("pc set: expected an array or an object with entries")?;
-                let pcs: std::collections::BTreeSet<u32> = items
-                    .iter()
-                    .filter_map(|e| e.as_u64().or_else(|| e["pc"].as_u64()))
-                    .map(|v| v as u32)
-                    .collect();
-                if name == "backend_spill" {
-                    spill = pcs.clone();
-                }
-                selections.push(Selection {
-                    name: name.to_string(),
-                    pcs,
-                });
-            }
-            if let Some(path) = census {
-                let value: serde_json::Value = serde_json::from_slice(&fs::read(&path)?)?;
-                let by_id: BTreeMap<String, (u32, u32)> = value["regions"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|r| {
-                        let r = &r["region"];
-                        Some((
-                            r["id"].as_str()?.to_string(),
-                            (r["start"].as_u64()? as u32, r["end"].as_u64()? as u32),
-                        ))
-                    })
-                    .collect();
-                let mut patterns: Vec<&serde_json::Value> = value["patterns"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|p| p["region_kind"] == "evm_run")
-                    .collect();
-                patterns.sort_by_key(|p| std::cmp::Reverse(p["covered_bytes"].as_u64()));
-                for p in patterns.into_iter().take(runs) {
-                    let ranges: Vec<(u32, u32)> = p["regions"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|id| by_id.get(id.as_str()?).copied())
-                        .collect();
-                    let digest = p["digest"].as_str().unwrap_or("");
-                    let name = format!(
-                        "run {} ({} copies x {} bytes)",
-                        &digest[..12.min(digest.len())],
-                        ranges.len(),
-                        ranges.first().map_or(0, |r| r.1 - r.0)
-                    );
-                    selections.push(range_selection(&name, code, &ranges));
-                }
-            }
-            let insts = riff_catalog_evm::decode::decode(code);
-            for prefix in &function_prefix {
-                for f in functions
-                    .iter()
-                    .filter(|f| f.name.starts_with(prefix.as_str()))
-                {
-                    selections.push(range_selection(
-                        &format!("function {}", f.name),
-                        code,
-                        &[(f.start, f.end)],
-                    ));
-                    let entry = f.start;
-                    let callers: std::collections::BTreeSet<u32> = insts
-                        .iter()
-                        .filter(|i| riff_catalog_evm::decode::push_value(code, i) == Some(entry))
-                        .map(|i| i.pc)
-                        .collect();
-                    selections.push(Selection {
-                        name: format!("call sites of {} (entry label pushes)", f.name),
-                        pcs: callers,
-                    });
-                }
-            }
+            let patterns = pattern
+                .iter()
+                .map(|p| named(p, "--pattern").map(|(n, h)| (n.to_string(), h.to_string())))
+                .collect::<Result<Vec<_>>>()?;
+            let pc_sets = pc_set
+                .iter()
+                .map(|p| {
+                    let (name, path) = named(p, "--pc-set")?;
+                    read_pc_set(name, &fs::read(path)?)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let census_runs = match census {
+                Some(path) => census_run_classes(&serde_json::from_slice(&fs::read(&path)?)?),
+                None => Vec::new(),
+            };
+            let request = StageRequest {
+                contract: &contract,
+                functions: &functions,
+                patterns: &patterns,
+                pc_sets: &pc_sets,
+                census_runs: &census_runs,
+                runs,
+                function_prefixes: &function_prefix,
+                top,
+            };
             let inputs = StageInputs {
                 graph: &graph,
                 rows: &rows,
                 code,
             };
             if let Some(dir) = &mechanisms_out {
+                let (_, clamp, spill) = inputs.selections(&request)?;
                 fs::create_dir_all(dir)?;
                 let mut index = BTreeMap::new();
                 for (k, (name, pcs)) in inputs
@@ -617,22 +540,7 @@ fn main() -> Result<()> {
                 }
                 fs::write(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
             }
-            let (chain_classes, chain_class_count, top_constructs) =
-                inputs.chain_classes(top.max(40))?;
-            let report = FeStagesReport {
-                schema: FE_STAGES_SCHEMA.into(),
-                contract: contract.clone(),
-                stage_graph_nodes: graph.len(),
-                selections: selections
-                    .iter()
-                    .map(|s| inputs.report(s, &clamp, &spill, top))
-                    .collect(),
-                expansion_by_body: inputs.expansion_by_body(),
-                chain_class_count,
-                chain_classes,
-                top_constructs,
-                category_by_function: inputs.category_by_function(&functions),
-            };
+            let report = inputs.stage_report(&request)?;
             if let Some(path) = json_out {
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
@@ -788,148 +696,22 @@ fn main() -> Result<()> {
                 )?),
                 _ => None,
             };
-            let insts = riff_catalog_evm::decode::decode(&code[..end]);
-            let mut causes = Vec::new();
-            let mut details = Vec::new();
-            for (is_detail, spec) in cause
+            let inputs = CauseInputs {
+                code: &code[..end],
+                functions: &functions,
+                rows: rows.as_deref(),
+            };
+            let read = |path: &str| -> Result<Vec<u8>> { Ok(fs::read(path)?) };
+            let causes = cause
                 .iter()
-                .map(|c| (false, c))
-                .chain(detail.iter().map(|d| (true, d)))
-            {
-                let (kind, rest) = spec.split_once(':').context("--cause kind:NAME=arg")?;
-                let (name, arg) = rest.split_once('=').context("--cause kind:NAME=arg")?;
-                let pcs: std::collections::BTreeSet<u32> = match kind {
-                    "pcs" => {
-                        let v: serde_json::Value = serde_json::from_slice(&fs::read(arg)?)?;
-                        v.as_array()
-                            .or_else(|| v["entries"].as_array())
-                            .context("pc set")?
-                            .iter()
-                            .filter_map(|e| e.as_u64().or_else(|| e["pc"].as_u64()))
-                            .map(|v| v as u32)
-                            .collect()
-                    }
-                    "pattern" => pattern_selection(name, &code[..end], arg)?.pcs,
-                    "repeats" => {
-                        let v: serde_json::Value = serde_json::from_slice(&fs::read(arg)?)?;
-                        let by_id: BTreeMap<String, (u32, u32)> = v["regions"]
-                            .as_array()
-                            .into_iter()
-                            .flatten()
-                            .filter_map(|r| {
-                                let r = &r["region"];
-                                Some((
-                                    r["id"].as_str()?.to_string(),
-                                    (r["start"].as_u64()? as u32, r["end"].as_u64()? as u32),
-                                ))
-                            })
-                            .collect();
-                        let mut ranges = Vec::new();
-                        for p in v["patterns"].as_array().into_iter().flatten() {
-                            if p["region_kind"] != "evm_run" {
-                                continue;
-                            }
-                            let mut occ: Vec<(u32, u32)> = p["regions"]
-                                .as_array()
-                                .into_iter()
-                                .flatten()
-                                .filter_map(|id| by_id.get(id.as_str()?).copied())
-                                .collect();
-                            occ.sort();
-                            ranges.extend(occ.into_iter().skip(1));
-                        }
-                        range_selection(name, &code[..end], &ranges).pcs
-                    }
-                    "duplicates" => {
-                        let (path, index) = arg.split_once('#').unwrap_or((arg, "0"));
-                        let census: Vec<FunctionFacetCensus> =
-                            serde_json::from_slice(&fs::read(path)?)?;
-                        let facet = census
-                            .get(index.parse::<usize>()?)
-                            .context("duplicates facet index")?;
-                        let mut ranges = Vec::new();
-                        for class in &facet.classes {
-                            let largest = class
-                                .functions
-                                .iter()
-                                .filter_map(|(n, b)| b.map(|b| (b, n.clone())))
-                                .max();
-                            for (n, b) in &class.functions {
-                                if b.is_some() && largest.as_ref().map(|l| &l.1) != Some(n) {
-                                    ranges.extend(
-                                        functions
-                                            .iter()
-                                            .filter(|f| &f.name == n)
-                                            .map(|f| (f.start, f.end)),
-                                    );
-                                }
-                            }
-                        }
-                        range_selection(name, &code[..end], &ranges).pcs
-                    }
-                    "regions" => {
-                        let needles: Vec<&str> = arg.split('|').collect();
-                        let ranges: Vec<(u32, u32)> = functions
-                            .iter()
-                            .filter(|f| needles.iter().any(|n| f.name.contains(n)))
-                            .map(|f| (f.start, f.end))
-                            .collect();
-                        range_selection(name, &code[..end], &ranges).pcs
-                    }
-                    "bodies" => {
-                        let rows = rows.as_ref().context("bodies: needs --attribution")?;
-                        let needles: Vec<&str> = arg.split('|').collect();
-                        let hit = |key: &str| {
-                            riff_catalog_ingest_trace::bytes::source_body(key)
-                                .is_some_and(|b| needles.iter().any(|n| b.contains(n)))
-                        };
-                        rows.iter()
-                            .filter(|r| match &r.primary_source {
-                                Some(p) => hit(p),
-                                None => {
-                                    r.classification_reason.as_deref() == Some("SyntheticFor")
-                                        && r.all_origins.iter().any(|o| hit(o))
-                                }
-                            })
-                            .map(|r| r.pc_start)
-                            .collect()
-                    }
-                    other => bail!("unknown cause kind `{other}`"),
-                };
-                let sel = Selection {
-                    name: name.to_string(),
-                    pcs,
-                };
-                if is_detail {
-                    details.push(sel);
-                } else {
-                    causes.push(sel);
-                }
-            }
-            let labels = riff_catalog_evm::runs::with_labels(&code[..end], &insts)
-                .into_iter()
-                .filter(|(_, l)| l.is_some())
-                .map(|(i, _)| i.pc)
-                .collect();
-            let memory_address = riff_catalog_evm::dataflow::lift_code(&code[..end])?
-                .into_iter()
-                .flat_map(|b| b.memory_offset_pushes)
-                .collect();
-            let ledger = classify_bytes(
-                &code,
-                end,
-                &causes,
-                &labels,
-                &memory_address,
-                &functions,
-                &details,
-            );
+                .map(|c| cause_selection(c, &inputs, &read))
+                .collect::<Result<Vec<_>>>()?;
+            let details = detail
+                .iter()
+                .map(|d| cause_selection(d, &inputs, &read))
+                .collect::<Result<Vec<_>>>()?;
+            let ledger = byte_cause_ledger(&code, end, &causes, &functions, &details)?;
             let total: u64 = ledger.buckets.values().map(|t| t.bytes).sum();
-            ensure!(
-                total == ledger.artifact_bytes,
-                "buckets cover {total} of {} bytes",
-                ledger.artifact_bytes
-            );
             fs::write(&json_out, serde_json::to_vec_pretty(&ledger)?)?;
             for name in &ledger.order {
                 if let Some(t) = ledger.buckets.get(name) {
