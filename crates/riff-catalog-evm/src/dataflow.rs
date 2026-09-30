@@ -133,43 +133,6 @@ struct Op {
     opcode: u8,
     args: Vec<Val>,
     kind: OpKind,
-    pc: u32,
-}
-
-/// The form of a memory operation's address operand in its block.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum AddressForm {
-    /// MSIZE: no address.
-    None,
-    /// The constant 0x40 (the free-memory pointer slot).
-    FreePointerSlot,
-    /// A constant below 0x80 other than 0x40 (scratch words).
-    Scratch,
-    /// Any other constant (a static memory address).
-    Constant,
-    /// The value loaded from 0x40.
-    FreePointer,
-    /// An ADD (a base plus an offset).
-    BasePlusOffset,
-    /// An entry stack item (computed in another block).
-    StackInput,
-    /// Anything else computed in the block.
-    Computed,
-}
-
-impl AddressForm {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::None => "none (msize)",
-            Self::FreePointerSlot => "constant 0x40 (free-pointer slot)",
-            Self::Scratch => "constant below 0x80 (scratch)",
-            Self::Constant => "other constant (static address)",
-            Self::FreePointer => "free-pointer value",
-            Self::BasePlusOffset => "base plus offset",
-            Self::StackInput => "value from another block",
-            Self::Computed => "other computed value",
-        }
-    }
 }
 
 /// Bytes of one block, by role.
@@ -199,9 +162,6 @@ pub struct Block {
     pub constants: usize,
     /// pcs of PUSH instructions whose value is classed as a memory offset.
     pub memory_offset_pushes: Vec<u32>,
-    /// Memory opcodes (MLOAD, MSTORE, MSTORE8, MCOPY; MSIZE has no address)
-    /// with the form of their address operand.
-    pub memory_ops: Vec<(u32, u8, AddressForm)>,
     pub graph: Graph,
 }
 
@@ -310,21 +270,11 @@ pub fn lift_block(
                     let next = ops.len();
                     let id = *pure_ids.entry((opcode, args.clone())).or_insert(next);
                     if id == next {
-                        ops.push(Op {
-                            opcode,
-                            args,
-                            kind,
-                            pc: inst.pc,
-                        });
+                        ops.push(Op { opcode, args, kind });
                     }
                     id
                 } else {
-                    ops.push(Op {
-                        opcode,
-                        args,
-                        kind,
-                        pc: inst.pc,
-                    });
+                    ops.push(Op { opcode, args, kind });
                     effects.push(ops.len() - 1);
                     ops.len() - 1
                 };
@@ -513,37 +463,6 @@ pub fn lift_block(
         .filter(|(_, c)| is_memory_offset(c))
         .map(|(pc, _)| *pc)
         .collect();
-    let memory_ops = ops
-        .iter()
-        .filter(|op| matches!(op.opcode, 0x51 | 0x52 | 0x53 | 0x59 | 0x5e))
-        .map(|op| {
-            let form = match op.args.first() {
-                None => AddressForm::None,
-                Some(Val::Const(c)) => {
-                    let v = c.iter().fold(0u128, |a, b| a.saturating_mul(256) + u128::from(*b));
-                    if c.len() > 16 {
-                        AddressForm::Constant
-                    } else if v == 0x40 {
-                        AddressForm::FreePointerSlot
-                    } else if v < 0x80 {
-                        AddressForm::Scratch
-                    } else {
-                        AddressForm::Constant
-                    }
-                }
-                Some(Val::Label(_)) => AddressForm::Constant,
-                Some(Val::Op(id)) if ops[*id].opcode == 0x51
-                    && matches!(ops[*id].args.first(), Some(Val::Const(c)) if c.as_slice() == [0x40]) =>
-                {
-                    AddressForm::FreePointer
-                }
-                Some(Val::Op(id)) if ops[*id].opcode == ADD => AddressForm::BasePlusOffset,
-                Some(Val::Input(_)) => AddressForm::StackInput,
-                Some(Val::Op(_)) => AddressForm::Computed,
-            };
-            (op.pc, op.opcode, form)
-        })
-        .collect();
     let last = insts.last().expect("blocks are non-empty");
     Ok(Block {
         start: insts[0].pc,
@@ -555,7 +474,6 @@ pub fn lift_block(
         memory_offset_constants,
         constants,
         memory_offset_pushes,
-        memory_ops,
         graph,
     })
 }
