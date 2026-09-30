@@ -68,6 +68,42 @@ pub const MEMORY_ADDRESS_OPERANDS: &[(u8, usize)] = &[
 
 const ADD: u8 = 0x01;
 
+/// `riffcat-view/1` plan over [`EVM_DATAFLOW_LEVEL`] that forgets which
+/// constants are memory or calldata offsets and keeps the rest. The run
+/// census's counterpart is [`crate::runs::MEMORY_OFFSETS_BLIND_RUN_VIEW`].
+pub const MEMORY_OFFSETS_BLIND_VIEW: &str = r#"
+language "riffcat-view/1"
+view "evm-dataflow.memory-offsets-blind/1"
+input "evm-dataflow/1"
+root node-kind "evm.block"
+traverse children
+retain structure, constants
+erase constants.memory_offset
+"#;
+
+/// `riffcat-view/1` plan over [`EVM_DATAFLOW_LEVEL`] that forgets the stack
+/// positions of a block's inputs and outputs.
+pub const PORT_ORDER_BLIND_VIEW: &str = r#"
+language "riffcat-view/1"
+view "evm-dataflow.port-order-blind/1"
+input "evm-dataflow/1"
+root node-kind "evm.block"
+traverse children
+retain structure, constants
+erase structure.slot
+"#;
+
+/// Both erasures of [`MEMORY_OFFSETS_BLIND_VIEW`] and [`PORT_ORDER_BLIND_VIEW`].
+pub const MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW: &str = r#"
+language "riffcat-view/1"
+view "evm-dataflow.memory-offsets-and-port-order-blind/1"
+input "evm-dataflow/1"
+root node-kind "evm.block"
+traverse children
+retain structure, constants
+erase constants.memory_offset, structure.slot
+"#;
+
 /// Stack effect and kind of one opcode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OpKind {
@@ -591,6 +627,34 @@ mod tests {
         assert_eq!(block.memory_offset_constants, 1);
         assert_eq!(block.constants, 2);
         assert_eq!(block.memory_offset_pushes, vec![3]);
+    }
+
+    #[test]
+    /// Plan ids are part of every view facet's policy: a change here changes
+    /// addresses and must come with a new view version.
+    fn view_plans_keep_their_ids() {
+        use riff_catalog_view::ViewPlan;
+        let id = |text: &str| ViewPlan::parse(text).unwrap().plan_id().to_hex();
+        for (text, expected) in [
+            (
+                MEMORY_OFFSETS_BLIND_VIEW,
+                "e9347a916a72de901706c8f558443947752ff3c0d333e739efb45b74c120ab84",
+            ),
+            (
+                PORT_ORDER_BLIND_VIEW,
+                "84c2526931e998ef8d3cf857826186a0f48dd98884bf9cb053daef47b6cfeacf",
+            ),
+            (
+                MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW,
+                "d5cc375f6899ac5def27241d99d09bf2a91e33347c70b5eae001436553536981",
+            ),
+            (
+                crate::runs::MEMORY_OFFSETS_BLIND_RUN_VIEW,
+                "45d0793a00821a9413c532476371d9f816cf576367e9d9baf28f6b44bb75c26e",
+            ),
+        ] {
+            assert_eq!(id(text), expected);
+        }
     }
 
     #[test]
