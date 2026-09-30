@@ -109,3 +109,69 @@ fn reports_without_the_expected_schema_are_refused() {
     ]);
     assert!(err.contains("son.json"), "{err}");
 }
+
+fn fixture(path: &str) -> String {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(path);
+    p.to_str().unwrap().to_string()
+}
+
+/// The Fe base fixture's regions manifest, written by fe-trace-bytes.
+fn base_regions(dir: &Path) -> String {
+    let manifest = dir.join("regions.json");
+    let artifact = dir.join("runtime-copy.bin");
+    ok(&[
+        "fe-trace-bytes",
+        "--trace",
+        &fixture("fe-base/trace.jsonl"),
+        "--attribution",
+        &fixture("fe-base/details.json"),
+        "--contract",
+        "C",
+        "--artifact",
+        &fixture("fe-base/runtime.bin"),
+        "--census-dir",
+        dir.to_str().unwrap(),
+    ]);
+    std::fs::rename(dir.join("runtime.bin"), &artifact).unwrap();
+    manifest.to_str().unwrap().to_string()
+}
+
+#[test]
+fn region_manifests_for_another_artifact_are_refused() {
+    let dir = scratch("regions");
+    let regions = base_regions(&dir);
+    // MSTORE8 where the fixture has MSTORE: same length, other bytes.
+    let other = dir.join("other.bin");
+    std::fs::write(&other, [0x60, 0x80, 0x53, 0x00]).unwrap();
+    let other = other.to_str().unwrap();
+    let out = dir.join("out.json");
+    let out = out.to_str().unwrap();
+    for args in [
+        vec!["evm-dataflow", other, "--out", out, "--regions", &regions],
+        vec![
+            "evm-byte-causes",
+            other,
+            "--regions",
+            &regions,
+            "--json-out",
+            out,
+        ],
+    ] {
+        let err = refused(&args);
+        assert!(
+            err.contains("regions.json") && err.contains("blake3"),
+            "{args:?}: {err}"
+        );
+    }
+    // The same manifest with its own artifact is accepted.
+    ok(&[
+        "evm-dataflow",
+        &fixture("fe-base/runtime.bin"),
+        "--out",
+        out,
+        "--regions",
+        &regions,
+    ]);
+}

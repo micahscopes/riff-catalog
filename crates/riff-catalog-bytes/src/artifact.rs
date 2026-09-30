@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
+use riff_catalog_bloat::{REGIONS_SCHEMA_V1, REGIONS_SCHEMA_V2, RegionManifest};
 use serde::de::DeserializeOwned;
 
 /// Read a file, naming it in the error.
@@ -13,6 +14,38 @@ pub fn read_file(path: &Path) -> Result<Vec<u8>> {
 /// Read a JSON file, naming it in the error.
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_slice(&read_file(path)?).with_context(|| format!("parse {}", path.display()))
+}
+
+/// Read an artifact file ([`decode_artifact`]), naming it in errors.
+pub fn load_artifact(path: &Path) -> Result<Vec<u8>> {
+    decode_artifact(&read_file(path)?).with_context(|| format!("decode {}", path.display()))
+}
+
+/// Read a region manifest and check that it describes `artifact`: a
+/// supported schema and the artifact's blake3.
+pub fn load_regions(path: &Path, artifact: &[u8]) -> Result<RegionManifest> {
+    let manifest = load_regions_unbound(path)?;
+    let actual = blake3::hash(artifact).to_hex().to_string();
+    ensure!(
+        manifest.artifact_blake3 == actual,
+        "{} is a region manifest for the artifact with blake3 {}, not for this one (blake3 {actual})",
+        path.display(),
+        manifest.artifact_blake3
+    );
+    Ok(manifest)
+}
+
+/// Read a region manifest when no artifact is at hand (only the schema is
+/// checked).
+pub fn load_regions_unbound(path: &Path) -> Result<RegionManifest> {
+    let manifest: RegionManifest = read_json(path)?;
+    ensure!(
+        manifest.schema == REGIONS_SCHEMA_V1 || manifest.schema == REGIONS_SCHEMA_V2,
+        "{} is `{}`, expected `{REGIONS_SCHEMA_V1}` or `{REGIONS_SCHEMA_V2}`",
+        path.display(),
+        manifest.schema
+    );
+    Ok(manifest)
 }
 
 /// Refuse a report whose `schema` is not the one this reader understands.

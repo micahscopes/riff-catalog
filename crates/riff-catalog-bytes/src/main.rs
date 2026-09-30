@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
-use riff_catalog_bloat::{EvmRunKey, EvmRunOptions, RegionManifest};
+use riff_catalog_bloat::{EvmRunKey, EvmRunOptions};
 use riff_catalog_bytes::*;
 
 #[derive(Parser)]
@@ -247,15 +247,12 @@ fn main() -> Result<()> {
             report_out,
             top,
         } => {
-            let bytes = decode_artifact(&fs::read(&artifact)?)?;
+            let bytes = load_artifact(&artifact)?;
             let end = code_end.unwrap_or(bytes.len()).min(bytes.len());
             let blocks = evm_dataflow_blocks(&bytes[..end])?;
             fs::write(&out, serde_json::to_vec(&blocks)?)?;
             let functions = match &regions {
-                Some(path) => {
-                    let manifest: RegionManifest = serde_json::from_slice(&fs::read(path)?)?;
-                    FunctionRegions::from_manifest(&manifest)
-                }
+                Some(path) => FunctionRegions::from_manifest(&load_regions(path, &bytes)?),
                 None => FunctionRegions::default(),
             };
             let no_source: Option<Vec<(u32, u32)>> = match (&attribution, &contract) {
@@ -299,7 +296,8 @@ fn main() -> Result<()> {
             json_out,
             top,
         } => {
-            let code = decode_artifact(&fs::read(&artifact)?)?;
+            let artifact_bytes = load_artifact(&artifact)?;
+            let code = artifact_bytes.clone();
             let rows = riff_catalog_ingest_trace::bytes::read_runtime_details(
                 &fs::read_to_string(&attribution)?,
                 &contract,
@@ -310,7 +308,7 @@ fn main() -> Result<()> {
                 fs::File::open(&trace).with_context(|| format!("open {}", trace.display()))?,
             );
             let graph = riff_catalog_ingest_trace::stages::StageGraph::read(reader)?;
-            let manifest: RegionManifest = serde_json::from_slice(&fs::read(&regions)?)?;
+            let manifest = load_regions(&regions, &artifact_bytes)?;
             let functions = FunctionRegions::from_manifest(&manifest);
             let patterns = pattern
                 .iter()
@@ -476,7 +474,7 @@ fn main() -> Result<()> {
             let source = fs::read_to_string(&ir)?;
             let mut bytes: BTreeMap<String, u64> = BTreeMap::new();
             if let Some(path) = regions {
-                let manifest: RegionManifest = serde_json::from_slice(&fs::read(path)?)?;
+                let manifest = load_regions_unbound(&path)?;
                 for r in manifest.regions.iter().filter(|r| r.kind == "function") {
                     *bytes.entry(r.name.clone()).or_default() += (r.end - r.start) as u64;
                 }
@@ -522,9 +520,9 @@ fn main() -> Result<()> {
             contract,
             json_out,
         } => {
-            let code = decode_artifact(&fs::read(&artifact)?)?;
+            let code = load_artifact(&artifact)?;
             let end = code_end.unwrap_or(code.len()).min(code.len());
-            let manifest: RegionManifest = serde_json::from_slice(&fs::read(&regions)?)?;
+            let manifest = load_regions(&regions, &code)?;
             let functions = FunctionRegions::from_manifest(&manifest);
             let rows = match (&attribution, &contract) {
                 (Some(p), Some(c)) => Some(riff_catalog_ingest_trace::bytes::read_runtime_details(
@@ -631,7 +629,7 @@ fn main() -> Result<()> {
             census_dir,
             top,
         } => {
-            let bytes = decode_artifact(&fs::read(&artifact)?)?;
+            let bytes = load_artifact(&artifact)?;
             let details = fs::read_to_string(&attribution)
                 .with_context(|| format!("read {}", attribution.display()))?;
             let reader = std::io::BufReader::new(
