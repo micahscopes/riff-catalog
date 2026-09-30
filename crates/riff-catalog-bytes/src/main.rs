@@ -151,7 +151,8 @@ enum Command {
         /// JSON list of pairs: {label, fe: [bodies], solc: {build: [names]}, confidence}.
         #[arg(long)]
         pairs: PathBuf,
-        /// Fe artifact bytes, for the residual row.
+        /// Fe artifact bytes, for the residual row; must match the stage
+        /// report's artifact.
         #[arg(long)]
         fe_total: Option<u64>,
         #[arg(long)]
@@ -422,6 +423,7 @@ fn main() -> Result<()> {
                 census_runs: &census_runs,
                 runs,
                 function_prefixes: &function_prefix,
+                artifact: &artifact_bytes,
                 top,
             };
             let inputs = StageInputs {
@@ -512,7 +514,7 @@ fn main() -> Result<()> {
             let pairs: Vec<FunctionPair> = read_json(&pairs)?;
             let mut rows = compare_functions(&fe, &tables, &pairs)?;
             if let Some(total) = fe_total {
-                let residual = residual_row(&rows, total, &tables);
+                let residual = residual_row(&rows, &fe, total, &tables)?;
                 rows.push(residual);
             }
             if let Some(path) = json_out {

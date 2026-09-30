@@ -125,14 +125,21 @@ pub fn compare_functions(
 /// artifact: Fe bytes outside the paired bodies, and each solc build's bytes
 /// outside its paired functions. Several Fe bodies or solc functions can be
 /// claimed by two pairs; those count once per pair, so the residual can be
-/// negative when pairs overlap.
+/// negative when pairs overlap. `fe_total` must be the artifact size the
+/// stage report records.
 pub fn residual_row(
     rows: &[FunctionComparison],
+    fe: &FeStagesReport,
     fe_total: u64,
     solc: &BTreeMap<String, SolcFunctions>,
-) -> FunctionComparison {
+) -> Result<FunctionComparison> {
+    anyhow::ensure!(
+        fe_total == fe.artifact_bytes,
+        "the Fe total is {fe_total} bytes, but the stage report's artifact is {} bytes",
+        fe.artifact_bytes
+    );
     let fe_paired: i64 = rows.iter().map(|r| r.fe_bytes).sum();
-    FunctionComparison {
+    Ok(FunctionComparison {
         label: "(everything outside the pairs: unpaired functions, dispatch, no-source and generated code, data)".into(),
         confidence: "-".into(),
         fe_bytes: fe_total as i64 - fe_paired,
@@ -147,7 +154,7 @@ pub fn residual_row(
             })
             .collect(),
         fe_top_category: None,
-    }
+    })
 }
 
 pub fn render_function_comparison(rows: &[FunctionComparison], builds: &[String]) -> String {
@@ -210,6 +217,8 @@ mod tests {
             schema: crate::fe_stages::FE_STAGES_SCHEMA.into(),
             contract: "C".into(),
             code_blake3: String::new(),
+            artifact_bytes: 100,
+            artifact_blake3: String::new(),
             stage_graph_nodes: 0,
             selections: Vec::new(),
             expansion_by_body: bodies
@@ -270,7 +279,8 @@ mod tests {
             {"label": "p2", "fe": ["a"], "solc": {"s": ["C.f"]}, "confidence": "high"}
         ]));
         let rows = compare_functions(&fe, &solc, &pairs).unwrap();
-        let residual = residual_row(&rows, 100, &solc);
+        let residual = residual_row(&rows, &fe, 100, &solc).unwrap();
+        assert!(residual_row(&rows, &fe, 99, &solc).is_err());
         let fe_sum: i64 = rows.iter().map(|r| r.fe_bytes).sum::<i64>() + residual.fe_bytes;
         let solc_sum: i64 =
             rows.iter().map(|r| r.solc_bytes["s"]).sum::<i64>() + residual.solc_bytes["s"];
