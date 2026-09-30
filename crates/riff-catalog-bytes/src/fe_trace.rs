@@ -65,7 +65,7 @@ pub struct BodyInfo {
 
 /// Readable name for a HIR body id such as
 /// `func$Core$core$lib$abi$fn$store_word$` or
-/// `contract_recv$Local$seaport$seaport$contract$Seaport$0$3`. Display only:
+/// `contract_recv$Local$app$app$contract$Vault$0$3`. Display only:
 /// the raw id stays the key everywhere.
 pub fn body_name(body: &str) -> String {
     let parts: Vec<&str> = body.split('$').collect();
