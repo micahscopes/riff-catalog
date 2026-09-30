@@ -808,3 +808,42 @@ fn the_mechanism_index_names_its_schema_and_code() {
         assert!(!pcs.is_empty());
     }
 }
+
+#[test]
+fn the_fe_total_must_be_the_stage_reports_artifact() {
+    let dir = scratch("fe-total");
+    let regions = base_regions(&dir);
+    let stages = dir.join("stages.json");
+    let mut args = base_args("fe-trace-stages", &fixture("fe-base/runtime.bin"));
+    args.extend([
+        "--regions".to_string(),
+        regions,
+        "--json-out".into(),
+        stages.to_str().unwrap().into(),
+    ]);
+    ok(&strs(&args));
+    let (_, _, report) = solc_build(&dir);
+    let pairs = write(
+        &dir,
+        "pairs.json",
+        r#"[{"label":"a","fe":["body_a"],"solc":{"s":["B.g"]},"confidence":"high"}]"#,
+    );
+    let run = |total: &str| {
+        vec![
+            "compare-functions".to_string(),
+            "--fe-stages".into(),
+            stages.to_str().unwrap().into(),
+            "--solc".into(),
+            format!("s={report}"),
+            "--pairs".into(),
+            pairs.clone(),
+            "--fe-total".into(),
+            total.to_string(),
+        ]
+    };
+    for wrong in ["3", "999"] {
+        let err = refused(&strs(&run(wrong)));
+        assert!(err.contains("4"), "{wrong}: {err}");
+    }
+    ok(&strs(&run("4")));
+}

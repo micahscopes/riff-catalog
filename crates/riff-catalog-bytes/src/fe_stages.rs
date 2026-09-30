@@ -175,6 +175,8 @@ pub struct StageRequest<'a> {
     pub spill_pcs: Option<&'a Selection>,
     /// Library labels and the names that mark them, for the memory buckets.
     pub libraries: &'a [(String, Vec<String>)],
+    /// The whole artifact (the stages trace its code, which may be shorter).
+    pub artifact: &'a [u8],
     pub top: usize,
 }
 
@@ -281,6 +283,8 @@ impl StageInputs<'_> {
             schema: FE_STAGES_SCHEMA.into(),
             contract: request.contract.to_string(),
             code_blake3: blake3::hash(self.code).to_hex().to_string(),
+            artifact_bytes: request.artifact.len() as u64,
+            artifact_blake3: blake3::hash(request.artifact).to_hex().to_string(),
             stage_graph_nodes: self.graph.len(),
             selections: selections
                 .iter()
@@ -826,6 +830,10 @@ pub struct FeStagesReport {
     /// blake3 of the code the stages were traced on (the artifact up to the
     /// end of the trace's instructions).
     pub code_blake3: String,
+    /// The whole artifact: its length (with any data after the code) and
+    /// blake3.
+    pub artifact_bytes: u64,
+    pub artifact_blake3: String,
     pub stage_graph_nodes: usize,
     pub selections: Vec<StageReport>,
     pub expansion_by_body: Vec<BodyExpansion>,
