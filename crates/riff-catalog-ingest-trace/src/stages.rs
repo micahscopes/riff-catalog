@@ -94,9 +94,9 @@ impl Stage {
 pub struct OriginLink {
     pub target: u32,
     /// Index into [`StageGraph::labels`].
-    pub label: u8,
+    pub label: u32,
     /// Index into [`StageGraph::phases`]; `None` when the edge names no phase.
-    pub phase: Option<u8>,
+    pub phase: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -116,6 +116,8 @@ pub struct StageGraph {
     into: Vec<Vec<u32>>,
     pub labels: Vec<String>,
     pub phases: Vec<String>,
+    label_index: HashMap<String, u32>,
+    phase_index: HashMap<String, u32>,
     mnemonic: HashMap<u32, String>,
     immediate: HashMap<u32, String>,
     extent: HashMap<u32, (u32, u32)>,
@@ -144,16 +146,15 @@ const STAGE_FACTS: [&str; 10] = [
     "attribution_gap",
 ];
 
-fn intern_small(table: &mut Vec<String>, value: &str) -> u8 {
-    if let Some(i) = table.iter().position(|v| v == value) {
-        return i as u8;
+/// Index of `value` in `table`, adding it when new.
+fn intern(table: &mut Vec<String>, index: &mut HashMap<String, u32>, value: &str) -> u32 {
+    if let Some(&i) = index.get(value) {
+        return i;
     }
+    let i = table.len() as u32;
     table.push(value.to_string());
-    assert!(
-        table.len() < 256,
-        "too many distinct origin labels or phases"
-    );
-    (table.len() - 1) as u8
+    index.insert(value.to_string(), i);
+    i
 }
 
 impl StageGraph {
@@ -201,11 +202,11 @@ impl StageGraph {
                         let from = g.id(wire(&v, "from", line)?);
                         let to = g.id(wire(&v, "to", line)?);
                         let label = v.get("label").and_then(|l| l.as_str()).unwrap_or("");
-                        let label = intern_small(&mut g.labels, label);
+                        let label = intern(&mut g.labels, &mut g.label_index, label);
                         let phase = v
                             .get("introduced_by")
                             .and_then(|p| p.as_str())
-                            .map(|p| intern_small(&mut g.phases, p));
+                            .map(|p| intern(&mut g.phases, &mut g.phase_index, p));
                         g.out[from as usize].push(OriginLink {
                             target: to,
                             label,
@@ -608,6 +609,22 @@ mod tests {
             StageGraph::read(body.as_bytes()).is_err(),
             "no metadata accepted"
         );
+    }
+
+    #[test]
+    fn more_than_255_distinct_edge_labels_and_phases_are_read() {
+        let mut text = bundle();
+        for i in 0..300 {
+            text.push_str(&format!(
+                "\n{}",
+                serde_json::json!({"record": "fact", "type": "origin_edge",
+                    "from": key("bytecode.pc", "pc:0"), "to": key("hir.expr", &format!("x{i}")),
+                    "label": format!("label{i}"), "introduced_by": format!("phase{i}")})
+            ));
+        }
+        let read = std::panic::catch_unwind(|| StageGraph::read(text.as_bytes()).unwrap());
+        let g = read.expect("reading 300 edge labels panicked");
+        assert!(g.labels.len() > 300 && g.phases.len() > 300);
     }
 
     #[test]
