@@ -23,7 +23,7 @@ fn general_capture() -> Capture {
 
 fn scratch(name: &str) -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    PathBuf::from("/workspace/scratch").join(format!(
+    PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
         "riffcat-bloat-test-{}-{}-{}-{name}",
         std::process::id(),
         SystemTime::now()
