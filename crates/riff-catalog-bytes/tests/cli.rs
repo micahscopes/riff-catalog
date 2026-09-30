@@ -86,7 +86,7 @@ fn reports_without_the_expected_schema_are_refused() {
     ]);
     assert!(err.contains("blocks.json"), "{err}");
     // A sonatina-functions census in the old bare-array form.
-    let code = write(&dir, "code.bin", "600000");
+    let code = write(&dir, "code.bin", "600000\n");
     let regions = write(
         &dir,
         "regions.json",
