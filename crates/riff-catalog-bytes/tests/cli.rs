@@ -61,7 +61,7 @@ fn reports_without_the_expected_schema_are_refused() {
     let causes = write(
         &dir,
         "causes.json",
-        r#"{"schema":"riffcat-evm-byte-causes/99","artifact_bytes":1,"code_end":1,"order":[],"buckets":{"x":{"bytes":1,"instructions":1}},"by_region":[]}"#,
+        r#"{"schema":"riffcat-evm-byte-causes/99","artifact_blake3":"x","artifact_bytes":1,"code_end":1,"order":[],"buckets":{"x":{"bytes":1,"instructions":1}},"by_region":[]}"#,
     );
     let err = refused(&[
         "evm-byte-causes-compare",
@@ -525,4 +525,43 @@ fn causes_must_name_instructions_once() {
     ]);
     let err = refused(&strs(&args));
     assert!(err.contains("bad.json"), "{err}");
+}
+
+#[test]
+fn byte_cause_comparisons_recheck_each_ledger_and_print_no_nan() {
+    let dir = scratch("compare-causes");
+    let regions = base_regions(&dir);
+    let ledger = dir.join("ledger.json");
+    ok(&[
+        "evm-byte-causes",
+        &fixture("fe-base/runtime.bin"),
+        "--regions",
+        &regions,
+        "--json-out",
+        ledger.to_str().unwrap(),
+    ]);
+    let ledger = ledger.to_str().unwrap();
+    // Equal sizes: every share is undefined, not NaN.
+    let out = ok(&[
+        "evm-byte-causes-compare",
+        "--left",
+        ledger,
+        "--right",
+        ledger,
+    ]);
+    assert!(!out.contains("NaN"), "{out}");
+    // A ledger whose buckets no longer cover its artifact, on both sides
+    // alike so the excesses still add up.
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(ledger).unwrap()).unwrap();
+    value["artifact_bytes"] = serde_json::json!(40);
+    let tampered = write(&dir, "tampered.json", &value.to_string());
+    let err = refused(&[
+        "evm-byte-causes-compare",
+        "--left",
+        &tampered,
+        "--right",
+        &tampered,
+    ]);
+    assert!(err.contains("tampered.json") && err.contains("36"), "{err}");
 }

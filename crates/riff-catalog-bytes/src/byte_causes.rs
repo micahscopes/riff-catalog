@@ -23,13 +23,15 @@ use crate::selection::{
 };
 use crate::sonatina_functions::{SONATINA_FUNCTIONS_SCHEMA, SonatinaFunctions};
 
-pub const BYTE_CAUSES_SCHEMA: &str = "riffcat-evm-byte-causes/1";
+pub const BYTE_CAUSES_SCHEMA: &str = "riffcat-evm-byte-causes/2";
 pub const BYTE_CAUSES_COMPARE_SCHEMA: &str = "riffcat-evm-byte-causes-compare/1";
 
 /// The `evm-byte-causes-compare` report.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CauseComparison {
     pub schema: String,
+    pub left_artifact_blake3: String,
+    pub right_artifact_blake3: String,
     pub rows: Vec<CauseDelta>,
 }
 
@@ -45,6 +47,7 @@ pub const ROLE_DATA: &str = "data after the code (metadata, constants)";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ByteCauses {
     pub schema: String,
+    pub artifact_blake3: String,
     pub artifact_bytes: u64,
     pub code_end: u64,
     /// Named causes in priority order, then role buckets.
@@ -175,6 +178,7 @@ pub fn classify_bytes(
     by_region.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     Ok(ByteCauses {
         schema: BYTE_CAUSES_SCHEMA.into(),
+        artifact_blake3: blake3::hash(code).to_hex().to_string(),
         artifact_bytes: code.len() as u64,
         code_end: code_end as u64,
         order,
@@ -338,6 +342,42 @@ pub fn byte_cause_ledger(
         ledger.artifact_bytes
     );
     Ok(ledger)
+}
+
+impl ByteCauses {
+    /// Refuse a ledger that does not put every byte of its artifact in
+    /// exactly one bucket: buckets must add up to the artifact, the data
+    /// bucket must be the bytes after the code end, and every bucket must
+    /// be listed once in `order`.
+    pub fn check(&self) -> Result<()> {
+        let total: u64 = self.buckets.values().map(|t| t.bytes).sum();
+        ensure!(
+            total == self.artifact_bytes,
+            "its buckets add up to {total} bytes, but its artifact is {} bytes ({:+} bytes)",
+            self.artifact_bytes,
+            total as i64 - self.artifact_bytes as i64
+        );
+        ensure!(
+            self.code_end <= self.artifact_bytes,
+            "its code end {} is past its {}-byte artifact",
+            self.code_end,
+            self.artifact_bytes
+        );
+        let data = self.buckets.get(ROLE_DATA).map_or(0, |t| t.bytes);
+        ensure!(
+            data == self.artifact_bytes - self.code_end,
+            "its data bucket holds {data} bytes, but {} bytes follow its code end",
+            self.artifact_bytes - self.code_end
+        );
+        let mut listed = BTreeSet::new();
+        for name in &self.order {
+            ensure!(listed.insert(name), "it lists bucket `{name}` twice");
+        }
+        if let Some(name) = self.buckets.keys().find(|b| !listed.contains(b)) {
+            bail!("its bucket `{name}` is not listed in its order");
+        }
+        Ok(())
+    }
 }
 
 /// One row of a comparison: a bucket's bytes on both sides.

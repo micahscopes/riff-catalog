@@ -587,34 +587,50 @@ fn main() -> Result<()> {
             right,
             json_out,
         } => {
-            let l: ByteCauses = read_json(&left)?;
-            check_schema(&l.schema, BYTE_CAUSES_SCHEMA, &left)?;
-            let r: ByteCauses = read_json(&right)?;
-            check_schema(&r.schema, BYTE_CAUSES_SCHEMA, &right)?;
+            let read = |path: &std::path::Path| -> Result<ByteCauses> {
+                let ledger: ByteCauses = read_json(path)?;
+                check_schema(&ledger.schema, BYTE_CAUSES_SCHEMA, path)?;
+                ledger
+                    .check()
+                    .with_context(|| format!("{} is not a whole ledger", path.display()))?;
+                Ok(ledger)
+            };
+            let (l, r) = (read(&left)?, read(&right)?);
             let rows = compare_causes(&l, &r);
             let excess = l.artifact_bytes as i64 - r.artifact_bytes as i64;
+            let sum: i64 = rows.iter().map(|x| x.excess).sum();
             ensure!(
-                rows.iter().map(|x| x.excess).sum::<i64>() == excess,
-                "excess does not add up"
+                sum == excess,
+                "bucket excesses add up to {sum} bytes, but the artifacts differ by {excess}"
             );
             if let Some(path) = json_out {
                 let report = CauseComparison {
                     schema: BYTE_CAUSES_COMPARE_SCHEMA.into(),
+                    left_artifact_blake3: l.artifact_blake3.clone(),
+                    right_artifact_blake3: r.artifact_blake3.clone(),
                     rows: rows.clone(),
                 };
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
+            // A share of no excess is undefined, not NaN.
+            let share = |part: f64| {
+                if excess == 0 {
+                    "     -".to_string()
+                } else {
+                    format!("{:>5.1}%", 100.0 * part / excess as f64)
+                }
+            };
             println!(
                 "{:>7} {:>7} {:>7} {:>6}  bucket",
                 "left", "right", "excess", "share"
             );
             for x in &rows {
                 println!(
-                    "{:>7} {:>7} {:>7} {:>5.1}%  {}",
+                    "{:>7} {:>7} {:>7} {}  {}",
                     x.left,
                     x.right,
                     x.excess,
-                    100.0 * x.excess as f64 / excess as f64,
+                    share(x.excess as f64),
                     x.bucket
                 );
             }
@@ -626,7 +642,7 @@ fn main() -> Result<()> {
                 println!("\nestimate: role excess apportioned by the left side's mechanism shares");
                 let est = apportion_excess(&l, &rows);
                 for (name, v) in &est {
-                    println!("{v:>9.0} {:>5.1}%  {name}", 100.0 * v / excess as f64);
+                    println!("{v:>9.0} {}  {name}", share(*v));
                 }
                 println!(
                     "{:>9.0}         total",
