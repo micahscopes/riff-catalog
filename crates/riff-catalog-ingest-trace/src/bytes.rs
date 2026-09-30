@@ -174,8 +174,33 @@ impl DetailsRow {
     }
 }
 
+/// Rows of one code object must describe instructions: each covers at least
+/// one byte, and no two start at the same pc or overlap. Sorts by pc.
+fn check_rows<T>(rows: &mut [T], extent: impl Fn(&T) -> (u32, u32)) -> Result<(), LedgerError> {
+    for r in rows.iter() {
+        let (start, end) = extent(r);
+        if end <= start {
+            return Err(LedgerError::Details(format!(
+                "row {start}..{end} does not cover any byte"
+            )));
+        }
+    }
+    rows.sort_by_key(|r| extent(r).0);
+    for pair in rows.windows(2) {
+        let (a, b) = (extent(&pair[0]), extent(&pair[1]));
+        if b.0 < a.1 {
+            return Err(LedgerError::Details(format!(
+                "rows {}..{} and {}..{} overlap",
+                a.0, a.1, b.0, b.1
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Read Fe's attribution details and keep the rows of `contract`'s runtime
 /// code object (its key ends in `runtime` and names `:contract:<contract>:`).
+/// Exactly one code object may match.
 pub fn read_runtime_details(
     attribution_details_json: &str,
     contract: &str,
@@ -198,7 +223,22 @@ pub fn read_runtime_details(
                 .is_some_and(|c| c.ends_with("runtime") && c.contains(&marker))
         })
         .collect();
-    rows.sort_by_key(|r| r.pc_start);
+    let objects: BTreeSet<&str> = rows
+        .iter()
+        .filter_map(|r| r.code_object.as_deref())
+        .collect();
+    if objects.len() != 1 {
+        return Err(LedgerError::Details(format!(
+            "expected rows from one runtime code object for contract `{contract}`, found {} runtime code objects: {}",
+            objects.len(),
+            objects
+                .iter()
+                .map(|o| o.replace(SEP, " "))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+    check_rows(&mut rows, |r| (r.pc_start, r.pc_end))?;
     Ok(rows)
 }
 
@@ -527,15 +567,7 @@ impl ByteLedger {
                 all_origins: row.all_origins,
             });
         }
-        instructions.sort_by_key(|i| i.pc_start);
-        for pair in instructions.windows(2) {
-            if pair[1].pc_start < pair[0].pc_end {
-                return Err(LedgerError::Inconsistent(format!(
-                    "instruction extents overlap at pc {}",
-                    pair[1].pc_start
-                )));
-            }
-        }
+        check_rows(&mut instructions, |i| (i.pc_start, i.pc_end))?;
         let code_len = instructions.last().map_or(0, |i| i.pc_end);
 
         let source_spans: BTreeMap<String, LedgerSpan> = referenced
@@ -1091,6 +1123,47 @@ mod tests {
             l.instructions[1].emitted_function.as_deref(),
             Some("helper")
         );
+    }
+
+    fn read_details(details: &str) -> Result<ByteLedger, LedgerError> {
+        ByteLedger::read(
+            trace().as_bytes(),
+            details,
+            &LedgerSelector {
+                contract: "C".into(),
+            },
+        )
+    }
+
+    #[test]
+    fn empty_reversed_and_overlapping_rows_are_refused() {
+        let good = details();
+        read_details(&good).unwrap();
+        read_runtime_details(&good, "C").unwrap();
+        for (from, to) in [
+            (r#""pc_start":2,"pc_end":3"#, r#""pc_start":2,"pc_end":2"#),
+            (r#""pc_start":3,"pc_end":4"#, r#""pc_start":4,"pc_end":3"#),
+            (r#""pc_start":2,"pc_end":3"#, r#""pc_start":1,"pc_end":3"#),
+            (r#""pc_start":3,"pc_end":4"#, r#""pc_start":2,"pc_end":4"#),
+        ] {
+            let bad = good.replace(from, to);
+            assert_ne!(bad, good);
+            assert!(read_runtime_details(&bad, "C").is_err(), "{to} accepted");
+            let ledger = std::panic::catch_unwind(|| read_details(&bad).is_err());
+            assert_eq!(ledger.ok(), Some(true), "{to}: ledger accepted or panicked");
+        }
+    }
+
+    #[test]
+    fn details_rows_must_come_from_one_code_object() {
+        let two = details().replacen(
+            "package:demo:contract:C:section:runtime\\u001fruntime\",\"pc_start\":3",
+            "package:other:contract:C:section:runtime\\u001fruntime\",\"pc_start\":3",
+            1,
+        );
+        assert_ne!(two, details());
+        let err = read_runtime_details(&two, "C").unwrap_err().to_string();
+        assert!(err.contains("2 runtime code objects"), "{err}");
     }
 
     #[test]
