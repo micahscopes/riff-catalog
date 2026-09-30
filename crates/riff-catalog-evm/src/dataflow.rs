@@ -24,8 +24,11 @@
 //!   bytes have leading zeros removed, so `PUSH1 0x20` and `PUSH2 0x0020`
 //!   are the same constant.
 //! - `evm.label` node per distinct code label (a PUSH1..PUSH4 whose value is a
-//!   JUMPDEST pc, the same heuristic as [`crate::runs`]). Structure `port`,
-//!   numbered by first use; the target itself is not a field.
+//!   JUMPDEST pc, the heuristic of [`crate::decode`]). Structure `port`,
+//!   numbered by first use; Constants `target`, the pushed value. Facets
+//!   that keep Constants therefore tell a label from a constant that only
+//!   looks like one; the constants-blind facet matches blocks that jump to
+//!   different places.
 //!
 //! Pure operations and constants are hash-consed inside a block: the same
 //! pure operation on the same operands is one node, whether the code
@@ -465,6 +468,7 @@ pub fn lift_block(
                     let next = label_ports.len() as u64;
                     let port = *label_ports.entry(*target).or_insert(next);
                     graph.add_field(&key, Dimension::Structure, "port", port)?;
+                    graph.add_field(&key, Dimension::Constants, "target", u64::from(*target))?;
                 }
                 Val::Op(id) => {
                     let op = &ops[*id];
@@ -622,6 +626,26 @@ mod tests {
         let a = [PUSH1, 1, DUP2, 0x01, PUSH1, 2, 0x82, 0x01, 0x91, POP, 0x56];
         let b = [PUSH1, 2, DUP2, 0x01, PUSH1, 1, 0x82, 0x01, 0x91, POP, 0x56];
         assert_ne!(exact(&a), exact(&b));
+    }
+
+    /// A PUSH whose value happens to be a JUMPDEST pc is read as a label;
+    /// the exact facet must still see which value it is.
+    #[test]
+    fn labels_keep_their_target_at_the_exact_facet() {
+        let mut code = vec![0u8; 0x70];
+        code[..7].copy_from_slice(&[PUSH1, 0x40, MLOAD, PUSH1, 0, MSTORE, STOP]);
+        code[0x10..0x17].copy_from_slice(&[PUSH1, 0x60, MLOAD, PUSH1, 0, MSTORE, STOP]);
+        code[0x40] = 0x5b;
+        code[0x60] = 0x5b;
+        let blocks = lift_code(&code).unwrap();
+        let policy = dataflow_policy(EVM_DATAFLOW_LEVEL).unwrap();
+        let at = |start: u32, dims: &[Dimension]| {
+            let b = blocks.iter().find(|b| b.start == start).unwrap();
+            address(&b.graph, &policy, dims).unwrap()
+        };
+        let exact = [Dimension::Structure, Dimension::Constants];
+        assert_ne!(at(0, &exact), at(0x10, &exact));
+        assert_eq!(at(0, &[Dimension::Structure]), at(0x10, &[Dimension::Structure]));
     }
 
     #[test]
