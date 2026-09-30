@@ -186,7 +186,7 @@ impl RunKeyer {
     /// The facet address of one run.
     pub fn address(&self, code: &[u8], run: &[(Instruction, Option<u32>)]) -> Digest {
         let offsets = self.view.as_ref().map(|_| &self.offsets);
-        let graph = run_graph_classified(code, run, offsets);
+        let graph = run_graph(code, run, offsets);
         let graph = match &self.view {
             Some(view) => view.materialize(&graph).expect("run graphs are valid"),
             None => graph,
@@ -208,21 +208,9 @@ impl RunKeyer {
 
 /// The hash policy of [`RUN_LEVEL`] graphs: anonymous shape (pcs and node keys
 /// never enter a digest), acyclic (a run graph is a sequence).
-pub fn run_hash_policy() -> HashPolicy {
+fn run_hash_policy() -> HashPolicy {
     HashPolicy::new(RUN_LEVEL, ViewMode::AnonymousShape, CyclePolicy::Reject)
         .expect("static run policy is valid")
-}
-
-/// The core facet a run census compares on: Structure plus Constants
-/// (exact), or Structure only (constants blind).
-pub fn run_facet(constants_blind: bool) -> Facet {
-    let policy_id = run_hash_policy().policy_id();
-    if constants_blind {
-        Facet::structure_only(policy_id)
-    } else {
-        Facet::new(policy_id, [Dimension::Structure, Dimension::Constants])
-            .expect("non-empty dimensions")
-    }
 }
 
 /// Default cap on label-token visits while partitioning candidates.
@@ -564,15 +552,12 @@ fn occurrence_key(stream: &Stream, position: usize, len: usize, visits: &mut u64
 ///
 /// Structure plus Constants is the exact run key; Structure alone forgets the
 /// values but keeps which constants are equal.
-pub fn run_graph(code: &[u8], run: &[(Instruction, Option<u32>)]) -> Graph {
-    run_graph_classified(code, run, None)
-}
-
-/// [`run_graph`], except that a PUSH whose pc is in `memory_offsets` carries
-/// its immediate as the Constants field class `memory_offset` instead of
-/// `immediate`. Only the memory-offsets-blind key lowers this way, so the
-/// exact and constants-blind keys never depend on the classification.
-pub fn run_graph_classified(
+///
+/// With `memory_offsets`, a PUSH whose pc is in the set carries its immediate
+/// as the Constants field class `memory_offset` instead of `immediate`. Only
+/// the memory-offsets-blind key lowers this way, so the exact and
+/// constants-blind keys never depend on the classification.
+pub fn run_graph(
     code: &[u8],
     run: &[(Instruction, Option<u32>)],
     memory_offsets: Option<&HashSet<u32>>,
@@ -639,22 +624,6 @@ pub fn with_labels(code: &[u8], insts: &[Instruction]) -> Vec<(Instruction, Opti
         .copied()
         .zip(jump_labels(code, insts))
         .collect()
-}
-
-/// The address of a run graph at `facet`: equal addresses are one class.
-pub fn run_address(graph: &Graph, facet: &Facet) -> riff_catalog_core::Digest {
-    let request = DigestRequest::new(
-        graph.graph_key.clone(),
-        run_hash_policy(),
-        facet.dimensions.iter().copied(),
-    )
-    .expect("facet has dimensions");
-    digest_graph(&request, graph)
-        .expect("run graphs are acyclic trees")
-        .hashes
-        .facet_address(facet)
-        .expect("facet matches the run policy")
-        .address_digest()
 }
 
 fn stream_run(stream: &Stream, position: usize, len: usize) -> Vec<(Instruction, Option<u32>)> {
@@ -1286,16 +1255,15 @@ mod tests {
         };
         let a = [PUSH1, 1, DUP1, ADD];
         let b = [PUSH1, 2, DUP1, ADD];
-        let ga = run_graph(&a, &run(&a));
-        let gb = run_graph(&b, &run(&b));
-        assert_ne!(
-            run_address(&ga, &run_facet(false)),
-            run_address(&gb, &run_facet(false))
-        );
+        let address = |code: &[u8], key| RunKeyer::new(code, key).address(code, &run(code));
+        assert_ne!(address(&a, RunKey::Exact), address(&b, RunKey::Exact));
         assert_eq!(
-            run_address(&ga, &run_facet(true)),
-            run_address(&gb, &run_facet(true))
+            address(&a, RunKey::ConstantsBlind),
+            address(&b, RunKey::ConstantsBlind)
         );
-        assert_ne!(run_facet(false).facet_id(), run_facet(true).facet_id());
+        assert_ne!(
+            RunKeyer::new(&a, RunKey::Exact).facet().facet_id(),
+            RunKeyer::new(&a, RunKey::ConstantsBlind).facet().facet_id()
+        );
     }
 }

@@ -8,9 +8,7 @@
 use anyhow::{Context, Result};
 use riff_catalog_core::{Dimension, Graph};
 use riff_catalog_evm::dataflow::{EVM_DATAFLOW_LEVEL, address, dataflow_policy, lift_code};
-use riff_catalog_evm::runs::{
-    RunKey, RunKeyer, decode, run_address, run_facet, run_graph, with_labels,
-};
+use riff_catalog_evm::runs::{RunKey, RunKeyer, decode, with_labels};
 use riff_catalog_view::ViewPlan;
 use serde::{Deserialize, Serialize};
 
@@ -96,19 +94,19 @@ pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
     let labeled = with_labels(code, &insts);
     let by_pc: std::collections::HashMap<u32, usize> =
         insts.iter().enumerate().map(|(i, x)| (x.pc, i)).collect();
-    let (exact_run, blind_run) = (run_facet(false), run_facet(true));
+    let exact_run = RunKeyer::new(code, RunKey::Exact);
+    let blind_run = RunKeyer::new(code, RunKey::ConstantsBlind);
     let offsets_run = RunKeyer::new(code, RunKey::MemoryOffsetsBlind);
 
     let mut blocks = Vec::new();
     for block in lift_code(code)? {
         let first = by_pc[&block.start];
         let run = &labeled[first..first + block.instructions as usize];
-        let flat = run_graph(code, run);
         let mut addresses = std::collections::BTreeMap::new();
-        addresses.insert("flat".into(), run_address(&flat, &exact_run).to_hex());
+        addresses.insert("flat".into(), exact_run.address(code, run).to_hex());
         addresses.insert(
             "flat_constants_blind".into(),
-            run_address(&flat, &blind_run).to_hex(),
+            blind_run.address(code, run).to_hex(),
         );
         addresses.insert(
             "flat_memory_offsets_blind".into(),
