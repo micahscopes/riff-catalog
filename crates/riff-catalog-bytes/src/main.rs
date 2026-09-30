@@ -22,6 +22,10 @@ enum Command {
     EvmDataflow {
         /// Runtime artifact (raw bytes or hex).
         artifact: PathBuf,
+        /// How the artifact file is written: `auto` (hex text when it is only
+        /// hex digits, else raw bytes), `hex` or `raw`.
+        #[arg(long, value_enum, default_value = "auto")]
+        artifact_format: ArtifactFormat,
         /// Lift only the first N bytes. Default: up to the manifest's data
         /// region, else up to a solc metadata trailer, else everything.
         #[arg(long)]
@@ -59,6 +63,10 @@ enum Command {
         contract: String,
         #[arg(long)]
         artifact: PathBuf,
+        /// How the artifact file is written: `auto` (hex text when it is only
+        /// hex digits, else raw bytes), `hex` or `raw`.
+        #[arg(long, value_enum, default_value = "auto")]
+        artifact_format: ArtifactFormat,
         /// riffcat-regions/1 manifest with `function` regions.
         #[arg(long)]
         regions: PathBuf,
@@ -159,6 +167,10 @@ enum Command {
     /// the order given, then role buckets by opcode.
     EvmByteCauses {
         artifact: PathBuf,
+        /// How the artifact file is written: `auto` (hex text when it is only
+        /// hex digits, else raw bytes), `hex` or `raw`.
+        #[arg(long, value_enum, default_value = "auto")]
+        artifact_format: ArtifactFormat,
         /// End of the instructions. Default: the start of the manifest's
         /// data region, else of a solc metadata trailer, else the end.
         #[arg(long)]
@@ -211,6 +223,10 @@ enum Command {
         /// Runtime artifact (raw bytes or Fe's hex `.bin`).
         #[arg(long)]
         artifact: PathBuf,
+        /// How the artifact file is written: `auto` (hex text when it is only
+        /// hex digits, else raw bytes), `hex` or `raw`.
+        #[arg(long, value_enum, default_value = "auto")]
+        artifact_format: ArtifactFormat,
         /// Report repeated EVM runs of at least this many bytes per copy.
         #[arg(long, default_value_t = 32)]
         min_run_bytes: u32,
@@ -240,6 +256,7 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Command::EvmDataflow {
             artifact,
+            artifact_format,
             code_end,
             out,
             regions,
@@ -249,7 +266,7 @@ fn main() -> Result<()> {
             report_out,
             top,
         } => {
-            let bytes = load_artifact(&artifact)?;
+            let bytes = load_artifact(&artifact, artifact_format)?;
             let manifest = match &regions {
                 Some(path) => Some(load_regions(path, &bytes)?),
                 None => None,
@@ -289,6 +306,7 @@ fn main() -> Result<()> {
             attribution,
             contract,
             artifact,
+            artifact_format,
             regions,
             census,
             runs,
@@ -299,7 +317,7 @@ fn main() -> Result<()> {
             json_out,
             top,
         } => {
-            let artifact_bytes = load_artifact(&artifact)?;
+            let artifact_bytes = load_artifact(&artifact, artifact_format)?;
             let details = fs::read_to_string(&attribution)
                 .with_context(|| format!("read {}", attribution.display()))?;
             let open = || -> Result<_> {
@@ -531,6 +549,7 @@ fn main() -> Result<()> {
         }
         Command::EvmByteCauses {
             artifact,
+            artifact_format,
             code_end,
             regions,
             cause,
@@ -539,7 +558,7 @@ fn main() -> Result<()> {
             contract,
             json_out,
         } => {
-            let code = load_artifact(&artifact)?;
+            let code = load_artifact(&artifact, artifact_format)?;
             let manifest = load_regions(&regions, &code)?;
             let end = riff_catalog_bytes::code_end(&code, code_end, Some(&manifest))?;
             let functions = FunctionRegions::from_manifest(&manifest);
@@ -655,6 +674,7 @@ fn main() -> Result<()> {
             attribution,
             contract,
             artifact,
+            artifact_format,
             min_run_bytes,
             run_key,
             min_run_instructions,
@@ -662,7 +682,7 @@ fn main() -> Result<()> {
             census_dir,
             top,
         } => {
-            let bytes = load_artifact(&artifact)?;
+            let bytes = load_artifact(&artifact, artifact_format)?;
             let details = fs::read_to_string(&attribution)
                 .with_context(|| format!("read {}", attribution.display()))?;
             let reader = std::io::BufReader::new(

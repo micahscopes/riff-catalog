@@ -16,9 +16,10 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_slice(&read_file(path)?).with_context(|| format!("parse {}", path.display()))
 }
 
-/// Read an artifact file ([`decode_artifact`]), naming it in errors.
-pub fn load_artifact(path: &Path) -> Result<Vec<u8>> {
-    decode_artifact(&read_file(path)?).with_context(|| format!("decode {}", path.display()))
+/// Read an artifact file ([`decode_artifact_as`]), naming it in errors.
+pub fn load_artifact(path: &Path, format: ArtifactFormat) -> Result<Vec<u8>> {
+    decode_artifact_as(&read_file(path)?, format)
+        .with_context(|| format!("decode {}", path.display()))
 }
 
 /// Read a region manifest and check that it describes `artifact`: a
@@ -123,20 +124,51 @@ pub fn check_schema(found: &str, expected: &str, path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Decode an artifact file: raw bytes, or Fe's hex text form (optional `0x`,
-/// surrounding whitespace allowed).
+/// How an artifact file is written.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum ArtifactFormat {
+    /// Hex text when the file is only hex digits and whitespace (with an
+    /// optional `0x`), else raw bytes.
+    #[default]
+    Auto,
+    /// Hex text (optional `0x`, whitespace and line breaks ignored).
+    Hex,
+    /// Raw bytes.
+    Raw,
+}
+
+/// Decode an artifact file ([`ArtifactFormat::Auto`]).
 pub fn decode_artifact(raw: &[u8]) -> Result<Vec<u8>> {
-    let text = std::str::from_utf8(raw).ok().map(str::trim);
-    if let Some(text) = text {
-        let hex = text.strip_prefix("0x").unwrap_or(text);
-        if !hex.is_empty() && hex.len() % 2 == 0 && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return (0..hex.len())
-                .step_by(2)
-                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).context("hex artifact"))
-                .collect();
-        }
-    }
-    Ok(raw.to_vec())
+    decode_artifact_as(raw, ArtifactFormat::Auto)
+}
+
+/// Decode an artifact file written in `format`. Hex text must have an even
+/// number of digits; a file that is only hex digits is read as hex unless
+/// `format` is [`ArtifactFormat::Raw`].
+pub fn decode_artifact_as(raw: &[u8], format: ArtifactFormat) -> Result<Vec<u8>> {
+    let hex_text = || -> Option<String> {
+        let text = std::str::from_utf8(raw).ok()?.trim_start();
+        let text = text.strip_prefix("0x").unwrap_or(text);
+        let digits: String = text.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+        (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_hexdigit())).then_some(digits)
+    };
+    let digits = match format {
+        ArtifactFormat::Raw => return Ok(raw.to_vec()),
+        ArtifactFormat::Auto => match hex_text() {
+            Some(d) => d,
+            None => return Ok(raw.to_vec()),
+        },
+        ArtifactFormat::Hex => hex_text().context("not hex text")?,
+    };
+    ensure!(
+        digits.len() % 2 == 0,
+        "hex text has an odd number of digits ({}); pass --artifact-format raw if the file is raw bytes",
+        digits.len()
+    );
+    (0..digits.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).context("hex artifact"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -145,8 +177,24 @@ mod tests {
 
     #[test]
     fn artifacts_decode_from_hex_or_raw() {
-        assert_eq!(decode_artifact(b"0x6080\n").unwrap(), vec![0x60, 0x80]);
-        assert_eq!(decode_artifact(b"6080").unwrap(), vec![0x60, 0x80]);
-        assert_eq!(decode_artifact(&[0x60, 0x80]).unwrap(), vec![0x60, 0x80]);
+        let auto = |raw: &[u8]| decode_artifact_as(raw, ArtifactFormat::Auto);
+        assert_eq!(auto(b"0x6080\n").unwrap(), vec![0x60, 0x80]);
+        assert_eq!(auto(b"6080").unwrap(), vec![0x60, 0x80]);
+        assert_eq!(auto(&[0x60, 0x80]).unwrap(), vec![0x60, 0x80]);
+        // Hex wrapped over lines is still hex.
+        assert_eq!(
+            auto(b"0x6080\n6040\n").unwrap(),
+            vec![0x60, 0x80, 0x60, 0x40]
+        );
+        // An odd number of hex digits is an error, not raw bytes.
+        assert!(auto(b"608060405").is_err());
+        // Raw bytes that happen to be hex digits: say so.
+        let raw = [0x36u8, 0x30, 0x36, 0x30];
+        assert_eq!(auto(&raw).unwrap(), vec![0x60, 0x60]);
+        assert_eq!(
+            decode_artifact_as(&raw, ArtifactFormat::Raw).unwrap(),
+            raw.to_vec()
+        );
+        assert!(decode_artifact_as(&[0x60, 0x80], ArtifactFormat::Hex).is_err());
     }
 }
