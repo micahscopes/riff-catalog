@@ -86,6 +86,10 @@ pub fn push_selection(name: &str, code: &[u8], target: u32) -> Selection {
 pub fn pattern_matches(code: &[u8], pattern: &str) -> Result<Vec<(u32, u32)>> {
     let hex: String = pattern.chars().filter(|c| !c.is_whitespace()).collect();
     anyhow::ensure!(
+        hex.chars().all(|c| c.is_ascii_hexdigit() || c == '?'),
+        "pattern `{pattern}` has a character that is not a hex digit or `?`"
+    );
+    anyhow::ensure!(
         hex.len().is_multiple_of(2) && !hex.is_empty(),
         "pattern must be whole bytes"
     );
@@ -150,6 +154,14 @@ pub fn range_selection(name: &str, code: &[u8], ranges: &[(u32, u32)]) -> Select
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn patterns_that_are_not_hex_are_errors() {
+        for bad in ["6é0", "aé0", "60 4", "zz", "?0"] {
+            let result = std::panic::catch_unwind(|| pattern_matches(&[0x60], bad).is_err());
+            assert_eq!(result.ok(), Some(true), "{bad}");
+        }
+    }
 
     #[test]
     fn pattern_selection_takes_every_instruction_in_a_match() {
