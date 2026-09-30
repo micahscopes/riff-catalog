@@ -616,9 +616,13 @@ impl StageInputs<'_> {
                     Stage::PostOpt => e.postopt += 1,
                     Stage::Prepared => e.prepared += 1,
                     Stage::Vcode => e.vcode += 1,
+                    // Only this code object's instructions have rows; a pc of
+                    // another code object met on the way back is not counted.
                     Stage::Bytecode => {
-                        e.instructions_reaching += 1;
-                        e.bytes_reaching += u64::from(pcs[&id].pc_end - pcs[&id].pc_start);
+                        if let Some(row) = pcs.get(&id) {
+                            e.instructions_reaching += 1;
+                            e.bytes_reaching += u64::from(row.pc_end - row.pc_start);
+                        }
                     }
                     Stage::Other => {}
                 }
@@ -944,6 +948,54 @@ pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_runtime_pc_lowered_from_another_code_objects_pc_is_not_counted_as_runtime() {
+        let key = |kind: &str, owner: &str, local: &str| {
+            serde_json::json!({"kind": kind, "owner_key": owner, "local_key": local})
+        };
+        let pc = key("bytecode.pc", "C:runtime", "pc:0");
+        let init = key("bytecode.pc", "C:init", "pc:7");
+        let hir = key("hir.expr", "hir-body:b", "0");
+        let lines = [
+            serde_json::json!({"record": "metadata", "schema_version": 2}),
+            serde_json::json!({"record": "fact", "type": "origin_edge", "from": pc,
+                "to": init, "label": "copied_from", "introduced_by": "x"}),
+            serde_json::json!({"record": "fact", "type": "origin_edge", "from": init,
+                "to": hir, "label": "lowered_from", "introduced_by": "x"}),
+        ];
+        let text: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        let graph = StageGraph::read(text.join("\n").as_bytes()).unwrap();
+        let text = |k: &serde_json::Value| {
+            format!(
+                "{}\u{1f}{}\u{1f}{}",
+                k["kind"].as_str().unwrap(),
+                k["owner_key"].as_str().unwrap(),
+                k["local_key"].as_str().unwrap()
+            )
+        };
+        let rows = vec![DetailsRow {
+            instruction_key: text(&pc),
+            code_object: None,
+            pc_start: 0,
+            pc_end: 1,
+            primary_source: Some(text(&hir)),
+            all_origins: vec![text(&hir)],
+            classification: "source_mapped".into(),
+            classification_reason: None,
+            confidence: "high".into(),
+        }];
+        let inputs = StageInputs {
+            graph: &graph,
+            rows: &rows,
+            code: &[0x00],
+        };
+        let expansion = std::panic::catch_unwind(|| inputs.expansion_by_body())
+            .expect("a pc of another code object made expansion_by_body panic");
+        assert_eq!(expansion.len(), 1);
+        assert_eq!(expansion[0].bytes_reaching, 1);
+        assert_eq!(expansion[0].instructions_reaching, 1);
+    }
 
     #[test]
     fn memory_buckets_follow_the_rules_in_order() {
