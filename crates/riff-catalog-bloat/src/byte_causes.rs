@@ -13,10 +13,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use riff_catalog_evm::decode::{MEMORY_OPCODES, decode};
 use serde::{Deserialize, Serialize};
 
+use anyhow::{Context, Result, bail, ensure};
+use riff_catalog_ingest_trace::bytes::DetailsRow;
 pub use riff_catalog_ingest_trace::bytes::Tally as CauseTally;
 
 use crate::regions::FunctionRegions;
-use crate::selection::Selection;
+use crate::selection::{Selection, pattern_selection, range_selection, read_pc_set};
+use crate::sonatina_functions::FunctionFacetCensus;
 
 pub const BYTE_CAUSES_SCHEMA: &str = "riffcat-evm-byte-causes/1";
 
@@ -137,6 +140,140 @@ pub fn classify_bytes(
         by_region,
         detail,
     }
+}
+
+/// What a `--cause` or `--detail` argument can refer to.
+pub struct CauseInputs<'a> {
+    /// The instructions (the artifact up to its code end).
+    pub code: &'a [u8],
+    pub functions: &'a FunctionRegions,
+    /// Fe attribution rows, for `bodies:`.
+    pub rows: Option<&'a [DetailsRow]>,
+}
+
+/// Build one named cause from `kind:NAME=arg`: `pcs:NAME=path.json`,
+/// `pattern:NAME=hex`, `repeats:NAME=census.json`,
+/// `duplicates:NAME=sonatina-functions.json#facet-index`, `regions:NAME=a|b`
+/// or `bodies:NAME=a|b`. `read` loads a file named in the argument.
+pub fn cause_selection(
+    spec: &str,
+    inputs: &CauseInputs,
+    read: &dyn Fn(&str) -> Result<Vec<u8>>,
+) -> Result<Selection> {
+    let code = inputs.code;
+    let functions = inputs.functions;
+    let (kind, rest) = spec.split_once(':').context("--cause kind:NAME=arg")?;
+    let (name, arg) = rest.split_once('=').context("--cause kind:NAME=arg")?;
+    let pcs: BTreeSet<u32> = match kind {
+        "pcs" => read_pc_set(name, &read(arg)?)?.pcs,
+        "pattern" => pattern_selection(name, code, arg)?.pcs,
+        "repeats" => {
+            let value: serde_json::Value = serde_json::from_slice(&read(arg)?)?;
+            let mut ranges = Vec::new();
+            for class in crate::census_input::census_run_classes(&value) {
+                let mut occ = class.ranges;
+                occ.sort();
+                ranges.extend(occ.into_iter().skip(1));
+            }
+            range_selection(name, code, &ranges).pcs
+        }
+        "duplicates" => {
+            let (path, index) = arg.split_once('#').unwrap_or((arg, "0"));
+            let census: Vec<FunctionFacetCensus> = serde_json::from_slice(&read(path)?)?;
+            let facet = census
+                .get(index.parse::<usize>()?)
+                .context("duplicates facet index")?;
+            let mut ranges = Vec::new();
+            for class in &facet.classes {
+                let largest = class
+                    .functions
+                    .iter()
+                    .filter_map(|(n, b)| b.map(|b| (b, n.clone())))
+                    .max();
+                for (n, b) in &class.functions {
+                    if b.is_some() && largest.as_ref().map(|l| &l.1) != Some(n) {
+                        ranges.extend(
+                            functions
+                                .iter()
+                                .filter(|f| &f.name == n)
+                                .map(|f| (f.start, f.end)),
+                        );
+                    }
+                }
+            }
+            range_selection(name, code, &ranges).pcs
+        }
+        "regions" => {
+            let needles: Vec<&str> = arg.split('|').collect();
+            let ranges: Vec<(u32, u32)> = functions
+                .iter()
+                .filter(|f| needles.iter().any(|n| f.name.contains(n)))
+                .map(|f| (f.start, f.end))
+                .collect();
+            range_selection(name, code, &ranges).pcs
+        }
+        "bodies" => {
+            let rows = inputs.rows.context("bodies: needs --attribution")?;
+            let needles: Vec<&str> = arg.split('|').collect();
+            let hit = |key: &str| {
+                riff_catalog_ingest_trace::bytes::source_body(key)
+                    .is_some_and(|b| needles.iter().any(|n| b.contains(n)))
+            };
+            rows.iter()
+                .filter(|r| match &r.primary_source {
+                    Some(p) => hit(p),
+                    None => {
+                        r.classification_reason.as_deref() == Some("SyntheticFor")
+                            && r.all_origins.iter().any(|o| hit(o))
+                    }
+                })
+                .map(|r| r.pc_start)
+                .collect()
+        }
+        other => bail!("unknown cause kind `{other}`"),
+    };
+    Ok(Selection {
+        name: name.to_string(),
+        pcs,
+    })
+}
+
+/// The excess ledger of `code` (instructions end at `code_end`): jump
+/// labels and memory-address constants found by the EVM crate's rules,
+/// then [`classify_bytes`], checked to cover every byte.
+pub fn byte_cause_ledger(
+    code: &[u8],
+    code_end: usize,
+    causes: &[Selection],
+    functions: &FunctionRegions,
+    details: &[Selection],
+) -> Result<ByteCauses> {
+    let insts = decode(&code[..code_end]);
+    let labels = riff_catalog_evm::runs::with_labels(&code[..code_end], &insts)
+        .into_iter()
+        .filter(|(_, l)| l.is_some())
+        .map(|(i, _)| i.pc)
+        .collect();
+    let memory_address = riff_catalog_evm::dataflow::lift_code(&code[..code_end])?
+        .into_iter()
+        .flat_map(|b| b.memory_offset_pushes)
+        .collect();
+    let ledger = classify_bytes(
+        code,
+        code_end,
+        causes,
+        &labels,
+        &memory_address,
+        functions,
+        details,
+    );
+    let total: u64 = ledger.buckets.values().map(|t| t.bytes).sum();
+    ensure!(
+        total == ledger.artifact_bytes,
+        "buckets cover {total} of {} bytes",
+        ledger.artifact_bytes
+    );
+    Ok(ledger)
 }
 
 /// One row of a comparison: a bucket's bytes on both sides.

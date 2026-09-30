@@ -7,6 +7,7 @@
 mod artifact;
 mod byte_causes;
 mod census;
+mod census_input;
 mod census_store;
 mod compare_functions;
 mod evm_dataflow;
@@ -25,14 +26,15 @@ mod validate;
 
 pub use artifact::decode_artifact;
 pub use byte_causes::{
-    BYTE_CAUSES_SCHEMA, ByteCauses, CauseDelta, CauseTally, apportion_excess, classify_bytes,
-    compare_causes,
+    BYTE_CAUSES_SCHEMA, ByteCauses, CauseDelta, CauseInputs, CauseTally, apportion_excess,
+    byte_cause_ledger, cause_selection, classify_bytes, compare_causes,
 };
 pub use census::{
     ArtifactCensus, CensusCaptureContext, CensusRegion, EvmRunOptions, EvmRunPorts, EvmRunSummary,
     PatternGroup, RegionManifest, RegionSpec, census_capture, census_file, census_regions,
     census_wgsl, evm_run_summary, render_census,
 };
+pub use census_input::{CensusRunClass, census_run_classes};
 pub use census_store::{
     CensusComparison, CensusFile, CensusSource, compare_censuses, render_census_comparison,
     replay_census, save_census,
@@ -50,7 +52,8 @@ pub use fe::{FeImport, import_fe_trace};
 pub use fe_events::{FeEventsImport, import_fe_events};
 pub use fe_stages::{
     BodyExpansion, ChainClass, ConstructExpansion, FE_STAGES_SCHEMA, FeStagesReport,
-    MEMORY_OPCODES, STAGE_CHAIN_LEVEL, StageInputs, StageReport, memory_bucket, render_fe_stages,
+    MEMORY_OPCODES, STAGE_CHAIN_LEVEL, StageInputs, StageReport, StageRequest, memory_bucket,
+    render_fe_stages,
 };
 pub use fe_trace::{
     BodyInfo, FE_TRACE_REGIONS_ADAPTER, FeTraceBytesReport, Row, RunInfo, RunOccurrenceInfo,
@@ -61,7 +64,8 @@ pub use model::*;
 pub use regions::{FunctionRegion, FunctionRegions, OUTSIDE_FUNCTIONS};
 pub use report::{CompareReport, Report, compare, render_compare_table, render_table, report};
 pub use selection::{
-    Selection, opcode_selection, pattern_matches, pattern_selection, range_selection,
+    Selection, named, opcode_selection, pattern_matches, pattern_selection, push_selection,
+    range_selection, read_pc_set,
 };
 pub use solc_functions::{SOLC_REGIONS_ADAPTER, SolcFunctions, solc_functions};
 pub use sonatina_functions::{
