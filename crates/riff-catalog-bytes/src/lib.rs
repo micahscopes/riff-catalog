@@ -19,20 +19,23 @@ mod selection;
 mod solc_functions;
 mod sonatina_functions;
 
-pub use artifact::decode_artifact;
+pub use artifact::{check_schema, decode_artifact, read_file, read_json};
 pub use byte_causes::{
-    BYTE_CAUSES_SCHEMA, ByteCauses, CauseDelta, CauseInputs, CauseTally, apportion_excess,
-    byte_cause_ledger, cause_selection, classify_bytes, compare_causes,
+    BYTE_CAUSES_COMPARE_SCHEMA, BYTE_CAUSES_SCHEMA, ByteCauses, CauseComparison, CauseDelta,
+    CauseInputs, CauseTally, apportion_excess, byte_cause_ledger, cause_selection, classify_bytes,
+    compare_causes,
 };
 pub use census_input::{CensusRunClass, census_run_classes};
 pub use compare_functions::{
-    FunctionComparison, FunctionPair, compare_functions, render_function_comparison, residual_row,
+    FUNCTION_COMPARISON_SCHEMA, FunctionComparison, FunctionComparisonReport, FunctionPair,
+    compare_functions, render_function_comparison, residual_row,
 };
 pub use evm_dataflow::{
-    BlockClass, BlockFacetCensus, BlockRecord, CrossFacet, DataflowBlocks, DataflowReport,
-    EVM_DATAFLOW_BLOCKS_SCHEMA, EVM_DATAFLOW_REPORT_SCHEMA, FunctionScheduling,
-    INPUT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_AND_INPUT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_BLIND_VIEW,
-    SchedulingBytes, compare_blocks, dataflow_report, evm_dataflow_blocks, render_dataflow_report,
+    BlockClass, BlockFacetCensus, BlockRecord, CrossFacet, DataflowBlocks, DataflowComparison,
+    DataflowReport, EVM_DATAFLOW_BLOCKS_SCHEMA, EVM_DATAFLOW_COMPARE_SCHEMA,
+    EVM_DATAFLOW_REPORT_SCHEMA, FunctionScheduling, INPUT_ORDER_BLIND_VIEW,
+    MEMORY_OFFSETS_AND_INPUT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_BLIND_VIEW, SchedulingBytes,
+    compare_blocks, dataflow_report, evm_dataflow_blocks, render_dataflow_report,
 };
 pub use fe_stages::{
     BodyExpansion, ChainClass, ConstructExpansion, FE_STAGES_SCHEMA, FeStagesReport,
@@ -47,5 +50,10 @@ pub use selection::{
     Selection, named, opcode_selection, pattern_matches, pattern_selection, push_selection,
     range_selection, read_pc_set,
 };
-pub use solc_functions::{SOLC_REGIONS_ADAPTER, SolcFunctions, solc_functions};
-pub use sonatina_functions::{FunctionClass, FunctionFacetCensus, sonatina_function_facets};
+pub use solc_functions::{
+    SOLC_FUNCTIONS_SCHEMA, SOLC_REGIONS_ADAPTER, SolcFunctions, solc_functions,
+};
+pub use sonatina_functions::{
+    FunctionClass, FunctionFacetCensus, SONATINA_FUNCTIONS_SCHEMA, SonatinaFunctions,
+    sonatina_function_facets,
+};

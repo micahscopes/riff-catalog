@@ -18,6 +18,14 @@ use serde::{Deserialize, Serialize};
 use crate::regions::FunctionRegions;
 
 pub const EVM_DATAFLOW_BLOCKS_SCHEMA: &str = "riffcat-evm-dataflow-blocks/2";
+pub const EVM_DATAFLOW_COMPARE_SCHEMA: &str = "riffcat-evm-dataflow-compare/1";
+
+/// The `evm-dataflow-compare` report.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DataflowComparison {
+    pub schema: String,
+    pub facets: Vec<CrossFacet>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockRecord {

@@ -16,6 +16,17 @@ use serde::{Deserialize, Serialize};
 use crate::fe_stages::FeStagesReport;
 use crate::solc_functions::SolcFunctions;
 
+pub const FUNCTION_COMPARISON_SCHEMA: &str = "riffcat-function-comparison/1";
+
+/// The `compare-functions` report: the solc builds in column order, then one
+/// row per pair (and the residual row when the Fe total was given).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FunctionComparisonReport {
+    pub schema: String,
+    pub builds: Vec<String>,
+    pub rows: Vec<FunctionComparison>,
+}
+
 /// One pairing: Fe source bodies and solc functions that implement the same
 /// thing. `confidence` is the pairer's (high, medium, low).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -217,6 +228,7 @@ mod tests {
 
     fn solc(owners: &[(&str, u64)], total: usize) -> BTreeMap<String, SolcFunctions> {
         let table: SolcFunctions = serde_json::from_value(serde_json::json!({
+            "schema": crate::solc_functions::SOLC_FUNCTIONS_SCHEMA,
             "source": "a.sol", "contract": "C", "runtime_bytes": total, "code_end": total,
             "by_owner": owners.iter().map(|(n, b)| (n.to_string(), *b)).collect::<Vec<_>>(),
         }))

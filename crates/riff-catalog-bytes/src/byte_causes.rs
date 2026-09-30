@@ -19,9 +19,17 @@ pub use riff_catalog_ingest_trace::bytes::Tally as CauseTally;
 
 use crate::regions::FunctionRegions;
 use crate::selection::{Selection, pattern_selection, range_selection, read_pc_set};
-use crate::sonatina_functions::FunctionFacetCensus;
+use crate::sonatina_functions::{SONATINA_FUNCTIONS_SCHEMA, SonatinaFunctions};
 
 pub const BYTE_CAUSES_SCHEMA: &str = "riffcat-evm-byte-causes/1";
+pub const BYTE_CAUSES_COMPARE_SCHEMA: &str = "riffcat-evm-byte-causes-compare/1";
+
+/// The `evm-byte-causes-compare` report.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CauseComparison {
+    pub schema: String,
+    pub rows: Vec<CauseDelta>,
+}
 
 pub const ROLE_STACK: &str = "role: stack shuffle (DUP, SWAP, POP)";
 pub const ROLE_CONTROL: &str = "role: control flow (JUMP, JUMPI, JUMPDEST, label pushes)";
@@ -179,10 +187,22 @@ pub fn cause_selection(
         }
         "duplicates" => {
             let (path, index) = arg.split_once('#').unwrap_or((arg, "0"));
-            let census: Vec<FunctionFacetCensus> = serde_json::from_slice(&read(path)?)?;
+            let census: SonatinaFunctions = serde_json::from_slice(&read(path)?)
+                .with_context(|| format!("duplicates: parse {path}"))?;
+            ensure!(
+                census.schema == SONATINA_FUNCTIONS_SCHEMA,
+                "duplicates: {path} is `{}`, expected `{SONATINA_FUNCTIONS_SCHEMA}`",
+                census.schema
+            );
             let facet = census
+                .facets
                 .get(index.parse::<usize>()?)
-                .context("duplicates facet index")?;
+                .with_context(|| {
+                    format!(
+                        "duplicates: {path} has {} facets, no facet {index}",
+                        census.facets.len()
+                    )
+                })?;
             let mut ranges = Vec::new();
             for class in &facet.classes {
                 let largest = class

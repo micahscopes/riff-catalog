@@ -401,23 +401,34 @@ fn main() -> Result<()> {
             fe_total,
             json_out,
         } => {
-            let fe: FeStagesReport = serde_json::from_slice(&fs::read(&fe_stages)?)?;
+            let fe: FeStagesReport = read_json(&fe_stages)?;
+            check_schema(&fe.schema, FE_STAGES_SCHEMA, &fe_stages)?;
             let mut builds = Vec::new();
             let mut tables = BTreeMap::new();
             for item in &solc {
-                let (name, path) = item.split_once('=').context("--solc name=path")?;
-                let table: SolcFunctions = serde_json::from_slice(&fs::read(path)?)?;
+                let (name, path) = named(item, "--solc")?;
+                let path = std::path::Path::new(path);
+                let table: SolcFunctions = read_json(path)?;
+                check_schema(&table.schema, SOLC_FUNCTIONS_SCHEMA, path)?;
+                ensure!(
+                    tables.insert(name.to_string(), table).is_none(),
+                    "--solc names build `{name}` twice"
+                );
                 builds.push(name.to_string());
-                tables.insert(name.to_string(), table);
             }
-            let pairs: Vec<FunctionPair> = serde_json::from_slice(&fs::read(&pairs)?)?;
+            let pairs: Vec<FunctionPair> = read_json(&pairs)?;
             let mut rows = compare_functions(&fe, &tables, &pairs)?;
             if let Some(total) = fe_total {
                 let residual = residual_row(&rows, total, &tables);
                 rows.push(residual);
             }
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&rows)?)?;
+                let report = FunctionComparisonReport {
+                    schema: FUNCTION_COMPARISON_SCHEMA.into(),
+                    builds: builds.clone(),
+                    rows: rows.clone(),
+                };
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_function_comparison(&rows, &builds));
         }
@@ -428,11 +439,17 @@ fn main() -> Result<()> {
             json_out,
             top,
         } => {
-            let l: DataflowBlocks = serde_json::from_slice(&fs::read(&left)?)?;
-            let r: DataflowBlocks = serde_json::from_slice(&fs::read(&right)?)?;
+            let l: DataflowBlocks = read_json(&left)?;
+            check_schema(&l.schema, EVM_DATAFLOW_BLOCKS_SCHEMA, &left)?;
+            let r: DataflowBlocks = read_json(&right)?;
+            check_schema(&r.schema, EVM_DATAFLOW_BLOCKS_SCHEMA, &right)?;
             let cmp = compare_blocks(&l, &r, &min_block_bytes, top);
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&cmp)?)?;
+                let report = DataflowComparison {
+                    schema: EVM_DATAFLOW_COMPARE_SCHEMA.into(),
+                    facets: cmp.clone(),
+                };
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             println!(
                 "facet, min block bytes: shared addresses; left blocks/bytes; right blocks/bytes"
@@ -466,7 +483,11 @@ fn main() -> Result<()> {
             }
             let census = sonatina_function_facets(&source, &bytes)?;
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&census)?)?;
+                let report = SonatinaFunctions {
+                    schema: SONATINA_FUNCTIONS_SCHEMA.into(),
+                    facets: census.clone(),
+                };
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             for c in &census {
                 println!(
@@ -551,8 +572,10 @@ fn main() -> Result<()> {
             right,
             json_out,
         } => {
-            let l: ByteCauses = serde_json::from_slice(&fs::read(&left)?)?;
-            let r: ByteCauses = serde_json::from_slice(&fs::read(&right)?)?;
+            let l: ByteCauses = read_json(&left)?;
+            check_schema(&l.schema, BYTE_CAUSES_SCHEMA, &left)?;
+            let r: ByteCauses = read_json(&right)?;
+            check_schema(&r.schema, BYTE_CAUSES_SCHEMA, &right)?;
             let rows = compare_causes(&l, &r);
             let excess = l.artifact_bytes as i64 - r.artifact_bytes as i64;
             ensure!(
@@ -560,7 +583,11 @@ fn main() -> Result<()> {
                 "excess does not add up"
             );
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&rows)?)?;
+                let report = CauseComparison {
+                    schema: BYTE_CAUSES_COMPARE_SCHEMA.into(),
+                    rows: rows.clone(),
+                };
+                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             println!(
                 "{:>7} {:>7} {:>7} {:>6}  bucket",
