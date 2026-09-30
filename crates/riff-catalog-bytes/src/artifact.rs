@@ -48,6 +48,33 @@ pub fn load_regions_unbound(path: &Path) -> Result<RegionManifest> {
     Ok(manifest)
 }
 
+/// Where the instructions of `artifact` end. A requested end may not pass
+/// the artifact. Without one: the start of the manifest's `data` region that
+/// runs to the end of the artifact, else the start of a Solidity CBOR
+/// metadata trailer, else the whole artifact.
+pub fn code_end(
+    artifact: &[u8],
+    requested: Option<usize>,
+    manifest: Option<&RegionManifest>,
+) -> Result<usize> {
+    if let Some(end) = requested {
+        ensure!(
+            end <= artifact.len(),
+            "--code-end {end} is past the end of the {}-byte artifact",
+            artifact.len()
+        );
+        return Ok(end);
+    }
+    let data = manifest.and_then(|m| {
+        m.regions
+            .iter()
+            .filter(|r| r.kind == "data" && r.end == artifact.len())
+            .map(|r| r.start)
+            .min()
+    });
+    Ok(data.unwrap_or_else(|| riff_catalog_evm::split_metadata(artifact).0))
+}
+
 /// Refuse a report whose `schema` is not the one this reader understands.
 pub fn check_schema(found: &str, expected: &str, path: &Path) -> Result<()> {
     ensure!(
