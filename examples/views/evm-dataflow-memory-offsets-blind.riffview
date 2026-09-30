@@ -1,0 +1,16 @@
+# Forget which constants are memory or calldata offsets in an EVM dataflow
+# block, and keep everything else. The lowering (riff_catalog_evm::dataflow)
+# stores such a constant under the Constants field `memory_offset` and every
+# other constant under `value`, so erasing that one field class groups the
+# same code for different struct layouts while other constants still count.
+language "riffcat-view/1"
+view "evm-dataflow.memory-offsets-blind/2"
+input "evm-dataflow/2"
+
+root node-kind "evm.block"
+traverse children
+
+# `erase DIMENSION.FIELD` removes one field class from a retained dimension.
+# The dimension must be retained; erasing from a dropped one is an error.
+retain structure, constants
+erase constants.memory_offset

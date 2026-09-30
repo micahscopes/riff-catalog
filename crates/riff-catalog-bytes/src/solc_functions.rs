@@ -1,5 +1,5 @@
 //! Function regions of a solc-built EVM runtime, from its source map and AST
-//! (`riff_catalog_solc::sourcemap`): the same `riffcat-regions/1` manifest the
+//! (`riff_catalog_solc::sourcemap`): the same `riffcat-regions` manifest the
 //! Fe trace produces, so the run census, the dataflow lift and the facets
 //! run on solc output unchanged.
 
