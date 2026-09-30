@@ -44,10 +44,14 @@ pub fn solc_functions(
     let map = output.deployed_source_map(source, contract)?;
     let (code_end, _) = riff_catalog_evm::split_metadata(&code);
     let insts = decode(&code[..code_end]);
-    let entries = parse_source_map(map);
+    let entries = parse_source_map(map)?;
+    // One entry per instruction; solc leaves a final INVALID without one.
+    let final_invalid = insts.last().is_some_and(|i| i.opcode == 0xfe);
     ensure!(
-        entries.len() <= insts.len(),
-        "source map has {} entries for {} instructions",
+        !entries.is_empty()
+            && (entries.len() == insts.len()
+                || (final_invalid && entries.len() + 1 == insts.len())),
+        "source map has {} entries for {} instructions: it does not describe this bytecode",
         entries.len(),
         insts.len()
     );
@@ -130,6 +134,28 @@ mod tests {
                 "object": object, "sourceMap": map
             }}}}}
         }))
+    }
+
+    #[test]
+    fn a_source_map_must_describe_the_instructions() {
+        // PUSH1 1, PUSH1 2, ADD, STOP: four instructions.
+        for map in ["", "10:1:0", "10:1:0;;", "10:1:0;;;;"] {
+            assert!(
+                solc_functions(
+                    &output("6001600201 00".replace(' ', "").as_str(), map),
+                    "a.sol",
+                    "C",
+                    None
+                )
+                .is_err(),
+                "map `{map}` accepted"
+            );
+        }
+        solc_functions(&output("600160020100", "10:1:0;;;"), "a.sol", "C", None)
+            .expect("one entry per instruction");
+        // solc leaves the final INVALID of a runtime without an entry.
+        solc_functions(&output("600160020100fe", "10:1:0;;;"), "a.sol", "C", None)
+            .expect("no entry for a final INVALID");
     }
 
     #[test]

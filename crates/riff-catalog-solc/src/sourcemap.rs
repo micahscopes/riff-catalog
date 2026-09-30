@@ -24,8 +24,18 @@ pub struct SourceMapEntry {
     pub modifier_depth: i64,
 }
 
-/// Decode a compressed source map.
-pub fn parse_source_map(map: &str) -> Vec<SourceMapEntry> {
+/// A source map field that does not parse.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("source map entry {entry}: {message}")]
+pub struct SourceMapError {
+    pub entry: usize,
+    pub message: String,
+}
+
+/// Decode a compressed source map. An empty field repeats the previous
+/// entry's value; a field that does not parse is an error, never silently
+/// replaced by the previous value.
+pub fn parse_source_map(map: &str) -> Result<Vec<SourceMapEntry>, SourceMapError> {
     let mut out = Vec::new();
     let mut prev = SourceMapEntry {
         start: 0,
@@ -35,27 +45,38 @@ pub fn parse_source_map(map: &str) -> Vec<SourceMapEntry> {
         modifier_depth: 0,
     };
     if map.is_empty() {
-        return out;
+        return Ok(out);
     }
-    for item in map.split(';') {
+    for (entry, item) in map.split(';').enumerate() {
         let mut cur = prev;
+        let error = |message: String| SourceMapError { entry, message };
+        let number = |field: &str, what: &str| {
+            field
+                .parse::<i64>()
+                .map_err(|_| error(format!("{what} `{field}` is not an integer")))
+        };
         for (i, field) in item.split(':').enumerate() {
             if field.is_empty() {
                 continue;
             }
             match i {
-                0 => cur.start = field.parse().unwrap_or(cur.start),
-                1 => cur.length = field.parse().unwrap_or(cur.length),
-                2 => cur.file = field.parse().unwrap_or(cur.file),
-                3 => cur.jump = field.chars().next().unwrap_or(cur.jump),
-                4 => cur.modifier_depth = field.parse().unwrap_or(cur.modifier_depth),
-                _ => {}
+                0 => cur.start = number(field, "start")?,
+                1 => cur.length = number(field, "length")?,
+                2 => cur.file = number(field, "source id")?,
+                3 => {
+                    cur.jump = match field {
+                        "i" | "o" | "-" => field.chars().next().expect("non-empty"),
+                        _ => return Err(error(format!("jump `{field}` is not i, o or -"))),
+                    }
+                }
+                4 => cur.modifier_depth = number(field, "modifier depth")?,
+                _ => return Err(error(format!("more than five fields in `{item}`"))),
             }
         }
         out.push(cur);
         prev = cur;
     }
-    out
+    Ok(out)
 }
 
 /// A function or modifier definition's source range.
@@ -252,11 +273,24 @@ mod tests {
 
     #[test]
     fn source_maps_repeat_empty_fields() {
-        let e = parse_source_map("1:2:0:-:0;;3::1;:4:-1:i");
+        let e = parse_source_map("1:2:0:-:0;;3::1;:4:-1:i").unwrap();
         assert_eq!(e.len(), 4);
         assert_eq!((e[1].start, e[1].length, e[1].file), (1, 2, 0));
         assert_eq!((e[2].start, e[2].length, e[2].file), (3, 2, 1));
         assert_eq!((e[3].length, e[3].file, e[3].jump), (4, -1, 'i'));
+    }
+
+    #[test]
+    fn malformed_fields_are_errors() {
+        for bad in [
+            "12:3:0;zz:q:0",
+            "1:2:x",
+            "1:2:0:j",
+            "1:2:0:-:y",
+            "1:2:0:-:0:9",
+        ] {
+            assert!(parse_source_map(bad).is_err(), "{bad} accepted");
+        }
     }
 
     #[test]
@@ -270,7 +304,7 @@ mod tests {
         ]}}}});
         let out = SolcOutput::new(raw);
         let (functions, contracts) = function_spans(&out);
-        let entries = parse_source_map("22:3:0;12:3:0;70:1:0;5:1:7;1:1:-1");
+        let entries = parse_source_map("22:3:0;12:3:0;70:1:0;5:1:7;1:1:-1").unwrap();
         let owners = attribute(&entries, &functions, &contracts, &solidity_source_ids(&out));
         let name = |o: &SourceOwner| match o {
             SourceOwner::Function(i) => functions[*i].name.clone(),
