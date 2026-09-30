@@ -31,7 +31,7 @@ pub use compare_functions::{
 pub use evm_dataflow::{
     BlockClass, BlockFacetCensus, BlockRecord, CrossFacet, DataflowBlocks, DataflowReport,
     EVM_DATAFLOW_BLOCKS_SCHEMA, EVM_DATAFLOW_REPORT_SCHEMA, FunctionScheduling,
-    MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_BLIND_VIEW, PORT_ORDER_BLIND_VIEW,
+    INPUT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_AND_INPUT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_BLIND_VIEW,
     SchedulingBytes, compare_blocks, dataflow_report, evm_dataflow_blocks, render_dataflow_report,
 };
 pub use fe_stages::{

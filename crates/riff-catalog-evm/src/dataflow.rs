@@ -1,4 +1,4 @@
-//! Level "evm-dataflow/1": EVM bytecode split into basic blocks, each block
+//! Level "evm-dataflow/2": EVM bytecode split into basic blocks, each block
 //! lifted by symbolic stack execution into a dataflow graph. DUP, SWAP and
 //! POP do not become nodes; they only decide which value feeds which operand.
 //!
@@ -7,7 +7,8 @@
 //! - `evm.block` root. Structure: `consumed` (entry stack items the block
 //!   removes), `produced` (items it leaves in their place) and
 //!   `falls_through`. Children: `effect` (ordinal = program order) for every
-//!   effectful operation, and `out` (all ordinal 0) for every produced item.
+//!   effectful operation, and `out` (ordinal = stack slot) for every produced
+//!   item.
 //! - `evm.out` node per produced item. Structure `slot` (0 = top at exit);
 //!   child `value`.
 //! - `evm.input` node per entry item that is read. Structure `slot` (0 = top
@@ -39,6 +40,10 @@
 //! identity (inputs by slot, labels and constants by first-use port, effects
 //! by index, and pure operations are hash-consed), which makes the digest
 //! determine the DAG, sharing included, at every facet that keeps Structure.
+//! Core hashes each dimension on its own, so no child list is an unordered
+//! set: outputs are ordered by stack slot like operands and effects are by
+//! position. (In `evm-dataflow/1` outputs shared one ordinal, and two blocks
+//! leaving the same constants in swapped slots shared an address.)
 //! A match is structural correspondence, not an equivalence proof.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -51,7 +56,7 @@ use riff_catalog_core::{
 use crate::decode::{Instruction, JUMPDEST, decode, jumpdests, push_len, push_value};
 
 /// The versioned level string for this lowering (invariant I10).
-pub const EVM_DATAFLOW_LEVEL: &str = "evm-dataflow/1";
+pub const EVM_DATAFLOW_LEVEL: &str = "evm-dataflow/2";
 
 /// Operands that are memory or calldata addresses: (opcode, operand index,
 /// 0 = popped first). MLOAD, MSTORE, MSTORE8 and CALLDATALOAD read or write
@@ -73,31 +78,34 @@ const ADD: u8 = 0x01;
 /// census's counterpart is [`crate::runs::MEMORY_OFFSETS_BLIND_RUN_VIEW`].
 pub const MEMORY_OFFSETS_BLIND_VIEW: &str = r#"
 language "riffcat-view/1"
-view "evm-dataflow.memory-offsets-blind/1"
-input "evm-dataflow/1"
+view "evm-dataflow.memory-offsets-blind/2"
+input "evm-dataflow/2"
 root node-kind "evm.block"
 traverse children
 retain structure, constants
 erase constants.memory_offset
 "#;
 
-/// `riffcat-view/1` plan over [`EVM_DATAFLOW_LEVEL`] that forgets the stack
-/// positions of a block's inputs and outputs.
-pub const PORT_ORDER_BLIND_VIEW: &str = r#"
+/// `riffcat-view/1` plan over [`EVM_DATAFLOW_LEVEL`] that forgets which
+/// entry stack slot each input came from. Inputs then differ only by how
+/// they are used, so blocks that read their entry items in another order
+/// match; which inputs are the same item is kept, and outputs keep their
+/// slots (the `out` ordinal).
+pub const INPUT_ORDER_BLIND_VIEW: &str = r#"
 language "riffcat-view/1"
-view "evm-dataflow.port-order-blind/1"
-input "evm-dataflow/1"
+view "evm-dataflow.input-order-blind/1"
+input "evm-dataflow/2"
 root node-kind "evm.block"
 traverse children
 retain structure, constants
 erase structure.slot
 "#;
 
-/// Both erasures of [`MEMORY_OFFSETS_BLIND_VIEW`] and [`PORT_ORDER_BLIND_VIEW`].
-pub const MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW: &str = r#"
+/// Both erasures of [`MEMORY_OFFSETS_BLIND_VIEW`] and [`INPUT_ORDER_BLIND_VIEW`].
+pub const MEMORY_OFFSETS_AND_INPUT_ORDER_BLIND_VIEW: &str = r#"
 language "riffcat-view/1"
-view "evm-dataflow.memory-offsets-and-port-order-blind/1"
-input "evm-dataflow/1"
+view "evm-dataflow.memory-offsets-and-input-order-blind/1"
+input "evm-dataflow/2"
 root node-kind "evm.block"
 traverse children
 retain structure, constants
@@ -491,7 +499,7 @@ pub fn lift_block(
         graph.add_node(out.clone(), "evm.out")?;
         graph.add_field(&out, Dimension::Structure, "slot", slot as u64)?;
         graph.add_child(&out, "value", 0, &value)?;
-        graph.add_child(&root, "out", 0, &out)?;
+        graph.add_child(&root, "out", slot as u32, &out)?;
     }
 
     let memory_offset_pushes = const_pushes
@@ -514,7 +522,8 @@ pub fn lift_block(
     })
 }
 
-/// The hash policy for `evm-dataflow/1` graphs (or a view level over them).
+/// The hash policy for [`EVM_DATAFLOW_LEVEL`] graphs (or a view level over
+/// them).
 pub fn dataflow_policy(level: &str) -> Result<HashPolicy, CatalogError> {
     HashPolicy::new(level, ViewMode::AnonymousShape, CyclePolicy::Reject)
 }
@@ -600,6 +609,21 @@ mod tests {
         assert_ne!(exact(&a), exact(&c));
     }
 
+    /// Core hashes each dimension on its own, so outputs that were an
+    /// unordered set in the Constants dimension let two blocks that leave the
+    /// same constants in swapped stack slots share an address.
+    #[test]
+    fn outputs_keep_their_stack_slots() {
+        // Leave (0x20, 0x40) or (0x40, 0x20), then JUMP to a constant.
+        let a = [PUSH1, 0x20, PUSH1, 0x40, 0x61, 0x01, 0x00, 0x56];
+        let b = [PUSH1, 0x40, PUSH1, 0x20, 0x61, 0x01, 0x00, 0x56];
+        assert_ne!(exact(&a), exact(&b));
+        // x+1, x+2 versus x+2, x+1 from one entry item.
+        let a = [PUSH1, 1, DUP2, 0x01, PUSH1, 2, 0x82, 0x01, 0x91, POP, 0x56];
+        let b = [PUSH1, 2, DUP2, 0x01, PUSH1, 1, 0x82, 0x01, 0x91, POP, 0x56];
+        assert_ne!(exact(&a), exact(&b));
+    }
+
     #[test]
     fn effects_keep_their_order() {
         // mload(0) before mstore(0, 1) vs after it.
@@ -638,15 +662,15 @@ mod tests {
         for (text, expected) in [
             (
                 MEMORY_OFFSETS_BLIND_VIEW,
-                "e9347a916a72de901706c8f558443947752ff3c0d333e739efb45b74c120ab84",
+                "fbaf7b3a2de0d817fdabf9cf160fca3bc8ee29f98b5b8c80a3971a0502e3a440",
             ),
             (
-                PORT_ORDER_BLIND_VIEW,
-                "84c2526931e998ef8d3cf857826186a0f48dd98884bf9cb053daef47b6cfeacf",
+                INPUT_ORDER_BLIND_VIEW,
+                "39c6e31af2cf583d8f8504c59089249ae63c860e57455d7af4b22bd04b5eef82",
             ),
             (
-                MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW,
-                "d5cc375f6899ac5def27241d99d09bf2a91e33347c70b5eae001436553536981",
+                MEMORY_OFFSETS_AND_INPUT_ORDER_BLIND_VIEW,
+                "4169c710dfc3a4bd5af4827eca280020b200ec88c85d0ea3fe0de18ff3de41d7",
             ),
             (
                 crate::runs::MEMORY_OFFSETS_BLIND_RUN_VIEW,

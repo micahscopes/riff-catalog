@@ -1,15 +1,15 @@
 //! Per-block facet addresses of EVM bytecode, flat (`evm-run/1`) and lifted
-//! (`evm-dataflow/1`), for censuses that compare them.
+//! (`evm-dataflow/2`), for censuses that compare them.
 //!
 //! Every address is a core facet address. The facets that erase one field
-//! class (memory offsets, stack port order) are `riffcat-view/1` plans over
-//! `evm-dataflow/1`, so their policy level names the plan.
+//! class (memory offsets, entry slots) are `riffcat-view/1` plans over
+//! `evm-dataflow/2`, so their policy level names the plan.
 
 use anyhow::{Context, Result};
 use riff_catalog_core::{Dimension, Graph};
 use riff_catalog_evm::dataflow::{EVM_DATAFLOW_LEVEL, address, dataflow_policy, lift_code};
 pub use riff_catalog_evm::dataflow::{
-    MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_BLIND_VIEW, PORT_ORDER_BLIND_VIEW,
+    INPUT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_AND_INPUT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_BLIND_VIEW,
 };
 use riff_catalog_evm::runs::{RunKey, RunKeyer, decode, with_labels};
 use riff_catalog_view::ViewPlan;
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::regions::FunctionRegions;
 
-pub const EVM_DATAFLOW_BLOCKS_SCHEMA: &str = "riffcat-evm-dataflow-blocks/1";
+pub const EVM_DATAFLOW_BLOCKS_SCHEMA: &str = "riffcat-evm-dataflow-blocks/2";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockRecord {
@@ -59,9 +59,9 @@ fn view_address(plan: &ViewPlan, graph: &Graph, dims: &[Dimension]) -> Result<St
 /// address every block at each facet.
 pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
     let offsets_blind = ViewPlan::parse(MEMORY_OFFSETS_BLIND_VIEW).context("offsets view")?;
-    let ports_blind = ViewPlan::parse(PORT_ORDER_BLIND_VIEW).context("ports view")?;
+    let inputs_blind = ViewPlan::parse(INPUT_ORDER_BLIND_VIEW).context("inputs view")?;
     let both_blind =
-        ViewPlan::parse(MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW).context("combined view")?;
+        ViewPlan::parse(MEMORY_OFFSETS_AND_INPUT_ORDER_BLIND_VIEW).context("combined view")?;
     let policy = dataflow_policy(EVM_DATAFLOW_LEVEL)?;
     let sc = [Dimension::Structure, Dimension::Constants];
     let s = [Dimension::Structure];
@@ -100,11 +100,11 @@ pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
             view_address(&offsets_blind, &block.graph, &sc)?,
         );
         addresses.insert(
-            "dataflow_port_order_blind".into(),
-            view_address(&ports_blind, &block.graph, &sc)?,
+            "dataflow_input_order_blind".into(),
+            view_address(&inputs_blind, &block.graph, &sc)?,
         );
         addresses.insert(
-            "dataflow_memory_offsets_and_port_order_blind".into(),
+            "dataflow_memory_offsets_and_input_order_blind".into(),
             view_address(&both_blind, &block.graph, &sc)?,
         );
         let b = block.bytes;
@@ -140,19 +140,19 @@ pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
             "flat_memory_offsets_blind",
             "view evm-run.memory-offsets-blind/1, Structure + Constants",
         ),
-        ("dataflow", "evm-dataflow/1, Structure + Constants"),
-        ("dataflow_constants_blind", "evm-dataflow/1, Structure"),
+        ("dataflow", "evm-dataflow/2, Structure + Constants"),
+        ("dataflow_constants_blind", "evm-dataflow/2, Structure"),
         (
             "dataflow_memory_offsets_blind",
-            "view evm-dataflow.memory-offsets-blind/1, Structure + Constants",
+            "view evm-dataflow.memory-offsets-blind/2, Structure + Constants",
         ),
         (
-            "dataflow_port_order_blind",
-            "view evm-dataflow.port-order-blind/1, Structure + Constants",
+            "dataflow_input_order_blind",
+            "view evm-dataflow.input-order-blind/1, Structure + Constants",
         ),
         (
-            "dataflow_memory_offsets_and_port_order_blind",
-            "view evm-dataflow.memory-offsets-and-port-order-blind/1, Structure + Constants",
+            "dataflow_memory_offsets_and_input_order_blind",
+            "view evm-dataflow.memory-offsets-and-input-order-blind/1, Structure + Constants",
         ),
     ]
     .into_iter()
@@ -225,7 +225,7 @@ pub struct DataflowReport {
     pub facets: Vec<BlockFacetCensus>,
 }
 
-pub const EVM_DATAFLOW_REPORT_SCHEMA: &str = "riffcat-evm-dataflow-report/1";
+pub const EVM_DATAFLOW_REPORT_SCHEMA: &str = "riffcat-evm-dataflow-report/2";
 
 fn add_scheduling(s: &mut SchedulingBytes, opcode: u8, len: u64) {
     match opcode {
@@ -553,6 +553,28 @@ mod tests {
             addr(0, "dataflow_constants_blind"),
             addr(2, "dataflow_constants_blind")
         );
+    }
+
+    #[test]
+    fn input_order_blind_forgets_entry_slots_but_not_outputs() {
+        let one = |code: &[u8], facet: &str| {
+            let blocks = evm_dataflow_blocks(code).unwrap();
+            assert_eq!(blocks.blocks.len(), 1);
+            blocks.blocks[0].addresses[facet].clone()
+        };
+        let facet = "dataflow_input_order_blind";
+        // mstore(0, x - y) with the entry items read in either order.
+        let xy = [0x81, 0x81, 0x03, 0x60, 0, 0x52, 0x50, 0x50, 0x00];
+        let yx = [0x80, 0x82, 0x03, 0x60, 0, 0x52, 0x50, 0x50, 0x00];
+        assert_ne!(one(&xy, "dataflow"), one(&yx, "dataflow"));
+        assert_eq!(one(&xy, facet), one(&yx, facet));
+        // mstore(0, x - x) is not a reordering of mstore(0, x - y).
+        let xx = [0x80, 0x80, 0x03, 0x60, 0, 0x52, 0x50, 0x00];
+        assert_ne!(one(&xx, facet), one(&xy, facet));
+        // Outputs keep their order: (0x20, 0x40) versus (0x40, 0x20).
+        let a = [0x60, 0x20, 0x60, 0x40, 0x61, 0x01, 0x00, 0x56];
+        let b = [0x60, 0x40, 0x60, 0x20, 0x61, 0x01, 0x00, 0x56];
+        assert_ne!(one(&a, facet), one(&b, facet));
     }
 
     #[test]
