@@ -617,7 +617,8 @@ fn main() -> Result<()> {
                 }
                 fs::write(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
             }
-            let (chain_classes, top_constructs) = inputs.chain_classes(top.max(40))?;
+            let (chain_classes, chain_class_count, top_constructs) =
+                inputs.chain_classes(top.max(40))?;
             let report = FeStagesReport {
                 schema: FE_STAGES_SCHEMA.into(),
                 contract: contract.clone(),
@@ -627,6 +628,7 @@ fn main() -> Result<()> {
                     .map(|s| inputs.report(s, &clamp, &spill, top))
                     .collect(),
                 expansion_by_body: inputs.expansion_by_body(),
+                chain_class_count,
                 chain_classes,
                 top_constructs,
                 category_by_function: inputs.category_by_function(&functions),

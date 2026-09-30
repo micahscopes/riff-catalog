@@ -546,7 +546,12 @@ impl StageInputs<'_> {
 
     /// Content-address the chain from every HIR construct that is the
     /// primary source of emitted bytes, and group constructs by address.
-    pub fn chain_classes(&self, n: usize) -> Result<(Vec<ChainClass>, Vec<ConstructExpansion>)> {
+    /// Returns the `n` largest classes of two or more constructs, how many
+    /// such classes there are, and the `n` constructs with the most bytes.
+    pub fn chain_classes(
+        &self,
+        n: usize,
+    ) -> Result<(Vec<ChainClass>, usize, Vec<ConstructExpansion>)> {
         let g = self.graph;
         let mut by_primary: BTreeMap<u32, Vec<&DetailsRow>> = BTreeMap::new();
         for r in self.rows {
@@ -622,11 +627,6 @@ impl StageInputs<'_> {
         });
         let total = out.len();
         out.truncate(n);
-        if let Some(first) = out.first_mut() {
-            first
-                .spans
-                .insert(format!("(classes with 2+ constructs: {total})"), 0);
-        }
         for c in &mut out {
             c.bytes_per_construct.sort_unstable();
             c.bytes_per_construct.dedup();
@@ -636,7 +636,7 @@ impl StageInputs<'_> {
                 c.spans = v.into_iter().take(8).collect();
             }
         }
-        Ok((out, constructs))
+        Ok((out, total, constructs))
     }
 }
 
@@ -688,6 +688,10 @@ pub struct FeStagesReport {
     pub stage_graph_nodes: usize,
     pub selections: Vec<StageReport>,
     pub expansion_by_body: Vec<BodyExpansion>,
+    /// Chain classes with two or more constructs (`chain_classes` holds the
+    /// largest of them).
+    #[serde(default)]
+    pub chain_class_count: usize,
     pub chain_classes: Vec<ChainClass>,
     /// The HIR constructs that are the primary source of the most bytes.
     pub top_constructs: Vec<ConstructExpansion>,
@@ -815,7 +819,8 @@ pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
     }
     let _ = writeln!(
         out,
-        "\n== chain classes (constructs with one expansion shape)"
+        "\n== chain classes (constructs with one expansion shape): {} with 2+ constructs",
+        report.chain_class_count
     );
     for c in report.chain_classes.iter().take(n) {
         let _ = writeln!(
