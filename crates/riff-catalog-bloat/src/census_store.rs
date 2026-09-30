@@ -391,8 +391,8 @@ mod tests {
         }
     }
     fn scratch(name: &str) -> Scratch {
-        let path = std::env::temp_dir()
-            .join(format!("riffcat-census-{}-{name}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("riffcat-census-{}-{name}", std::process::id()));
         fs::create_dir(&path).unwrap();
         Scratch(path)
     }
