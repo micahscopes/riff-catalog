@@ -1021,6 +1021,53 @@ mod tests {
         assert_eq!(expansion[0].instructions_reaching, 1);
     }
 
+    /// Two HIR constructs lowered the same way through every stage share a
+    /// chain address; a third lowered differently does not.
+    #[test]
+    fn constructs_with_one_expansion_shape_form_a_chain_class() {
+        let key = |kind: &str, local: &str| serde_json::json!({"kind": kind, "owner_key": "o", "local_key": local});
+        let text = |kind: &str, local: &str| format!("{kind}\u{1f}o\u{1f}{local}");
+        let mut lines = vec![serde_json::json!({"record": "metadata", "schema_version": 2})];
+        let mut rows = Vec::new();
+        for (n, post_op) in [(0, "mload v1"), (1, "mload v2"), (2, "mstore v1 v2")] {
+            let (hir, mir, post, pc) = (
+                key("hir.expr", &format!("e{n}")),
+                key("runtime.stmt", &format!("m{n}")),
+                key("sonatina.postopt.inst", &format!("p{n}")),
+                key("bytecode.pc", &format!("pc:{n}")),
+            );
+            for (from, to) in [(&mir, &hir), (&post, &mir), (&pc, &post)] {
+                lines.push(serde_json::json!({"record": "fact", "type": "origin_edge",
+                    "from": from, "to": to, "label": "lowered_from", "introduced_by": "x"}));
+            }
+            lines.push(serde_json::json!({"record": "fact", "type": "instruction",
+                "instruction": post, "function": null, "mnemonic": post_op}));
+            rows.push(DetailsRow {
+                instruction_key: text("bytecode.pc", &format!("pc:{n}")),
+                code_object: None,
+                pc_start: n,
+                pc_end: n + 1,
+                primary_source: Some(text("hir.expr", &format!("e{n}"))),
+                all_origins: vec![],
+                classification: "source_mapped".into(),
+                classification_reason: None,
+                confidence: "high".into(),
+            });
+        }
+        let body: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+        let graph = StageGraph::read(body.join("\n").as_bytes()).unwrap();
+        let inputs = StageInputs {
+            graph: &graph,
+            rows: &rows,
+            code: &[0x51, 0x51, 0x52],
+        };
+        let (classes, count, constructs) = inputs.chain_classes(10).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(classes[0].constructs, 2);
+        assert_eq!(classes[0].total_bytes, 2);
+        assert_eq!(constructs.len(), 3);
+    }
+
     #[test]
     fn memory_buckets_follow_the_rules_in_order() {
         let ops = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>();
