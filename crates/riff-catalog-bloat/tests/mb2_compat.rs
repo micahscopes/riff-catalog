@@ -6,7 +6,7 @@ struct Request(PathBuf);
 
 impl Request {
     fn new(kind: &str, case: &str) -> Self {
-        let root = PathBuf::from("/workspace/scratch").join(format!(
+        let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
             "riffcat-mb2-compat-{}-{kind}-{case}",
             std::process::id()
         ));

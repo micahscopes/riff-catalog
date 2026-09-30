@@ -12,7 +12,7 @@ struct Request(PathBuf);
 impl Request {
     fn fixture() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = PathBuf::from("/workspace/scratch").join(format!(
+        let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!(
             "riffcat-live-review-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)

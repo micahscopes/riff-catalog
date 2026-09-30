@@ -3,22 +3,21 @@
 //! Reads the origin graph out of an actual `fe dev trace emit` bundle, digests
 //! it through the same facade entry a producer would call, and checks the counts
 //! and a stable facet address. This proves fe -> riffcat works on real compiler
-//! output, not a fixture. The bundle lives outside the repo, so the test skips
-//! (rather than fails) when it is absent, keeping `cargo test` green anywhere.
-
-use std::path::Path;
+//! output, not a fixture. The bundle lives outside the repo: set
+//! `RIFFCAT_FE_TRACE_BUNDLE` to its path. The test skips (rather than fails)
+//! when the variable is unset, keeping `cargo test` green anywhere.
 
 use riff_catalog::{ArtifactRef, Dimension, EdgeRole, Facet, ingest_graph, ingest_trace_bundle};
 
-const BUNDLE_PATH: &str = "/workspace/fe-trace-example.jsonl";
+const BUNDLE_VAR: &str = "RIFFCAT_FE_TRACE_BUNDLE";
 
 #[test]
 fn real_fe_bundle_ingests_to_a_stable_origin_graph() {
-    if !Path::new(BUNDLE_PATH).exists() {
-        eprintln!("skipping: {BUNDLE_PATH} not present");
+    let Some(path) = std::env::var_os(BUNDLE_VAR) else {
+        eprintln!("skipping: {BUNDLE_VAR} is not set");
         return;
-    }
-    let jsonl = std::fs::read_to_string(BUNDLE_PATH).unwrap();
+    };
+    let jsonl = std::fs::read_to_string(&path).unwrap();
 
     let graphs = ingest_trace_bundle(&jsonl).unwrap();
     assert_eq!(graphs.len(), 1, "the bundle folds into one origin graph");
