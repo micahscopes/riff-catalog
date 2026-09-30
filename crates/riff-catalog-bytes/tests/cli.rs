@@ -267,3 +267,47 @@ fn census_inputs_must_be_a_census_of_this_artifact_with_evm_runs() {
         .map(String::as_str)
         .collect::<Vec<_>>());
 }
+
+fn base_args<'a>(command: &'a str, artifact: &'a str) -> Vec<String> {
+    vec![
+        command.to_string(),
+        "--trace".into(),
+        fixture("fe-base/trace.jsonl"),
+        "--attribution".into(),
+        fixture("fe-base/details.json"),
+        "--contract".into(),
+        "C".into(),
+        "--artifact".into(),
+        artifact.to_string(),
+    ]
+}
+
+fn strs(v: &[String]) -> Vec<&str> {
+    v.iter().map(String::as_str).collect()
+}
+
+#[test]
+fn fe_trace_stages_checks_the_trace_against_the_artifact() {
+    let dir = scratch("stages");
+    let regions = base_regions(&dir);
+    let runtime = fixture("fe-base/runtime.bin");
+    let mut args = base_args("fe-trace-stages", &runtime);
+    args.extend(["--regions".to_string(), regions.clone()]);
+    ok(&strs(&args));
+    // Another artifact of the same length: the trace does not describe it
+    // (a manifest for it is written so that only the trace can refuse it).
+    let other = dir.join("other.bin");
+    std::fs::write(&other, [0x60, 0x80, 0x53, 0x00]).unwrap();
+    let other_regions = write(
+        &dir,
+        "other-regions.json",
+        &format!(
+            r#"{{"schema":"riffcat-regions/1","artifact_blake3":"{}","adapter":"t/1","regions":[]}}"#,
+            blake3::hash(&[0x60, 0x80, 0x53, 0x00]).to_hex()
+        ),
+    );
+    let mut args = base_args("fe-trace-stages", other.to_str().unwrap());
+    args.extend(["--regions".to_string(), other_regions]);
+    let err = refused(&strs(&args));
+    assert!(err.contains("does not describe"), "{err}");
+}
