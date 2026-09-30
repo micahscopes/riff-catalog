@@ -17,6 +17,8 @@ pub const REGIONS_SCHEMA_V2: &str = "riffcat-regions/2";
 /// (pattern groups may then carry `evm_ports`).
 pub const CENSUS_SCHEMA_V1: &str = "riffcat-artifact-census/1";
 pub const CENSUS_SCHEMA_V2: &str = "riffcat-artifact-census/2";
+/// Prefix of the region ids the EVM run census adds; manifests may not use it.
+pub const EVM_RUN_ID_PREFIX: &str = "evm-run:";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -47,7 +49,8 @@ pub struct RegionManifest {
 impl RegionManifest {
     /// Check the manifest on its own and, when the artifact is given,
     /// against it: a supported schema (`evm_runs` only in version 2), an
-    /// adapter, at most 100,000 regions, each with a kind, a unique id and a
+    /// adapter, at most 100,000 regions, each with a kind, a unique id (not
+    /// starting with [`EVM_RUN_ID_PREFIX`]) and a
     /// non-empty half-open range, no range twice within a kind, and bounded
     /// total region bytes. With the artifact, its blake3 must be the
     /// manifest's and every range must lie inside it; without it, ranges
@@ -87,6 +90,11 @@ impl RegionManifest {
             ensure!(
                 !region.id.is_empty() && ids.insert(region.id.as_str()),
                 "empty or duplicate region ID"
+            );
+            ensure!(
+                !region.id.starts_with(EVM_RUN_ID_PREFIX),
+                "region id `{}`: ids starting with `{EVM_RUN_ID_PREFIX}` are reserved for the EVM run census",
+                region.id
             );
             ensure!(
                 region.start < region.end && region.end <= limit,
@@ -401,7 +409,7 @@ fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptio
     for class in &census.classes {
         let mut ids = Vec::new();
         for o in &class.occurrences {
-            let id = format!("evm-run:{}", o.start);
+            let id = format!("{EVM_RUN_ID_PREFIX}{}", o.start);
             new_regions.push(CensusRegion {
                 region: RegionSpec {
                     id: id.clone(),
@@ -1380,5 +1388,16 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn manifest_ids_may_not_use_the_evm_run_prefix() {
+        let code = [0x60u8, 0x01, 0x80, 0x01, 0x00];
+        let m = evm_manifest(&code, "riffcat-regions/2", "").unwrap();
+        let mut m2 = m.clone();
+        m2.regions[0].id = "evm-run:0".into();
+        let err = census_regions(&code, m2).unwrap_err().to_string();
+        assert!(err.contains("evm-run:"), "{err}");
+        census_regions(&code, m).unwrap();
     }
 }
