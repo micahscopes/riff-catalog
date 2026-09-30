@@ -17,7 +17,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Lift EVM bytecode into basic blocks (`evm-dataflow/1`) and write each
+    /// Lift EVM bytecode into basic blocks (`evm-dataflow/2`) and write each
     /// block's bytes by role and its flat and dataflow facet addresses.
     EvmDataflow {
         /// Runtime artifact (raw bytes or hex).
