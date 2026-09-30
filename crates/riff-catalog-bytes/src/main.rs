@@ -443,7 +443,7 @@ fn main() -> Result<()> {
             check_schema(&l.schema, EVM_DATAFLOW_BLOCKS_SCHEMA, &left)?;
             let r: DataflowBlocks = read_json(&right)?;
             check_schema(&r.schema, EVM_DATAFLOW_BLOCKS_SCHEMA, &right)?;
-            let cmp = compare_blocks(&l, &r, &min_block_bytes, top);
+            let cmp = compare_blocks(&l, &r, &min_block_bytes, top)?;
             if let Some(path) = json_out {
                 let report = DataflowComparison {
                     schema: EVM_DATAFLOW_COMPARE_SCHEMA.into(),

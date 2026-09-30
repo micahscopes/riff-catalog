@@ -447,31 +447,41 @@ fn block_index<'a>(
     d: &'a DataflowBlocks,
     facet: &str,
     min: u32,
-) -> std::collections::BTreeMap<String, Vec<&'a BlockRecord>> {
+) -> Result<std::collections::BTreeMap<String, Vec<&'a BlockRecord>>> {
     let mut m: std::collections::BTreeMap<String, Vec<&'a BlockRecord>> = Default::default();
     for b in &d.blocks {
         if b.bytes >= min && b.instructions >= 2 {
-            m.entry(b.addresses[facet].clone()).or_default().push(b);
+            let address = b.addresses.get(facet).with_context(|| {
+                format!("block at pc {} has no address for facet `{facet}`", b.start)
+            })?;
+            m.entry(address.clone()).or_default().push(b);
         }
     }
-    m
+    Ok(m)
 }
 
+/// Blocks of two artifacts that share an address, per facet both list with
+/// the same definition. A facet listed on both sides with different
+/// definitions, or a block missing a listed facet's address, is an error.
 pub fn compare_blocks(
     left: &DataflowBlocks,
     right: &DataflowBlocks,
     min_block_bytes: &[u32],
     top: usize,
-) -> Vec<CrossFacet> {
+) -> Result<Vec<CrossFacet>> {
     let mut out = Vec::new();
-    for facet in left.facets.keys() {
-        if !right.facets.contains_key(facet) {
+    for (facet, definition) in &left.facets {
+        let Some(other) = right.facets.get(facet) else {
             continue;
-        }
+        };
+        anyhow::ensure!(
+            definition == other,
+            "facet `{facet}` means `{definition}` on the left and `{other}` on the right"
+        );
         for &min in min_block_bytes {
             let (l, r) = (
-                block_index(left, facet, min),
-                block_index(right, facet, min),
+                block_index(left, facet, min).context("left blocks")?,
+                block_index(right, facet, min).context("right blocks")?,
             );
             let mut shared: Vec<(String, usize, usize, u32, u32, u32)> = Vec::new();
             let (mut lb, mut rb, mut lc, mut rc) = (0u64, 0u64, 0usize, 0usize);
@@ -510,7 +520,7 @@ pub fn compare_blocks(
             });
         }
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -589,10 +599,26 @@ mod tests {
     fn cross_artifact_blocks_match_by_facet_address() {
         let a = evm_dataflow_blocks(&[0x60, 4, 0x35, 0x60, 0x80, 0x52, 0x00]).unwrap();
         let b = evm_dataflow_blocks(&[0x60, 0x80, 0x60, 4, 0x35, 0x90, 0x52, 0x00]).unwrap();
-        let cmp = compare_blocks(&a, &b, &[2], 3);
+        let cmp = compare_blocks(&a, &b, &[2], 3).unwrap();
         let at = |f: &str| cmp.iter().find(|c| c.facet == f).unwrap();
         assert_eq!(at("dataflow").shared_addresses, 1);
         assert_eq!(at("flat").shared_addresses, 0);
+    }
+
+    #[test]
+    fn comparing_blocks_without_a_listed_facet_is_an_error() {
+        let mut left = evm_dataflow_blocks(&[0x60, 1, 0x60, 2, 0x01, 0x60, 0, 0x52, 0x00]).unwrap();
+        let right = left.clone();
+        left.blocks[0].addresses.remove("flat");
+        let result = std::panic::catch_unwind(|| compare_blocks(&left, &right, &[0], 10))
+            .expect("a block without a listed facet made compare_blocks panic");
+        assert!(format!("{result:?}").starts_with("Err"));
+        let mut other = right.clone();
+        other
+            .facets
+            .insert("flat".into(), "some other definition".into());
+        let result = compare_blocks(&right, &other, &[0], 10);
+        assert!(format!("{result:?}").starts_with("Err"));
     }
 
     #[test]

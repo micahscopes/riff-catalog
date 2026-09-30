@@ -63,11 +63,27 @@ fn reports_without_the_expected_schema_are_refused() {
         "causes.json",
         r#"{"schema":"riffcat-evm-byte-causes/99","artifact_bytes":1,"code_end":1,"order":[],"buckets":{"x":{"bytes":1,"instructions":1}},"by_region":[]}"#,
     );
-    let err = refused(&["evm-byte-causes-compare", "--left", &causes, "--right", &causes]);
+    let err = refused(&[
+        "evm-byte-causes-compare",
+        "--left",
+        &causes,
+        "--right",
+        &causes,
+    ]);
     assert!(err.contains("riffcat-evm-byte-causes/99"), "{err}");
     // A dataflow blocks file without a schema field.
-    let blocks = write(&dir, "blocks.json", r#"{"code_bytes":0,"facets":{},"blocks":[]}"#);
-    let err = refused(&["evm-dataflow-compare", "--left", &blocks, "--right", &blocks]);
+    let blocks = write(
+        &dir,
+        "blocks.json",
+        r#"{"code_bytes":0,"facets":{},"blocks":[]}"#,
+    );
+    let err = refused(&[
+        "evm-dataflow-compare",
+        "--left",
+        &blocks,
+        "--right",
+        &blocks,
+    ]);
     assert!(err.contains("blocks.json"), "{err}");
     // A sonatina-functions census in the old bare-array form.
     let code = write(&dir, "code.bin", "600000");
