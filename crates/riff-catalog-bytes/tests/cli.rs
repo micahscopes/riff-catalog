@@ -99,6 +99,7 @@ fn reports_without_the_expected_schema_are_refused() {
     let out = dir.join("bc.json");
     let err = refused(&[
         "evm-byte-causes",
+        "--artifact",
         &code,
         "--regions",
         &regions,
@@ -131,10 +132,11 @@ fn base_regions(dir: &Path) -> String {
         "C",
         "--artifact",
         &fixture("fe-base/runtime.bin"),
-        "--census-dir",
-        dir.to_str().unwrap(),
+        "--artifact-out",
+        artifact.to_str().unwrap(),
+        "--manifest-out",
+        manifest.to_str().unwrap(),
     ]);
-    std::fs::rename(dir.join("runtime.bin"), &artifact).unwrap();
     manifest.to_str().unwrap().to_string()
 }
 
@@ -149,9 +151,18 @@ fn region_manifests_for_another_artifact_are_refused() {
     let out = dir.join("out.json");
     let out = out.to_str().unwrap();
     for args in [
-        vec!["evm-dataflow", other, "--out", out, "--regions", &regions],
+        vec![
+            "evm-dataflow",
+            "--artifact",
+            other,
+            "--blocks-out",
+            out,
+            "--regions",
+            &regions,
+        ],
         vec![
             "evm-byte-causes",
+            "--artifact",
             other,
             "--regions",
             &regions,
@@ -168,8 +179,9 @@ fn region_manifests_for_another_artifact_are_refused() {
     // The same manifest with its own artifact is accepted.
     ok(&[
         "evm-dataflow",
+        "--artifact",
         &fixture("fe-base/runtime.bin"),
-        "--out",
+        "--blocks-out",
         out,
         "--regions",
         &regions,
@@ -203,6 +215,7 @@ fn census_inputs_must_be_a_census_of_this_artifact_with_evm_runs() {
     let causes = |artifact: &str, regions: &str, census: &str| {
         vec![
             "evm-byte-causes".to_string(),
+            "--artifact".into(),
             artifact.to_string(),
             "--regions".into(),
             regions.to_string(),
@@ -353,14 +366,21 @@ fn the_code_end_defaults_to_the_code_and_may_not_pass_the_artifact() {
     };
     // 406 bytes, of which the last 53 are solc's CBOR metadata.
     assert_eq!(
-        code_bytes(&["evm-dataflow", &artifact, "--out", blocks]),
+        code_bytes(&[
+            "evm-dataflow",
+            "--artifact",
+            &artifact,
+            "--blocks-out",
+            blocks
+        ]),
         353
     );
     assert_eq!(
         code_bytes(&[
             "evm-dataflow",
+            "--artifact",
             &artifact,
-            "--out",
+            "--blocks-out",
             blocks,
             "--regions",
             &manifest
@@ -370,8 +390,9 @@ fn the_code_end_defaults_to_the_code_and_may_not_pass_the_artifact() {
     assert_eq!(
         code_bytes(&[
             "evm-dataflow",
+            "--artifact",
             &artifact,
-            "--out",
+            "--blocks-out",
             blocks,
             "--code-end",
             "100"
@@ -380,8 +401,9 @@ fn the_code_end_defaults_to_the_code_and_may_not_pass_the_artifact() {
     );
     let err = refused(&[
         "evm-dataflow",
+        "--artifact",
         &artifact,
-        "--out",
+        "--blocks-out",
         blocks,
         "--code-end",
         "407",
@@ -390,6 +412,7 @@ fn the_code_end_defaults_to_the_code_and_may_not_pass_the_artifact() {
     let out = dir.join("bc.json");
     let err = refused(&[
         "evm-byte-causes",
+        "--artifact",
         &artifact,
         "--regions",
         &manifest,
@@ -401,6 +424,7 @@ fn the_code_end_defaults_to_the_code_and_may_not_pass_the_artifact() {
     assert!(err.contains("999"), "{err}");
     ok(&[
         "evm-byte-causes",
+        "--artifact",
         &artifact,
         "--regions",
         &manifest,
@@ -437,8 +461,9 @@ fn attribution_rows_must_be_the_artifacts_instructions() {
         for args in [
             vec![
                 "evm-dataflow",
+                "--artifact",
                 path,
-                "--out",
+                "--blocks-out",
                 out,
                 "--attribution",
                 &details,
@@ -447,6 +472,7 @@ fn attribution_rows_must_be_the_artifacts_instructions() {
             ],
             vec![
                 "evm-byte-causes",
+                "--artifact",
                 path,
                 "--regions",
                 &regions,
@@ -464,8 +490,9 @@ fn attribution_rows_must_be_the_artifacts_instructions() {
     }
     ok(&[
         "evm-dataflow",
+        "--artifact",
         &fixture("fe-base/runtime.bin"),
-        "--out",
+        "--blocks-out",
         out,
         "--attribution",
         &details,
@@ -484,6 +511,7 @@ fn causes_must_name_instructions_once() {
     let run_causes = |causes: &[String]| {
         let mut args = vec![
             "evm-byte-causes".to_string(),
+            "--artifact".into(),
             runtime.clone(),
             "--regions".into(),
             regions.clone(),
@@ -534,6 +562,7 @@ fn byte_cause_comparisons_recheck_each_ledger_and_print_no_nan() {
     let ledger = dir.join("ledger.json");
     ok(&[
         "evm-byte-causes",
+        "--artifact",
         &fixture("fe-base/runtime.bin"),
         "--regions",
         &regions,
@@ -564,4 +593,21 @@ fn byte_cause_comparisons_recheck_each_ledger_and_print_no_nan() {
         &tampered,
     ]);
     assert!(err.contains("tampered.json") && err.contains("36"), "{err}");
+}
+
+#[test]
+fn producer_outputs_are_not_replaced_without_force() {
+    let dir = scratch("force");
+    let regions = base_regions(&dir);
+    let mut args = base_args("fe-trace-bytes", &fixture("fe-base/runtime.bin"));
+    args.extend([
+        "--artifact-out".to_string(),
+        dir.join("runtime-copy.bin").to_str().unwrap().to_string(),
+        "--manifest-out".into(),
+        regions.clone(),
+    ]);
+    let err = refused(&strs(&args));
+    assert!(err.contains("--force"), "{err}");
+    args.push("--force".into());
+    ok(&strs(&args));
 }

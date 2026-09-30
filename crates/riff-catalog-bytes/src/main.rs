@@ -21,6 +21,7 @@ enum Command {
     /// block's bytes by role and its flat and dataflow facet addresses.
     EvmDataflow {
         /// Runtime artifact (raw bytes or hex).
+        #[arg(long)]
         artifact: PathBuf,
         /// How the artifact file is written: `auto` (hex text when it is only
         /// hex digits, else raw bytes), `hex` or `raw`.
@@ -32,7 +33,7 @@ enum Command {
         code_end: Option<usize>,
         /// Write every block with its facet addresses as JSON.
         #[arg(long)]
-        out: PathBuf,
+        blocks_out: PathBuf,
         /// riffcat-regions/1 manifest whose `function` regions name functions.
         #[arg(long)]
         regions: Option<PathBuf>,
@@ -46,7 +47,7 @@ enum Command {
         min_block_bytes: Vec<u32>,
         /// Write the report as JSON.
         #[arg(long)]
-        report_out: Option<PathBuf>,
+        json_out: Option<PathBuf>,
         #[arg(long, default_value_t = 15)]
         top: usize,
     },
@@ -127,6 +128,9 @@ enum Command {
         artifact_out: PathBuf,
         #[arg(long)]
         manifest_out: PathBuf,
+        /// Replace existing --artifact-out and --manifest-out files.
+        #[arg(long)]
+        force: bool,
         #[arg(long)]
         json_out: Option<PathBuf>,
         /// Ask the manifest for EVM runs of at least this many bytes.
@@ -182,6 +186,7 @@ enum Command {
     /// Put every byte of an EVM runtime in one cause bucket: named causes in
     /// the order given, then role buckets by opcode.
     EvmByteCauses {
+        #[arg(long)]
         artifact: PathBuf,
         /// How the artifact file is written: `auto` (hex text when it is only
         /// hex digits, else raw bytes), `hex` or `raw`.
@@ -258,11 +263,16 @@ enum Command {
         /// Write the full report as JSON.
         #[arg(long)]
         json_out: Option<PathBuf>,
-        /// Write the raw runtime bytes and a digest-bound riffcat-regions/1
-        /// manifest (emitted functions, EVM runs enabled) so `census` can
-        /// replay the run census: `<dir>/runtime.bin`, `<dir>/regions.json`.
+        /// Write the raw runtime bytes here, for `census` to replay.
+        #[arg(long, requires = "manifest_out")]
+        artifact_out: Option<PathBuf>,
+        /// Write the digest-bound region manifest here (emitted functions,
+        /// EVM runs asked for), for `census --regions`.
+        #[arg(long, requires = "artifact_out")]
+        manifest_out: Option<PathBuf>,
+        /// Replace existing --artifact-out and --manifest-out files.
         #[arg(long)]
-        census_dir: Option<PathBuf>,
+        force: bool,
         #[arg(long, default_value_t = 25)]
         top: usize,
     },
@@ -274,12 +284,12 @@ fn main() -> Result<()> {
             artifact,
             artifact_format,
             code_end,
-            out,
+            blocks_out,
             regions,
             attribution,
             contract,
             min_block_bytes,
-            report_out,
+            json_out,
             top,
         } => {
             let bytes = load_artifact(&artifact, artifact_format)?;
@@ -289,7 +299,7 @@ fn main() -> Result<()> {
             };
             let end = riff_catalog_bytes::code_end(&bytes, code_end, manifest.as_ref())?;
             let blocks = evm_dataflow_blocks(&bytes[..end])?;
-            fs::write(&out, serde_json::to_vec(&blocks)?)?;
+            fs::write(&blocks_out, serde_json::to_vec(&blocks)?)?;
             let functions = manifest
                 .as_ref()
                 .map(FunctionRegions::from_manifest)
@@ -312,7 +322,7 @@ fn main() -> Result<()> {
                 &min_block_bytes,
                 top,
             );
-            if let Some(path) = report_out {
+            if let Some(path) = json_out {
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_dataflow_report(&report, top));
@@ -446,6 +456,7 @@ fn main() -> Result<()> {
             contract,
             artifact_out,
             manifest_out,
+            force,
             json_out,
             min_run_bytes,
             top,
@@ -458,8 +469,8 @@ fn main() -> Result<()> {
                 min_run_instructions: 2,
             });
             let (code, report, manifest) = solc_functions(&output, &source, &contract, evm_runs)?;
-            fs::write(&artifact_out, &code)?;
-            fs::write(&manifest_out, serde_json::to_vec_pretty(&manifest)?)?;
+            write_new(&artifact_out, &code, force)?;
+            write_new(&manifest_out, &serde_json::to_vec_pretty(&manifest)?, force)?;
             if let Some(path) = json_out {
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
             }
@@ -721,7 +732,9 @@ fn main() -> Result<()> {
             run_key,
             min_run_instructions,
             json_out,
-            census_dir,
+            artifact_out,
+            manifest_out,
+            force,
             top,
         } => {
             let bytes = load_artifact(&artifact, artifact_format)?;
@@ -741,13 +754,9 @@ fn main() -> Result<()> {
                     min_run_instructions,
                 },
             )?;
-            if let Some(dir) = census_dir {
-                fs::create_dir_all(&dir)?;
-                fs::write(dir.join("runtime.bin"), &bytes)?;
-                fs::write(
-                    dir.join("regions.json"),
-                    serde_json::to_vec_pretty(&manifest)?,
-                )?;
+            if let (Some(artifact_out), Some(manifest_out)) = (artifact_out, manifest_out) {
+                write_new(&artifact_out, &bytes, force)?;
+                write_new(&manifest_out, &serde_json::to_vec_pretty(&manifest)?, force)?;
             }
             if let Some(path) = json_out {
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
@@ -756,4 +765,15 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Write a file the command produces as an input for later commands,
+/// refusing to replace an existing one unless `force`.
+fn write_new(path: &std::path::Path, bytes: &[u8], force: bool) -> Result<()> {
+    ensure!(
+        force || !path.exists(),
+        "{} exists; pass --force to replace it",
+        path.display()
+    );
+    fs::write(path, bytes).with_context(|| format!("write {}", path.display()))
 }
