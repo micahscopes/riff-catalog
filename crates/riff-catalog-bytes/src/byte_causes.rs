@@ -18,7 +18,9 @@ use riff_catalog_ingest_trace::bytes::DetailsRow;
 pub use riff_catalog_ingest_trace::bytes::Tally as CauseTally;
 
 use crate::regions::FunctionRegions;
-use crate::selection::{Selection, pattern_selection, range_selection, read_pc_set};
+use crate::selection::{
+    Selection, check_instruction_starts, needles, pattern_selection, range_selection, read_pc_set,
+};
 use crate::sonatina_functions::{SONATINA_FUNCTIONS_SCHEMA, SonatinaFunctions};
 
 pub const BYTE_CAUSES_SCHEMA: &str = "riffcat-evm-byte-causes/1";
@@ -77,6 +79,9 @@ fn role(
 /// Classify every byte of `code` (instructions end at `code_end`). `labels`
 /// are PUSH pcs whose value is a jump label; `memory_address` PUSH pcs
 /// whose value is a memory or calldata address; `functions` name regions.
+/// Causes and details must have distinct names, no cause may be named like
+/// a role bucket, and every pc they hold must start an instruction before
+/// `code_end`.
 pub fn classify_bytes(
     code: &[u8],
     code_end: usize,
@@ -85,7 +90,36 @@ pub fn classify_bytes(
     memory_address: &BTreeSet<u32>,
     functions: &FunctionRegions,
     details: &[Selection],
-) -> ByteCauses {
+) -> Result<ByteCauses> {
+    ensure!(
+        code_end <= code.len(),
+        "code end {code_end} is past the {}-byte artifact",
+        code.len()
+    );
+    for list in [causes, details] {
+        let mut seen = BTreeSet::new();
+        for s in list {
+            ensure!(
+                seen.insert(&s.name),
+                "two causes or details are named `{}`",
+                s.name
+            );
+            check_instruction_starts(s, &code[..code_end])?;
+        }
+    }
+    let roles = [
+        ROLE_STACK,
+        ROLE_CONTROL,
+        ROLE_MEMORY,
+        ROLE_MEMORY_ADDRESS,
+        ROLE_CONSTANT,
+        ROLE_ARITHMETIC,
+        ROLE_EFFECT,
+        ROLE_DATA,
+    ];
+    if let Some(c) = causes.iter().find(|c| roles.contains(&c.name.as_str())) {
+        bail!("cause `{}` has the name of a role bucket", c.name);
+    }
     let mut order: Vec<String> = causes.iter().map(|c| c.name.clone()).collect();
     for r in [
         ROLE_STACK,
@@ -139,7 +173,7 @@ pub fn classify_bytes(
         .map(|(n, b)| (n, b.values().sum(), b))
         .collect();
     by_region.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    ByteCauses {
+    Ok(ByteCauses {
         schema: BYTE_CAUSES_SCHEMA.into(),
         artifact_bytes: code.len() as u64,
         code_end: code_end as u64,
@@ -147,7 +181,7 @@ pub fn classify_bytes(
         buckets,
         by_region,
         detail,
-    }
+    })
 }
 
 /// What a `--cause` or `--detail` argument can refer to.
@@ -175,7 +209,11 @@ pub fn cause_selection(
     let (kind, rest) = spec.split_once(':').context("--cause kind:NAME=arg")?;
     let (name, arg) = rest.split_once('=').context("--cause kind:NAME=arg")?;
     let pcs: BTreeSet<u32> = match kind {
-        "pcs" => read_pc_set(name, &read(arg)?)?.pcs,
+        "pcs" => {
+            let set = read_pc_set(name, &read(arg)?).with_context(|| format!("pc set {arg}"))?;
+            check_instruction_starts(&set, code).with_context(|| format!("pc set {arg}"))?;
+            set.pcs
+        }
         "pattern" => pattern_selection(name, code, arg)?.pcs,
         "repeats" => {
             let classes = crate::census_input::parse_census_runs(
@@ -230,7 +268,7 @@ pub fn cause_selection(
             range_selection(name, code, &ranges).pcs
         }
         "regions" => {
-            let needles: Vec<&str> = arg.split('|').collect();
+            let needles = needles(arg)?;
             let ranges: Vec<(u32, u32)> = functions
                 .iter()
                 .filter(|f| needles.iter().any(|n| f.name.contains(n)))
@@ -240,7 +278,7 @@ pub fn cause_selection(
         }
         "bodies" => {
             let rows = inputs.rows.context("bodies: needs --attribution")?;
-            let needles: Vec<&str> = arg.split('|').collect();
+            let needles = needles(arg)?;
             let hit = |key: &str| {
                 riff_catalog_ingest_trace::bytes::source_body(key)
                     .is_some_and(|b| needles.iter().any(|n| b.contains(n)))
@@ -292,7 +330,7 @@ pub fn byte_cause_ledger(
         &memory_address,
         functions,
         details,
-    );
+    )?;
     let total: u64 = ledger.buckets.values().map(|t| t.bytes).sum();
     ensure!(
         total == ledger.artifact_bytes,
@@ -393,7 +431,8 @@ mod tests {
                 end: 9,
             }]),
             &[],
-        );
+        )
+        .unwrap();
         let b = |k: &str| c.buckets.get(k).map_or(0, |t| t.bytes);
         assert_eq!(b("clamp"), 1);
         assert_eq!(b(ROLE_MEMORY_ADDRESS), 2);
@@ -411,7 +450,8 @@ mod tests {
             &mem,
             &FunctionRegions::default(),
             &[],
-        );
+        )
+        .unwrap();
         let d = compare_causes(&c, &empty);
         assert_eq!(
             d.iter().map(|x| x.excess).sum::<i64>(),

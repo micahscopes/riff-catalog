@@ -329,7 +329,11 @@ fn main() -> Result<()> {
                 .iter()
                 .map(|p| {
                     let (name, path) = named(p, "--pc-set")?;
-                    read_pc_set(name, &fs::read(path)?)
+                    let set = read_pc_set(name, &read_file(std::path::Path::new(path))?)
+                        .with_context(|| format!("pc set {path}"))?;
+                    check_instruction_starts(&set, code)
+                        .with_context(|| format!("pc set {path}"))?;
+                    Ok(set)
                 })
                 .collect::<Result<Vec<_>>>()?;
             let census_runs = match census {

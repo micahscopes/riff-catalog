@@ -51,8 +51,8 @@ pub use fe_trace::{
 };
 pub use regions::{FunctionRegion, FunctionRegions, OUTSIDE_FUNCTIONS};
 pub use selection::{
-    Selection, named, opcode_selection, pattern_matches, pattern_selection, push_selection,
-    range_selection, read_pc_set,
+    Selection, check_instruction_starts, named, needles, opcode_selection, pattern_matches,
+    pattern_selection, push_selection, range_selection, read_pc_set,
 };
 pub use solc_functions::{
     SOLC_FUNCTIONS_SCHEMA, SOLC_REGIONS_ADAPTER, SolcFunctions, solc_functions,

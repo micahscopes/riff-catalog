@@ -214,6 +214,7 @@ impl StageInputs<'_> {
         }
         let mut spill = BTreeSet::new();
         for sel in request.pc_sets {
+            crate::selection::check_instruction_starts(sel, code)?;
             if sel.name == "backend_spill" {
                 spill = sel.pcs.clone();
             }

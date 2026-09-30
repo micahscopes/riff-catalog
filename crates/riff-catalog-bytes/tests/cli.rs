@@ -473,3 +473,56 @@ fn attribution_rows_must_be_the_artifacts_instructions() {
         "C",
     ]);
 }
+
+#[test]
+fn causes_must_name_instructions_once() {
+    let dir = scratch("causes");
+    let regions = base_regions(&dir);
+    let runtime = fixture("fe-base/runtime.bin");
+    let out = dir.join("out.json");
+    let out = out.to_str().unwrap();
+    let run_causes = |causes: &[String]| {
+        let mut args = vec![
+            "evm-byte-causes".to_string(),
+            runtime.clone(),
+            "--regions".into(),
+            regions.clone(),
+            "--json-out".into(),
+            out.to_string(),
+        ];
+        for c in causes {
+            args.extend(["--cause".to_string(), c.clone()]);
+        }
+        args
+    };
+    // pc 1 is inside PUSH1's immediate, 99 is past the code, 2^32 is not a
+    // pc at all.
+    for pcs in ["[1]", "[99]", "[4294967296]", r#"{"entries":[{"pc":"x"}]}"#] {
+        let file = write(&dir, "pcs.json", pcs);
+        let err = refused(&strs(&run_causes(&[format!("pcs:p={file}")])));
+        assert!(err.contains("pcs.json"), "{pcs}: {err}");
+    }
+    let good = write(&dir, "good.json", "[0, 2]");
+    ok(&strs(&run_causes(&[format!("pcs:p={good}")])));
+    // Two causes with one name, a cause named like a role bucket, and an
+    // empty name in a needle list.
+    for causes in [
+        vec![format!("pcs:x={good}"), "pattern:x=6080".to_string()],
+        vec![format!("pcs:role: stack shuffle (DUP, SWAP, POP)={good}")],
+        vec!["regions:r=C|".to_string()],
+    ] {
+        let err = refused(&strs(&run_causes(&causes)));
+        assert!(!err.is_empty(), "{causes:?}");
+    }
+    // fe-trace-stages takes pc sets too.
+    let bad = write(&dir, "bad.json", "[1]");
+    let mut args = base_args("fe-trace-stages", &runtime);
+    args.extend([
+        "--regions".to_string(),
+        regions.clone(),
+        "--pc-set".into(),
+        format!("s={bad}"),
+    ]);
+    let err = refused(&strs(&args));
+    assert!(err.contains("bad.json"), "{err}");
+}
