@@ -533,6 +533,15 @@ impl ByteLedger {
 
         let mut instructions = Vec::new();
         let mut referenced = BTreeSet::new();
+        // The trace's own instruction extents of this code object; every
+        // details row must name one of them, and every one must have a row.
+        let mut unmatched: BTreeMap<&str, (u32, u32)> = c
+            .extents
+            .iter()
+            .filter(|(_, (object, _, _))| object == code_object)
+            .map(|(key, (_, start, end))| (key.as_str(), (*start, *end)))
+            .collect();
+        let code_len = unmatched.values().map(|(_, end)| *end).max().unwrap_or(0);
         for row in details.instruction_origin_index {
             if row.code_object.as_deref() != Some(code_object.as_str()) {
                 continue;
@@ -542,13 +551,26 @@ impl ByteLedger {
                 .get(&row.instruction_key)
                 .cloned()
                 .unwrap_or_else(|| (String::new(), None));
-            if let Some((object, start, end)) = c.extents.get(&row.instruction_key)
-                && (object != code_object || *start != row.pc_start || *end != row.pc_end)
-            {
-                return Err(LedgerError::Inconsistent(format!(
-                    "attribution details and trace disagree on the extent of {}",
-                    row.instruction_key
-                )));
+            match c.extents.get(&row.instruction_key) {
+                None => {
+                    return Err(LedgerError::Inconsistent(format!(
+                        "details row {}..{} ({}) has no instruction extent in the trace",
+                        row.pc_start,
+                        row.pc_end,
+                        row.instruction_key.replace(SEP, " ")
+                    )));
+                }
+                Some((object, start, end))
+                    if object != code_object || *start != row.pc_start || *end != row.pc_end =>
+                {
+                    return Err(LedgerError::Inconsistent(format!(
+                        "attribution details and trace disagree on the extent of {}",
+                        row.instruction_key.replace(SEP, " ")
+                    )));
+                }
+                Some(_) => {
+                    unmatched.remove(row.instruction_key.as_str());
+                }
             }
             let (emitted_function, postopt_block) = lineage_block(&row.instruction_key);
             referenced.extend(row.primary_source.iter().cloned());
@@ -568,7 +590,12 @@ impl ByteLedger {
             });
         }
         check_rows(&mut instructions, |i| (i.pc_start, i.pc_end))?;
-        let code_len = instructions.last().map_or(0, |i| i.pc_end);
+        if let Some((start, end)) = unmatched.values().min() {
+            return Err(LedgerError::Inconsistent(format!(
+                "trace instruction at pc {start}..{end} has no attribution row ({} such instructions)",
+                unmatched.len()
+            )));
+        }
 
         let source_spans: BTreeMap<String, LedgerSpan> = referenced
             .into_iter()
@@ -612,8 +639,9 @@ impl ByteLedger {
 
     /// Check the ledger against the real artifact bytes: the trace's blake3
     /// code hash (when present) must be the hash of the whole artifact, the
-    /// instruction extents must tile `0..code_len` without gaps, and every
-    /// PUSH immediate must equal the artifact's bytes.
+    /// instruction extents must tile `0..code_len` without gaps, every
+    /// instruction's opcode and length must match the artifact byte at its
+    /// pc, and every PUSH immediate must equal the artifact's bytes.
     ///
     /// Bytes after the last instruction are accepted only when the code hash
     /// proves they belong to the traced code object: they are data the
@@ -654,6 +682,27 @@ impl ByteLedger {
                     inst.pc_start
                 )));
             }
+            let opcode = code[inst.pc_start as usize];
+            if !mnemonic_matches(&inst.mnemonic, opcode) {
+                return Err(LedgerError::Inconsistent(format!(
+                    "opcode at pc {} is {} in the trace, 0x{opcode:02x} ({}) in the artifact",
+                    inst.pc_start,
+                    if inst.mnemonic.is_empty() {
+                        "missing"
+                    } else {
+                        &inst.mnemonic
+                    },
+                    opcode_mnemonic(opcode).unwrap_or("unassigned")
+                )));
+            }
+            let expected_len = (1 + push_len(opcode)).min(self.code_len - inst.pc_start);
+            if inst.pc_end - inst.pc_start != expected_len {
+                return Err(LedgerError::Inconsistent(format!(
+                    "instruction at pc {} is {} bytes in the trace, {expected_len} for its opcode",
+                    inst.pc_start,
+                    inst.pc_end - inst.pc_start
+                )));
+            }
             if let Some(imm) = &inst.immediate {
                 let hex: String = code[inst.pc_start as usize + 1..inst.pc_end as usize]
                     .iter()
@@ -687,6 +736,186 @@ impl ByteLedger {
             }
         }
         out
+    }
+}
+
+/// The canonical mnemonic of an EVM opcode byte, `None` for unassigned
+/// bytes.
+pub fn opcode_mnemonic(opcode: u8) -> Option<&'static str> {
+    Some(match opcode {
+        0x00 => "STOP",
+        0x01 => "ADD",
+        0x02 => "MUL",
+        0x03 => "SUB",
+        0x04 => "DIV",
+        0x05 => "SDIV",
+        0x06 => "MOD",
+        0x07 => "SMOD",
+        0x08 => "ADDMOD",
+        0x09 => "MULMOD",
+        0x0a => "EXP",
+        0x0b => "SIGNEXTEND",
+        0x10 => "LT",
+        0x11 => "GT",
+        0x12 => "SLT",
+        0x13 => "SGT",
+        0x14 => "EQ",
+        0x15 => "ISZERO",
+        0x16 => "AND",
+        0x17 => "OR",
+        0x18 => "XOR",
+        0x19 => "NOT",
+        0x1a => "BYTE",
+        0x1b => "SHL",
+        0x1c => "SHR",
+        0x1d => "SAR",
+        0x1e => "CLZ",
+        0x20 => "KECCAK256",
+        0x30 => "ADDRESS",
+        0x31 => "BALANCE",
+        0x32 => "ORIGIN",
+        0x33 => "CALLER",
+        0x34 => "CALLVALUE",
+        0x35 => "CALLDATALOAD",
+        0x36 => "CALLDATASIZE",
+        0x37 => "CALLDATACOPY",
+        0x38 => "CODESIZE",
+        0x39 => "CODECOPY",
+        0x3a => "GASPRICE",
+        0x3b => "EXTCODESIZE",
+        0x3c => "EXTCODECOPY",
+        0x3d => "RETURNDATASIZE",
+        0x3e => "RETURNDATACOPY",
+        0x3f => "EXTCODEHASH",
+        0x40 => "BLOCKHASH",
+        0x41 => "COINBASE",
+        0x42 => "TIMESTAMP",
+        0x43 => "NUMBER",
+        0x44 => "PREVRANDAO",
+        0x45 => "GASLIMIT",
+        0x46 => "CHAINID",
+        0x47 => "SELFBALANCE",
+        0x48 => "BASEFEE",
+        0x49 => "BLOBHASH",
+        0x4a => "BLOBBASEFEE",
+        0x50 => "POP",
+        0x51 => "MLOAD",
+        0x52 => "MSTORE",
+        0x53 => "MSTORE8",
+        0x54 => "SLOAD",
+        0x55 => "SSTORE",
+        0x56 => "JUMP",
+        0x57 => "JUMPI",
+        0x58 => "PC",
+        0x59 => "MSIZE",
+        0x5a => "GAS",
+        0x5b => "JUMPDEST",
+        0x5c => "TLOAD",
+        0x5d => "TSTORE",
+        0x5e => "MCOPY",
+        0x5f => "PUSH0",
+        0x60 => "PUSH1",
+        0x61 => "PUSH2",
+        0x62 => "PUSH3",
+        0x63 => "PUSH4",
+        0x64 => "PUSH5",
+        0x65 => "PUSH6",
+        0x66 => "PUSH7",
+        0x67 => "PUSH8",
+        0x68 => "PUSH9",
+        0x69 => "PUSH10",
+        0x6a => "PUSH11",
+        0x6b => "PUSH12",
+        0x6c => "PUSH13",
+        0x6d => "PUSH14",
+        0x6e => "PUSH15",
+        0x6f => "PUSH16",
+        0x70 => "PUSH17",
+        0x71 => "PUSH18",
+        0x72 => "PUSH19",
+        0x73 => "PUSH20",
+        0x74 => "PUSH21",
+        0x75 => "PUSH22",
+        0x76 => "PUSH23",
+        0x77 => "PUSH24",
+        0x78 => "PUSH25",
+        0x79 => "PUSH26",
+        0x7a => "PUSH27",
+        0x7b => "PUSH28",
+        0x7c => "PUSH29",
+        0x7d => "PUSH30",
+        0x7e => "PUSH31",
+        0x7f => "PUSH32",
+        0x80 => "DUP1",
+        0x81 => "DUP2",
+        0x82 => "DUP3",
+        0x83 => "DUP4",
+        0x84 => "DUP5",
+        0x85 => "DUP6",
+        0x86 => "DUP7",
+        0x87 => "DUP8",
+        0x88 => "DUP9",
+        0x89 => "DUP10",
+        0x8a => "DUP11",
+        0x8b => "DUP12",
+        0x8c => "DUP13",
+        0x8d => "DUP14",
+        0x8e => "DUP15",
+        0x8f => "DUP16",
+        0x90 => "SWAP1",
+        0x91 => "SWAP2",
+        0x92 => "SWAP3",
+        0x93 => "SWAP4",
+        0x94 => "SWAP5",
+        0x95 => "SWAP6",
+        0x96 => "SWAP7",
+        0x97 => "SWAP8",
+        0x98 => "SWAP9",
+        0x99 => "SWAP10",
+        0x9a => "SWAP11",
+        0x9b => "SWAP12",
+        0x9c => "SWAP13",
+        0x9d => "SWAP14",
+        0x9e => "SWAP15",
+        0x9f => "SWAP16",
+        0xa0 => "LOG0",
+        0xa1 => "LOG1",
+        0xa2 => "LOG2",
+        0xa3 => "LOG3",
+        0xa4 => "LOG4",
+        0xf0 => "CREATE",
+        0xf1 => "CALL",
+        0xf2 => "CALLCODE",
+        0xf3 => "RETURN",
+        0xf4 => "DELEGATECALL",
+        0xf5 => "CREATE2",
+        0xfa => "STATICCALL",
+        0xfd => "REVERT",
+        0xfe => "INVALID",
+        0xff => "SELFDESTRUCT",
+        _ => return None,
+    })
+}
+
+/// Whether a trace's mnemonic names this opcode byte. Accepts the older
+/// spellings SHA3 and DIFFICULTY, and any name for an unassigned byte that
+/// the trace marks as invalid.
+fn mnemonic_matches(mnemonic: &str, opcode: u8) -> bool {
+    match opcode_mnemonic(opcode) {
+        Some(name) => {
+            mnemonic.eq_ignore_ascii_case(name)
+                || (opcode == 0x20 && mnemonic.eq_ignore_ascii_case("SHA3"))
+                || (opcode == 0x44 && mnemonic.eq_ignore_ascii_case("DIFFICULTY"))
+        }
+        None => mnemonic.eq_ignore_ascii_case("INVALID") || mnemonic.starts_with("UNKNOWN"),
+    }
+}
+
+fn push_len(opcode: u8) -> u32 {
+    if (0x60..=0x7f).contains(&opcode) {
+        u32::from(opcode - 0x5f)
+    } else {
+        0
     }
 }
 
@@ -1164,6 +1393,81 @@ mod tests {
         assert_ne!(two, details());
         let err = read_runtime_details(&two, "C").unwrap_err().to_string();
         assert!(err.contains("2 runtime code objects"), "{err}");
+    }
+
+    fn ledger_with_hash(code_hash: Option<&[u8]>) -> ByteLedger {
+        let hash = match code_hash {
+            Some(bytes) => format!("\"blake3:{}\"", blake3_hex(bytes)),
+            None => "null".into(),
+        };
+        let text = trace().replace("\"code_hash\":null", &format!("\"code_hash\":{hash}"));
+        ByteLedger::read(
+            text.as_bytes(),
+            &details(),
+            &LedgerSelector {
+                contract: "C".into(),
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn code_hash_proves_trailing_data_and_refuses_other_artifacts() {
+        let code = [0x60, 0x80, 0x52, 0x00];
+        let with_data = [0x60, 0x80, 0x52, 0x00, 0xaa, 0xbb];
+        let check = ledger_with_hash(Some(&code))
+            .verify_artifact(&code)
+            .unwrap();
+        assert!(check.code_hash_checked);
+        assert_eq!(check.trailing_bytes, 0);
+        let check = ledger_with_hash(Some(&with_data))
+            .verify_artifact(&with_data)
+            .unwrap();
+        assert_eq!((check.instruction_bytes, check.trailing_bytes), (4, 2));
+        let err = ledger_with_hash(Some(&with_data))
+            .verify_artifact(&code)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("differs from trace code hash"), "{err}");
+        let err = ledger_with_hash(None)
+            .verify_artifact(&with_data)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no code hash"), "{err}");
+    }
+
+    #[test]
+    fn opcodes_are_compared_without_a_code_hash() {
+        let l = ledger_with_hash(None);
+        l.verify_artifact(&[0x60, 0x80, 0x52, 0x00]).unwrap();
+        // MSTORE8 where the trace says MSTORE, and INVALID where it says STOP.
+        for other in [[0x60, 0x80, 0x53, 0x00], [0x60, 0x80, 0x52, 0xfe]] {
+            let err = l.verify_artifact(&other).unwrap_err().to_string();
+            assert!(err.contains("opcode at pc"), "{err}");
+        }
+    }
+
+    #[test]
+    fn every_row_needs_a_trace_extent_and_every_extent_a_row() {
+        // The last details row is missing: its bytes are not data after the code.
+        let good = details();
+        let (head, _) = good.rsplit_once("},").unwrap();
+        let truncated = format!("{head}}}\n]}}");
+        let err = read_details(&truncated).unwrap_err().to_string();
+        assert!(err.contains("no attribution row"), "{err}");
+        // A row whose instruction the trace never mentions.
+        let bogus = trace().replace("\"pc:3\"},\"code_object\"", "\"pc:9\"},\"code_object\"");
+        assert_ne!(bogus, trace());
+        let err = ByteLedger::read(
+            bogus.as_bytes(),
+            &details(),
+            &LedgerSelector {
+                contract: "C".into(),
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("no instruction extent"), "{err}");
     }
 
     #[test]
