@@ -19,6 +19,13 @@ mod selection;
 mod solc_functions;
 mod sonatina_functions;
 
+/// Text for a table: key separators (`\x1f`, which Fe puts between the
+/// kind, owner and local parts of a key) shown as spaces. JSON keeps keys
+/// as they are.
+pub fn shown(text: &str) -> String {
+    text.replace('\u{1f}', " ")
+}
+
 pub use artifact::{
     ArtifactFormat, check_schema, code_end, decode_artifact, decode_artifact_as, load_artifact,
     load_details, load_regions, load_regions_unbound, read_file, read_json,

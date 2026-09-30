@@ -299,7 +299,7 @@ fn main() -> Result<()> {
             };
             let end = riff_catalog_bytes::code_end(&bytes, code_end, manifest.as_ref())?;
             let blocks = evm_dataflow_blocks(&bytes[..end])?;
-            fs::write(&blocks_out, serde_json::to_vec(&blocks)?)?;
+            write_file(&blocks_out, serde_json::to_vec(&blocks)?)?;
             let functions = manifest
                 .as_ref()
                 .map(FunctionRegions::from_manifest)
@@ -323,7 +323,7 @@ fn main() -> Result<()> {
                 top,
             );
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_dataflow_report(&report, top));
         }
@@ -431,7 +431,7 @@ fn main() -> Result<()> {
             };
             if let Some(dir) = &mechanisms_out {
                 let (_, clamp, spill) = inputs.selections(&request)?;
-                fs::create_dir_all(dir)?;
+                fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
                 let mut index = BTreeMap::new();
                 for (k, (name, pcs)) in inputs
                     .byte_mechanisms(&clamp, &spill)
@@ -439,14 +439,14 @@ fn main() -> Result<()> {
                     .enumerate()
                 {
                     let file = format!("mechanism-{k}.json");
-                    fs::write(dir.join(&file), serde_json::to_vec(&pcs)?)?;
+                    write_file(dir.join(&file), serde_json::to_vec(&pcs)?)?;
                     index.insert(name, file);
                 }
-                fs::write(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
+                write_file(dir.join("index.json"), serde_json::to_vec_pretty(&index)?)?;
             }
             let report = inputs.stage_report(&request)?;
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_fe_stages(&report, top));
         }
@@ -461,7 +461,7 @@ fn main() -> Result<()> {
             min_run_bytes,
             top,
         } => {
-            let raw: serde_json::Value = serde_json::from_slice(&fs::read(&standard_output)?)?;
+            let raw: serde_json::Value = read_json(&standard_output)?;
             let output = riff_catalog_solc::SolcOutput::new(raw);
             let evm_runs = min_run_bytes.map(|m| EvmRunOptions {
                 min_run_bytes: m,
@@ -472,14 +472,14 @@ fn main() -> Result<()> {
             write_new(&artifact_out, &code, force)?;
             write_new(&manifest_out, &serde_json::to_vec_pretty(&manifest)?, force)?;
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             println!(
                 "{} {}: {} runtime bytes, code ends at {}",
                 source, contract, report.runtime_bytes, report.code_end
             );
             for (owner, bytes) in report.by_owner.iter().take(top) {
-                println!("{bytes:>7}  {owner}");
+                println!("{bytes:>7}  {}", shown(owner));
             }
         }
         Command::CompareFunctions {
@@ -516,7 +516,7 @@ fn main() -> Result<()> {
                     builds: builds.clone(),
                     rows: rows.clone(),
                 };
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_function_comparison(&rows, &builds));
         }
@@ -537,7 +537,7 @@ fn main() -> Result<()> {
                     schema: EVM_DATAFLOW_COMPARE_SCHEMA.into(),
                     facets: cmp.clone(),
                 };
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             println!(
                 "facet, min block bytes: shared addresses; left blocks/bytes; right blocks/bytes"
@@ -561,7 +561,8 @@ fn main() -> Result<()> {
             json_out,
             top,
         } => {
-            let source = fs::read_to_string(&ir)?;
+            let source =
+                fs::read_to_string(&ir).with_context(|| format!("read {}", ir.display()))?;
             let mut bytes: BTreeMap<String, u64> = BTreeMap::new();
             if let Some(path) = regions {
                 let manifest = load_regions_unbound(&path)?;
@@ -575,7 +576,7 @@ fn main() -> Result<()> {
                     schema: SONATINA_FUNCTIONS_SCHEMA.into(),
                     facets: census.clone(),
                 };
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             for c in &census {
                 println!(
@@ -589,7 +590,9 @@ fn main() -> Result<()> {
                     let names: Vec<String> = class
                         .functions
                         .iter()
-                        .map(|(n, b)| format!("{n} {}", b.map_or("-".into(), |b| b.to_string())))
+                        .map(|(n, b)| {
+                            format!("{} {}", shown(n), b.map_or("-".into(), |b| b.to_string()))
+                        })
                         .collect();
                     println!(
                         "   {:>6} of {:>6}  {}",
@@ -625,7 +628,7 @@ fn main() -> Result<()> {
                 functions: &functions,
                 rows: rows.as_deref(),
             };
-            let read = |path: &str| -> Result<Vec<u8>> { Ok(fs::read(path)?) };
+            let read = |path: &str| -> Result<Vec<u8>> { read_file(std::path::Path::new(path)) };
             let causes = cause
                 .iter()
                 .map(|c| cause_selection(c, &inputs, &read))
@@ -636,10 +639,10 @@ fn main() -> Result<()> {
                 .collect::<Result<Vec<_>>>()?;
             let ledger = byte_cause_ledger(&code, end, &causes, &functions, &details)?;
             let total: u64 = ledger.buckets.values().map(|t| t.bytes).sum();
-            fs::write(&json_out, serde_json::to_vec_pretty(&ledger)?)?;
+            write_file(&json_out, serde_json::to_vec_pretty(&ledger)?)?;
             for name in &ledger.order {
                 if let Some(t) = ledger.buckets.get(name) {
-                    println!("{:>7} {:>6}  {name}", t.bytes, t.instructions);
+                    println!("{:>7} {:>6}  {}", t.bytes, t.instructions, shown(name));
                 }
             }
             println!("{total:>7}         total");
@@ -647,9 +650,9 @@ fn main() -> Result<()> {
                 if let Some(d) = ledger.detail.get(name) {
                     let mut v: Vec<(&String, &u64)> = d.iter().collect();
                     v.sort_by(|a, b| b.1.cmp(a.1));
-                    println!("\n  {name}:");
+                    println!("\n  {}:", shown(name));
                     for (k, b) in v {
-                        println!("    {b:>7}  {k}");
+                        println!("    {b:>7}  {}", shown(k));
                     }
                 }
             }
@@ -682,7 +685,7 @@ fn main() -> Result<()> {
                     right_artifact_blake3: r.artifact_blake3.clone(),
                     rows: rows.clone(),
                 };
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             // A share of no excess is undefined, not NaN.
             let share = |part: f64| {
@@ -759,7 +762,7 @@ fn main() -> Result<()> {
                 write_new(&manifest_out, &serde_json::to_vec_pretty(&manifest)?, force)?;
             }
             if let Some(path) = json_out {
-                fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
+                write_file(&path, serde_json::to_vec_pretty(&report)?)?;
             }
             print!("{}", render_fe_trace_bytes(&report, top));
         }
@@ -775,5 +778,11 @@ fn write_new(path: &std::path::Path, bytes: &[u8], force: bool) -> Result<()> {
         "{} exists; pass --force to replace it",
         path.display()
     );
+    fs::write(path, bytes).with_context(|| format!("write {}", path.display()))
+}
+
+/// Write an output file, naming it in errors.
+fn write_file(path: impl AsRef<std::path::Path>, bytes: Vec<u8>) -> Result<()> {
+    let path = path.as_ref();
     fs::write(path, bytes).with_context(|| format!("write {}", path.display()))
 }
