@@ -84,8 +84,28 @@ fn blank_lines_are_ignored_and_bad_json_is_located() {
     assert!(ingest_trace_bundle("\n\n\n").unwrap().is_empty());
 
     // A malformed line reports its 1-based line number.
-    let err = ingest_trace_bundle("{\"record\":\"metadata\"}\nnot json\n").unwrap_err();
+    let err =
+        ingest_trace_bundle("{\"record\":\"metadata\",\"schema_version\":1}\nnot json\n")
+            .unwrap_err();
     assert!(err.to_string().contains("line 2"), "got: {err}");
+}
+
+#[test]
+fn metadata_versions_are_read_as_fields_and_must_be_integers() {
+    let fact = "{\"type\":\"origin_node\",\"record\":\"fact\",\"key\":{\"kind\":\"hir.expr\",\"owner_key\":\"o\",\"local_key\":\"n\"}}\n";
+    for bad in [
+        "{\"schema_version\":99,\"record\":\"metadata\"}",
+        "{ \"record\": \"metadata\", \"schema_version\": 99 }",
+        "{\"record\":\"metadata\"}",
+        "{\"record\":\"metadata\",\"schema_version\":\"1\"}",
+    ] {
+        assert!(
+            ingest_trace_bundle(&format!("{bad}\n{fact}")).is_err(),
+            "{bad} accepted"
+        );
+    }
+    let spaced = format!("{{ \"record\": \"metadata\", \"schema_version\": 1 }}\n{fact}");
+    assert_eq!(ingest_trace_bundle(&spaced).unwrap()[0].nodes.len(), 1);
 }
 
 #[test]

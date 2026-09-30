@@ -40,6 +40,7 @@
 //! no hashing itself; hand the returned graphs to `riff_catalog::ingest_graph`.
 
 pub mod bytes;
+pub mod scan;
 pub mod stages;
 
 use serde::Deserialize;
@@ -56,12 +57,14 @@ const ORIGIN_GRAPH_DEFAULT_OWNER: &str = "bundle";
 const ORIGIN_GRAPH_LOCAL: &str = "origins";
 /// Field name that carries an origin edge's introducing compiler phase.
 const INTRODUCED_BY_FIELD: &str = "introduced_by";
+pub use scan::{SUPPORTED_TRACE_SCHEMA_VERSIONS, ScanError, TraceMetadata, scan_trace};
+
 /// Newest Fe trace-bundle schema understood by this reader. This is distinct
 /// from Riffcat's canonical hashing schema version. Version 2 only added the
 /// `attribution_gap` fact kind, which this reader skips like any other
-/// non-origin kind, so versions 1 and 2 are both accepted.
-pub const SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 2;
-pub(crate) const OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION: u64 = 1;
+/// non-origin kind, so every version in [`SUPPORTED_TRACE_SCHEMA_VERSIONS`]
+/// is accepted.
+pub const SUPPORTED_TRACE_SCHEMA_VERSION: u64 = *SUPPORTED_TRACE_SCHEMA_VERSIONS.end();
 
 /// Error raised while reading a trace bundle.
 #[derive(Debug, thiserror::Error)]
@@ -95,6 +98,29 @@ pub enum IngestError {
         found: u64,
         supported: u64,
     },
+    /// A line was not a record this reader can interpret: no `record` field,
+    /// a fact without a `type`, or a metadata record whose `schema_version`
+    /// is missing or not an integer.
+    #[error("trace bundle line {line}: {message}")]
+    Trace { line: usize, message: String },
+}
+
+impl From<ScanError> for IngestError {
+    fn from(error: ScanError) -> Self {
+        match error {
+            ScanError::Json { line, source } => Self::Json { line, source },
+            ScanError::UnsupportedSchema { line, found } => Self::UnsupportedSchema {
+                line,
+                found,
+                supported: SUPPORTED_TRACE_SCHEMA_VERSION,
+            },
+            ScanError::Line { line, message } => Self::Trace { line, message },
+            other => Self::Trace {
+                line: 0,
+                message: other.to_string(),
+            },
+        }
+    }
 }
 
 /// One `origin_node` record's payload. Extra line fields (`record`, `type`) are
@@ -143,52 +169,27 @@ fn ensure_node(graph: &mut Graph, key: &EntityKey) -> Result<(), CatalogError> {
 /// kinds are skipped. See the module docs for the mapping and the one-graph
 /// grouping rationale.
 pub fn ingest_trace_bundle(jsonl: &str) -> Result<Vec<Graph>, IngestError> {
-    let mut input_path: Option<String> = None;
     let mut nodes: Vec<(usize, EntityKey)> = Vec::new();
     let mut edges: Vec<(usize, OriginEdgeLine)> = Vec::new();
-
-    for (index, raw) in jsonl.lines().enumerate() {
-        let line = index + 1;
-        let text = raw.trim();
-        if text.is_empty() {
-            continue;
-        }
-        let value: serde_json::Value =
-            serde_json::from_str(text).map_err(|source| IngestError::Json { line, source })?;
-
-        if value.get("record").and_then(|r| r.as_str()) == Some("metadata") {
-            if let Some(found) = value.get("schema_version").and_then(|v| v.as_u64())
-                && !(OLDEST_SUPPORTED_TRACE_SCHEMA_VERSION..=SUPPORTED_TRACE_SCHEMA_VERSION)
-                    .contains(&found)
-            {
-                return Err(IngestError::UnsupportedSchema {
-                    line,
-                    found,
-                    supported: SUPPORTED_TRACE_SCHEMA_VERSION,
-                });
-            }
-            if let Some(path) = value.get("input_path").and_then(|p| p.as_str()) {
-                input_path = Some(path.to_string());
-            }
-            continue;
-        }
-
-        match value.get("type").and_then(|t| t.as_str()) {
-            Some("origin_node") => {
-                let node: OriginNodeLine = serde_json::from_value(value)
-                    .map_err(|source| IngestError::Json { line, source })?;
+    // Every other (or unknown) fact kind is intentionally skipped: this
+    // reader ingests the origin graph only.
+    let metadata = scan_trace(
+        jsonl.as_bytes(),
+        false,
+        |kind| kind == "origin_node" || kind == "origin_edge",
+        |line, kind, text| -> Result<(), IngestError> {
+            let json = |source| IngestError::Json { line, source };
+            if kind == "origin_node" {
+                let node: OriginNodeLine = serde_json::from_str(text).map_err(json)?;
                 nodes.push((line, node.key));
-            }
-            Some("origin_edge") => {
-                let edge: OriginEdgeLine = serde_json::from_value(value)
-                    .map_err(|source| IngestError::Json { line, source })?;
+            } else {
+                let edge: OriginEdgeLine = serde_json::from_str(text).map_err(json)?;
                 edges.push((line, edge));
             }
-            // Every other (or unknown) fact kind is intentionally skipped: this
-            // reader ingests the origin graph only.
-            _ => {}
-        }
-    }
+            Ok(())
+        },
+    )?;
+    let input_path = metadata.input_path;
 
     if nodes.is_empty() && edges.is_empty() {
         return Ok(Vec::new());

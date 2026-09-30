@@ -31,11 +31,10 @@ use std::io::BufRead;
 
 use serde::{Deserialize, Serialize};
 
+use crate::scan::{ScanError, scan_trace};
+
 /// Attribution details schema this reader understands.
 pub const ATTRIBUTION_DETAILS_SCHEMA: &str = "fe-ethdebug-attribution-details-v1";
-/// Trace bundle schema versions whose fact kinds this reader understands.
-/// Version 2 added `attribution_gap`; the kinds read here are unchanged.
-pub const SUPPORTED_LEDGER_TRACE_SCHEMAS: [u64; 2] = [1, 2];
 
 const SEP: char = '\u{1f}';
 
@@ -47,6 +46,8 @@ pub enum LedgerError {
     Details(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Scan(#[from] ScanError),
     #[error("{0}")]
     Inconsistent(String),
 }
@@ -232,7 +233,11 @@ fn field<'a>(
     })
 }
 
-fn key_of(value: &serde_json::Value, name: &str, line: usize) -> Result<String, LedgerError> {
+pub(crate) fn key_of(
+    value: &serde_json::Value,
+    name: &str,
+    line: usize,
+) -> Result<String, LedgerError> {
     let raw = field(value, name, line)?;
     let key: WireKey = serde_json::from_value(raw.clone()).map_err(|e| LedgerError::Trace {
         line,
@@ -265,166 +270,149 @@ const WANTED: [&str; 10] = [
     "source_file",
 ];
 
-pub(crate) fn fact_type(line: &str) -> Option<&str> {
-    let at = line.find("\"type\":")? + "\"type\":".len();
-    let rest = line[at..].trim_start().strip_prefix('"')?;
-    Some(&rest[..rest.find('"')?])
+/// Origin edges are the bulk of a large trace; the ledger keeps only the
+/// backend lineage, the edges out of these kinds.
+const LINEAGE_FROM: [&str; 3] = [
+    "bytecode.pc",
+    "evm.vcode.inst",
+    "sonatina.evm.prepared.inst",
+];
+
+#[derive(Deserialize)]
+struct EdgeLine {
+    from: WireKey,
+    to: WireKey,
 }
 
 fn collect(trace: impl BufRead) -> Result<Collected, LedgerError> {
     let mut c = Collected::default();
-    for (index, raw) in trace.lines().enumerate() {
-        let line = index + 1;
-        let raw = raw?;
-        let text = raw.trim();
-        if text.is_empty() {
-            continue;
-        }
-        if text.starts_with("{\"record\":\"metadata\"") || text.contains("\"record\": \"metadata\"")
-        {
-            let value: serde_json::Value =
-                serde_json::from_str(text).map_err(|e| LedgerError::Trace {
-                    line,
-                    message: e.to_string(),
-                })?;
-            if let Some(found) = value.get("schema_version").and_then(|v| v.as_u64())
-                && !SUPPORTED_LEDGER_TRACE_SCHEMAS.contains(&found)
-            {
-                return Err(LedgerError::Trace {
-                    line,
-                    message: format!(
-                        "unsupported trace schema version {found} (supported: {SUPPORTED_LEDGER_TRACE_SCHEMAS:?})"
-                    ),
-                });
-            }
-            continue;
-        }
-        let Some(kind) = fact_type(text) else {
-            continue;
-        };
-        if !WANTED.contains(&kind) {
-            continue;
-        }
-        // Origin edges are the bulk of a large trace; keep only backend lineage.
-        if kind == "origin_edge"
-            && !(text.contains("\"from\":{\"kind\":\"bytecode.pc\"")
-                || text.contains("\"from\":{\"kind\":\"evm.vcode.inst\"")
-                || text.contains("\"from\":{\"kind\":\"sonatina.evm.prepared.inst\""))
-        {
-            continue;
-        }
-        let v: serde_json::Value = serde_json::from_str(text).map_err(|e| LedgerError::Trace {
-            line,
-            message: e.to_string(),
-        })?;
-        match kind {
-            "code_object" => {
-                let code_object = key_of(&v, "code_object", line)?;
-                let object_kind = field(&v, "kind", line)?
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                let owner = v
-                    .get("owner_function_or_contract")
-                    .filter(|o| !o.is_null())
-                    .map(|_| key_of(&v, "owner_function_or_contract", line))
-                    .transpose()?;
-                let hash = v
-                    .get("code_hash")
-                    .and_then(|h| h.as_str())
-                    .map(str::to_string);
-                c.code_objects.push((code_object, object_kind, owner, hash));
-            }
-            "instruction_extent" => {
-                let instruction = key_of(&v, "instruction", line)?;
-                let code_object = key_of(&v, "code_object", line)?;
-                let range = field(&v, "pc_range", line)?;
-                c.extents.insert(
-                    instruction,
-                    (
-                        code_object,
-                        u32_of(range, "start", line)?,
-                        u32_of(range, "end", line)?,
-                    ),
-                );
-            }
-            "opcode" => {
-                let pc = key_of(&v, "pc", line)?;
-                let opcode = field(&v, "opcode", line)?
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                let immediate = v
-                    .get("immediate")
-                    .and_then(|i| i.as_str())
-                    .map(str::to_string);
-                c.opcodes.insert(pc, (opcode, immediate));
-            }
-            "origin_edge" => {
-                let from = key_of(&v, "from", line)?;
-                let to = key_of(&v, "to", line)?;
-                c.edges.entry(from).or_default().push(to);
-            }
-            "instruction_block" => {
-                if field(&v, "phase", line)?.as_str() == Some("sonatina_post_opt") {
-                    c.postopt_block_of
-                        .insert(key_of(&v, "instruction", line)?, key_of(&v, "block", line)?);
-                }
-            }
-            "block" => {
-                if field(&v, "phase", line)?.as_str() == Some("sonatina_post_opt") {
-                    c.postopt_blocks.push((
-                        key_of(&v, "function", line)?,
-                        key_of(&v, "block", line)?,
-                        u32_of(&v, "ordinal", line)?,
-                    ));
-                }
-            }
-            "cfg_edge" => {
-                let function = key_of(&v, "function", line)?;
-                if function.starts_with("sonatina.postopt.function") {
-                    c.postopt_cfg.push((
-                        function,
-                        key_of(&v, "from_block", line)?,
-                        key_of(&v, "to_block", line)?,
-                    ));
-                }
-            }
-            "function" => {
-                let function = key_of(&v, "function", line)?;
-                if function.starts_with("sonatina.postopt.function") {
-                    let name = field(&v, "name", line)?
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string();
-                    c.function_names.insert(function, name);
-                }
-            }
-            "source_span" => {
-                let origin = key_of(&v, "origin", line)?;
-                c.spans.insert(
-                    origin,
-                    LedgerSpan {
-                        file: key_of(&v, "file", line)?,
-                        start_byte: u32_of(&v, "start_byte", line)?,
-                        end_byte: u32_of(&v, "end_byte", line)?,
-                        start_line: u32_of(&v, "start_line", line)?,
-                        end_line: u32_of(&v, "end_line", line)?,
-                    },
-                );
-            }
-            "source_file" => {
-                let file = key_of(&v, "file_key", line)?;
-                let uri = field(&v, "uri", line)?
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                c.files.insert(file, uri);
-            }
-            _ => {}
-        }
-    }
+    scan_trace(
+        trace,
+        true,
+        |kind| WANTED.contains(&kind),
+        |line, kind, text| collect_fact(&mut c, line, kind, text),
+    )?;
     Ok(c)
+}
+
+fn collect_fact(c: &mut Collected, line: usize, kind: &str, text: &str) -> Result<(), LedgerError> {
+    let invalid = |e: serde_json::Error| LedgerError::Trace {
+        line,
+        message: e.to_string(),
+    };
+    if kind == "origin_edge" {
+        let edge: EdgeLine = serde_json::from_str(text).map_err(invalid)?;
+        if LINEAGE_FROM.contains(&edge.from.kind.as_str()) {
+            c.edges
+                .entry(edge.from.text())
+                .or_default()
+                .push(edge.to.text());
+        }
+        return Ok(());
+    }
+    let v: serde_json::Value = serde_json::from_str(text).map_err(invalid)?;
+    match kind {
+        "code_object" => {
+            let code_object = key_of(&v, "code_object", line)?;
+            let object_kind = field(&v, "kind", line)?
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let owner = v
+                .get("owner_function_or_contract")
+                .filter(|o| !o.is_null())
+                .map(|_| key_of(&v, "owner_function_or_contract", line))
+                .transpose()?;
+            let hash = v
+                .get("code_hash")
+                .and_then(|h| h.as_str())
+                .map(str::to_string);
+            c.code_objects.push((code_object, object_kind, owner, hash));
+        }
+        "instruction_extent" => {
+            let instruction = key_of(&v, "instruction", line)?;
+            let code_object = key_of(&v, "code_object", line)?;
+            let range = field(&v, "pc_range", line)?;
+            c.extents.insert(
+                instruction,
+                (
+                    code_object,
+                    u32_of(range, "start", line)?,
+                    u32_of(range, "end", line)?,
+                ),
+            );
+        }
+        "opcode" => {
+            let pc = key_of(&v, "pc", line)?;
+            let opcode = field(&v, "opcode", line)?
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let immediate = v
+                .get("immediate")
+                .and_then(|i| i.as_str())
+                .map(str::to_string);
+            c.opcodes.insert(pc, (opcode, immediate));
+        }
+        "instruction_block" => {
+            if field(&v, "phase", line)?.as_str() == Some("sonatina_post_opt") {
+                c.postopt_block_of
+                    .insert(key_of(&v, "instruction", line)?, key_of(&v, "block", line)?);
+            }
+        }
+        "block" => {
+            if field(&v, "phase", line)?.as_str() == Some("sonatina_post_opt") {
+                c.postopt_blocks.push((
+                    key_of(&v, "function", line)?,
+                    key_of(&v, "block", line)?,
+                    u32_of(&v, "ordinal", line)?,
+                ));
+            }
+        }
+        "cfg_edge" => {
+            let function = key_of(&v, "function", line)?;
+            if function.starts_with("sonatina.postopt.function") {
+                c.postopt_cfg.push((
+                    function,
+                    key_of(&v, "from_block", line)?,
+                    key_of(&v, "to_block", line)?,
+                ));
+            }
+        }
+        "function" => {
+            let function = key_of(&v, "function", line)?;
+            if function.starts_with("sonatina.postopt.function") {
+                let name = field(&v, "name", line)?
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                c.function_names.insert(function, name);
+            }
+        }
+        "source_span" => {
+            let origin = key_of(&v, "origin", line)?;
+            c.spans.insert(
+                origin,
+                LedgerSpan {
+                    file: key_of(&v, "file", line)?,
+                    start_byte: u32_of(&v, "start_byte", line)?,
+                    end_byte: u32_of(&v, "end_byte", line)?,
+                    start_line: u32_of(&v, "start_line", line)?,
+                    end_line: u32_of(&v, "end_line", line)?,
+                },
+            );
+        }
+        "source_file" => {
+            let file = key_of(&v, "file_key", line)?;
+            let uri = field(&v, "uri", line)?
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            c.files.insert(file, uri);
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 /// Sonatina function key (`sonatina.postopt.function`) for a lineage node
@@ -1048,6 +1036,60 @@ mod tests {
                 }
             )
             .is_err()
+        );
+    }
+
+    fn read_with_metadata(metadata: Option<&str>) -> Result<ByteLedger, LedgerError> {
+        let text = trace();
+        let body = text.split_once('\n').unwrap().1;
+        let text = match metadata {
+            Some(m) => format!("{m}\n{body}"),
+            None => body.to_string(),
+        };
+        ByteLedger::read(
+            text.as_bytes(),
+            &details(),
+            &LedgerSelector {
+                contract: "C".into(),
+            },
+        )
+    }
+
+    #[test]
+    fn trace_schema_one_and_two_are_read_and_others_refused() {
+        for ok in [
+            r#"{"record":"metadata","schema_version":1}"#,
+            r#"{"record":"metadata","schema_version":2,"input_path":"demo"}"#,
+            r#"{"schema_version":2,"record":"metadata"}"#,
+        ] {
+            read_with_metadata(Some(ok)).unwrap();
+        }
+        for bad in [
+            Some(r#"{"schema_version":99,"record":"metadata","input_path":"demo"}"#),
+            Some(r#"{ "record": "metadata", "schema_version": 99 }"#),
+            Some(r#"{"record":"metadata","input_path":"demo"}"#),
+            Some(r#"{"record":"metadata","schema_version":"2"}"#),
+            None,
+        ] {
+            assert!(read_with_metadata(bad).is_err(), "{bad:?} accepted");
+        }
+    }
+
+    #[test]
+    fn lineage_is_read_whatever_the_json_spacing() {
+        let spaced = trace().replace("\":", "\": ").replace(",\"", ", \"");
+        let l = ByteLedger::read(
+            spaced.as_bytes(),
+            &details(),
+            &LedgerSelector {
+                contract: "C".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(l.instructions[0].emitted_function.as_deref(), Some("root"));
+        assert_eq!(
+            l.instructions[1].emitted_function.as_deref(),
+            Some("helper")
         );
     }
 
