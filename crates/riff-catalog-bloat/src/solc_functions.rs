@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use riff_catalog_evm::decode::decode;
 use riff_catalog_solc::SolcOutput;
 use riff_catalog_solc::sourcemap::{
@@ -40,28 +40,8 @@ pub fn solc_functions(
     contract: &str,
     evm_runs: Option<EvmRunOptions>,
 ) -> Result<(Vec<u8>, SolcFunctions, RegionManifest)> {
-    let raw = output.raw();
-    let pointer = |field: &str| {
-        format!(
-            "/contracts/{}/{}/evm/deployedBytecode/{field}",
-            source.replace('~', "~0").replace('/', "~1"),
-            contract.replace('~', "~0").replace('/', "~1")
-        )
-    };
-    let object = raw
-        .pointer(&pointer("object"))
-        .and_then(|v| v.as_str())
-        .context("deployedBytecode.object")?;
-    let map = raw
-        .pointer(&pointer("sourceMap"))
-        .and_then(|v| v.as_str())
-        .context("deployedBytecode.sourceMap")?;
-    let hex = object.trim_start_matches("0x");
-    let code: Vec<u8> = (0..hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16))
-        .collect::<Result<_, _>>()
-        .context("bytecode hex")?;
+    let code = output.deployed_bytecode(source, contract)?;
+    let map = output.deployed_source_map(source, contract)?;
     let (code_end, _) = riff_catalog_evm::split_metadata(&code);
     let insts = decode(&code[..code_end]);
     let entries = parse_source_map(map);
@@ -72,9 +52,7 @@ pub fn solc_functions(
         insts.len()
     );
     let (mut functions, contracts) = function_spans(output);
-    if let Some(deployed) = raw.pointer(&pointer("").trim_end_matches('/').to_string()) {
-        functions.extend(generated_function_spans(deployed));
-    }
+    functions.extend(generated_function_spans(output.deployed(source, contract)?));
     let owners = attribute(
         &entries,
         &functions,
@@ -134,4 +112,34 @@ pub fn solc_functions(
         by_owner,
     };
     Ok((code, report, manifest))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn output(object: &str, map: &str) -> SolcOutput {
+        SolcOutput::new(serde_json::json!({
+            "sources": {"a.sol": {"id": 0, "ast": {
+                "nodeType": "SourceUnit", "src": "0:100:0", "nodes": [
+                    {"nodeType": "ContractDefinition", "name": "C", "src": "0:100:0", "nodes": [
+                        {"nodeType": "FunctionDefinition", "name": "f", "src": "10:50:0"}
+                    ]}
+                ]}}},
+            "contracts": {"a.sol": {"C": {"evm": {"deployedBytecode": {
+                "object": object, "sourceMap": map
+            }}}}}
+        }))
+    }
+
+    #[test]
+    fn bad_bytecode_hex_is_an_error() {
+        assert!(solc_functions(&output("600", "10:1:0"), "a.sol", "C", None).is_err());
+        assert!(solc_functions(&output("60zz", "10:1:0"), "a.sol", "C", None).is_err());
+        assert!(solc_functions(&output("6000", "10:1:0"), "a.sol", "D", None).is_err());
+        let (code, report, _) =
+            solc_functions(&output("0x6001", "10:1:0"), "a.sol", "C", None).unwrap();
+        assert_eq!(code, vec![0x60, 0x01]);
+        assert_eq!(report.by_owner, vec![("C.f".to_string(), 2)]);
+    }
 }

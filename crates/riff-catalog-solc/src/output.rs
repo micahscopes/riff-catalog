@@ -113,11 +113,32 @@ impl SolcOutput {
 
     pub fn deployed_bytecode(&self, source: &str, contract: &str) -> Result<Vec<u8>, SolcError> {
         let object = self
-            .contract_field(source, contract, "evm")?
-            .pointer("/deployedBytecode/object")
+            .deployed(source, contract)?
+            .get("object")
             .and_then(Value::as_str)
             .ok_or_else(|| SolcError::MissingOutput("evm.deployedBytecode.object".into()))?;
-        hex::decode(object).map_err(|e| SolcError::BytecodeHex(e.to_string()))
+        hex::decode(object.strip_prefix("0x").unwrap_or(object))
+            .map_err(|e| SolcError::BytecodeHex(e.to_string()))
+    }
+
+    /// The `evm.deployedBytecode` object (object, source map, generated
+    /// sources).
+    pub fn deployed(&self, source: &str, contract: &str) -> Result<&Value, SolcError> {
+        self.contract_field(source, contract, "evm")?
+            .get("deployedBytecode")
+            .ok_or_else(|| {
+                SolcError::MissingOutput(format!(
+                    "contracts.{source}.{contract}.evm.deployedBytecode"
+                ))
+            })
+    }
+
+    /// The runtime's compressed source map (`evm.deployedBytecode.sourceMap`).
+    pub fn deployed_source_map(&self, source: &str, contract: &str) -> Result<&str, SolcError> {
+        self.deployed(source, contract)?
+            .get("sourceMap")
+            .and_then(Value::as_str)
+            .ok_or_else(|| SolcError::MissingOutput("evm.deployedBytecode.sourceMap".into()))
     }
 }
 
