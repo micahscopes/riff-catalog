@@ -51,8 +51,8 @@ pub fn load_regions_unbound(path: &Path) -> Result<RegionManifest> {
 
 /// Where the instructions of `artifact` end. A requested end may not pass
 /// the artifact. Without one: the start of the manifest's `data` regions
-/// that run, one after another, to the end of the artifact, else the start of a Solidity CBOR
-/// metadata trailer, else the whole artifact.
+/// that run, one after another, to the end of the artifact, else the start
+/// of a well-formed Solidity CBOR metadata trailer, else the whole artifact.
 pub fn code_end(
     artifact: &[u8],
     requested: Option<usize>,
@@ -81,7 +81,9 @@ pub fn code_end(
         }
         start
     });
-    Ok(data.unwrap_or_else(|| riff_catalog_evm::split_metadata(artifact).0))
+    Ok(data
+        .or_else(|| riff_catalog_evm::solc_metadata_start(artifact))
+        .unwrap_or(artifact.len()))
 }
 
 /// Read Fe attribution details for `contract` and check them against the
@@ -182,6 +184,23 @@ pub fn decode_artifact_as(raw: &[u8], format: ArtifactFormat) -> Result<Vec<u8>>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_whole_cbor_trailer_ends_the_code() {
+        // A map header 256 bytes before the end and a length that points at
+        // it, but the bytes between are not CBOR: all code.
+        let mut code = vec![0x5b; 300];
+        code[44] = 0xa2;
+        code[298] = 0x00;
+        code[299] = 0xfe;
+        assert_eq!(code_end(&code, None, None).unwrap(), 300);
+        // A real trailer: {"solc": h'000821'} and its length.
+        let mut code = vec![0x5b; 10];
+        let cbor = [0xa1, 0x64, b's', b'o', b'l', b'c', 0x43, 0x00, 0x08, 0x21];
+        code.extend(cbor);
+        code.extend([0x00, cbor.len() as u8]);
+        assert_eq!(code_end(&code, None, None).unwrap(), 10);
+    }
 
     #[test]
     fn artifacts_decode_from_hex_or_raw() {

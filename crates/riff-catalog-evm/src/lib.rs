@@ -142,6 +142,48 @@ pub fn split_metadata(bytecode: &[u8]) -> (usize, Option<&[u8]>) {
     (cbor_start, Some(&bytecode[cbor_start..n]))
 }
 
+/// The start of a Solidity metadata trailer that is well formed: the 2-byte
+/// length names a CBOR map (1 to 3 entries) that is exactly that long.
+/// Unlike [`split_metadata`], which only looks at the map header, a tail
+/// that merely looks like a trailer is not taken for one.
+pub fn solc_metadata_start(bytecode: &[u8]) -> Option<usize> {
+    let (start, trailer) = split_metadata(bytecode);
+    let cbor = &trailer?[..bytecode.len() - start - 2];
+    (cbor_item_len(cbor, 0)? == cbor.len()).then_some(start)
+}
+
+/// Bytes taken by the CBOR item at `at` (definite lengths only), if it is
+/// well formed and inside `data`.
+fn cbor_item_len(data: &[u8], at: usize) -> Option<usize> {
+    let head = *data.get(at)?;
+    let (major, info) = (head >> 5, head & 0x1f);
+    let (arg, mut len) = match info {
+        0..=23 => (u64::from(info), 1),
+        24..=27 => {
+            let n = 1usize << (info - 24);
+            let bytes = data.get(at + 1..at + 1 + n)?;
+            (
+                bytes.iter().fold(0u64, |a, b| (a << 8) | u64::from(*b)),
+                1 + n,
+            )
+        }
+        _ => return None,
+    };
+    match major {
+        0 | 1 => {}
+        2 | 3 => len = len.checked_add(usize::try_from(arg).ok()?)?,
+        4 | 5 => {
+            let items = if major == 5 { arg.checked_mul(2)? } else { arg };
+            for _ in 0..items {
+                len += cbor_item_len(data, at + len)?;
+            }
+        }
+        7 if info <= 27 => {}
+        _ => return None,
+    }
+    (at + len <= data.len()).then_some(len)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
