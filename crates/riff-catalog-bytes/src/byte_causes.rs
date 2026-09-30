@@ -253,6 +253,15 @@ pub fn cause_selection(
                 })?;
             let mut ranges = Vec::new();
             for class in &facet.classes {
+                // A function with emitted bytes must be one of the regions:
+                // otherwise the census is of another build.
+                if let Some((n, _)) = class
+                    .functions
+                    .iter()
+                    .find(|(n, b)| b.is_some() && !functions.iter().any(|f| &f.name == n))
+                {
+                    bail!("duplicates: {path} names function `{n}`, which no region names");
+                }
                 let largest = class
                     .functions
                     .iter()
@@ -273,6 +282,12 @@ pub fn cause_selection(
         }
         "regions" => {
             let needles = needles(arg)?;
+            if let Some(n) = needles
+                .iter()
+                .find(|n| !functions.iter().any(|f| f.name.contains(**n)))
+            {
+                bail!("regions: `{n}` names no function region");
+            }
             let ranges: Vec<(u32, u32)> = functions
                 .iter()
                 .filter(|f| needles.iter().any(|n| f.name.contains(n)))
@@ -283,6 +298,17 @@ pub fn cause_selection(
         "bodies" => {
             let rows = inputs.rows.context("bodies: needs --attribution")?;
             let needles = needles(arg)?;
+            let bodies: BTreeSet<&str> = rows
+                .iter()
+                .flat_map(|r| r.primary_source.iter().chain(&r.all_origins))
+                .filter_map(|o| riff_catalog_ingest_trace::bytes::source_body(o))
+                .collect();
+            if let Some(n) = needles
+                .iter()
+                .find(|n| !bodies.iter().any(|b| b.contains(**n)))
+            {
+                bail!("bodies: `{n}` names no source body of the attribution details");
+            }
             let hit = |key: &str| {
                 riff_catalog_ingest_trace::bytes::source_body(key)
                     .is_some_and(|b| needles.iter().any(|n| b.contains(n)))
