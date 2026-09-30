@@ -846,6 +846,19 @@ fn the_fe_total_must_be_the_stage_reports_artifact() {
         assert!(err.contains("4"), "{wrong}: {err}");
     }
     ok(&strs(&run("4")));
+    // A version 2 stage report has no artifact size: refused, and why.
+    let mut old: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&stages).unwrap()).unwrap();
+    assert_eq!(old["schema"], "riffcat-fe-stages/3");
+    old["schema"] = "riffcat-fe-stages/2".into();
+    old.as_object_mut().unwrap().remove("artifact_bytes");
+    old.as_object_mut().unwrap().remove("artifact_blake3");
+    std::fs::write(&stages, old.to_string()).unwrap();
+    let err = refused(&strs(&run("4")));
+    assert!(
+        err.contains("riffcat-fe-stages/2") && err.contains("fe-trace-stages"),
+        "{err}"
+    );
 }
 
 #[test]
