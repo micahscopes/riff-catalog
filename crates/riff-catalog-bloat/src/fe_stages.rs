@@ -17,7 +17,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use anyhow::{Context, Result};
 use riff_catalog_core::{CyclePolicy, DigestRequest, Facet, HashPolicy, ViewMode, digest_graph};
-use riff_catalog_evm::runs::decode;
+pub use riff_catalog_evm::decode::MEMORY_OPCODES;
+use riff_catalog_evm::decode::decode;
 use riff_catalog_ingest_trace::bytes::{DetailsRow, source_body};
 use riff_catalog_ingest_trace::stages::{Stage, StageGraph};
 use serde::{Deserialize, Serialize};
@@ -25,9 +26,6 @@ use serde::{Deserialize, Serialize};
 pub const FE_STAGES_SCHEMA: &str = "riffcat-fe-stages/1";
 /// Level of chain graphs ([`StageGraph::chain_graph`]).
 pub const STAGE_CHAIN_LEVEL: &str = "fe-stage-chain/1";
-
-/// Memory opcodes: MLOAD, MSTORE, MSTORE8, MSIZE, MCOPY.
-pub const MEMORY_OPCODES: [u8; 5] = [0x51, 0x52, 0x53, 0x59, 0x5e];
 
 /// A named set of emitted instructions (pc starts).
 #[derive(Clone, Debug)]

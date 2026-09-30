@@ -281,23 +281,18 @@ pub fn emitted_function_manifest(
         ledger.function_ranges()
     } else {
         let code = &artifact[..(ledger.code_len as usize).min(artifact.len())];
-        let insts = riff_catalog_evm::runs::decode(code);
-        let jumpdests: BTreeSet<u32> = insts
-            .iter()
-            .filter(|i| i.opcode == 0x5b)
-            .map(|i| i.pc)
+        let insts = riff_catalog_evm::decode::decode(code);
+        let jumpdests: BTreeSet<u32> = riff_catalog_evm::decode::jumpdests(code)
+            .into_iter()
             .collect();
-        // Label pushes (PUSH1..PUSH4 of a JUMPDEST pc): target -> pushing pcs.
+        // Label pushes: target -> pushing pcs.
         let mut pushed_from: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-        for i in &insts {
-            let n = i.len as usize - 1;
-            if (0x60..=0x63).contains(&i.opcode) && n == usize::from(i.opcode - 0x5f) {
-                let v = code[i.pc as usize + 1..(i.pc + i.len) as usize]
-                    .iter()
-                    .fold(0u32, |a, b| (a << 8) | u32::from(*b));
-                if jumpdests.contains(&v) {
-                    pushed_from.entry(v).or_default().push(i.pc);
-                }
+        for (i, label) in insts
+            .iter()
+            .zip(riff_catalog_evm::decode::jump_labels(code, &insts))
+        {
+            if let Some(v) = label {
+                pushed_from.entry(v).or_default().push(i.pc);
             }
         }
         let mut out = Vec::new();
@@ -936,14 +931,10 @@ fn arm_reach(
     let arm_node = |a: &str| format!("arm:{a}");
     let mut calls: BTreeMap<(String, String), u64> = BTreeMap::new();
     let code = &artifact[..ledger.code_len as usize];
-    for i in riff_catalog_evm::runs::decode(code) {
-        let n = i.len as usize - 1;
-        if !(0x60..=0x63).contains(&i.opcode) || n != usize::from(i.opcode - 0x5f) {
+    for i in riff_catalog_evm::decode::decode(code) {
+        let Some(v) = riff_catalog_evm::decode::push_value(code, &i) else {
             continue;
-        }
-        let v = code[i.pc as usize + 1..(i.pc + i.len) as usize]
-            .iter()
-            .fold(0u32, |a, b| (a << 8) | u32::from(*b));
+        };
         let Some(callee) = by_start.get(&v) else {
             continue;
         };

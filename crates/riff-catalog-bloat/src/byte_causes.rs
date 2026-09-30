@@ -10,7 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use riff_catalog_evm::runs::decode;
+use riff_catalog_evm::decode::{MEMORY_OPCODES, decode};
 use serde::{Deserialize, Serialize};
 
 use crate::fe_stages::Selection;
@@ -57,7 +57,7 @@ fn role(
     match opcode {
         0x50 | 0x80..=0x9f => ROLE_STACK,
         0x56 | 0x57 | 0x5b => ROLE_CONTROL,
-        0x51 | 0x52 | 0x53 | 0x59 | 0x5e => ROLE_MEMORY,
+        op if MEMORY_OPCODES.contains(&op) => ROLE_MEMORY,
         0x5f..=0x7f if labels.contains(&pc) => ROLE_CONTROL,
         0x5f..=0x7f if memory_address.contains(&pc) => ROLE_MEMORY_ADDRESS,
         0x5f..=0x7f => ROLE_CONSTANT,
