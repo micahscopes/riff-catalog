@@ -26,7 +26,7 @@ describe the same code, and refuses otherwise:
 | --- | --- |
 | Fe trace and attribution details | every details row names an instruction extent of the contract's runtime code object and every extent has a row; each instruction's opcode, length and PUSH immediate match the artifact byte at its pc; when the trace has a code hash, the blake3 of the whole artifact must equal it. Without a code hash, bytes after the last instruction are refused; with one they are reported as data after the code. |
 | attribution details without a trace | the contract's rows are exactly the instructions the code decodes to, from pc 0 to the code end (there are no opcodes to compare) |
-| region manifest | schema `riffcat-regions/1` or `/2`, and its `artifact_blake3` is the artifact's blake3 |
+| region manifest | the census's checks (schema `riffcat-regions/1`, or `/2` with `evm_runs`; unique ids, none starting with `evm-run:`; non-empty ranges inside the artifact), and its `artifact_blake3` is the artifact's blake3 |
 | census (`census --json` or `census --output`) | a census of this artifact made from a manifest with `evm_runs` (`riffcat-artifact-census/2`) |
 | pc sets and named causes | every pc starts an instruction before the code end |
 | saved reports read back | the expected `schema`; a byte-cause ledger must also cover its own artifact |
@@ -36,9 +36,10 @@ Artifact files are read with `--artifact-format auto` by default: hex text
 hex digits and whitespace and has a `0x` prefix or a line break, raw bytes
 when it is not only hex digits. A file of bare hex digits could be either,
 so it is refused; pass `hex` or `raw` to say which. The code end
-(`--code-end`) defaults to the start of the manifest's `data` region, else to
-the start of a solc CBOR metadata trailer, else to the end of the artifact,
-and may not pass the artifact.
+(`--code-end`) defaults to the start of the manifest's `data` regions that
+run, one after another, to the end of the artifact, else to the start of a
+well-formed solc CBOR metadata trailer, else to the end of the artifact. It
+may not pass the artifact or fall inside an instruction.
 
 ## Fe contracts: `fe-trace-bytes`
 
@@ -137,8 +138,11 @@ solc --standard-json < input.json > output.json   # with ast and deployedBytecod
 
 Attributes every runtime instruction to the innermost Solidity function or
 modifier, generated Yul function, contract, file or no source, from the
-source map and ASTs. The source map must have one entry per instruction (solc
-leaves a final INVALID without one); a malformed field is an error. The
+source map and ASTs. The source map must have one entry per instruction; it
+may stop at an INVALID that solc places after the code (at the end, or
+before data the runtime carries, such as another contract's creation code),
+and what follows that INVALID up to the metadata is an "embedded code and
+data" region. A malformed field is an error. The
 manifest's `function` regions are the maximal runs with one owner, and the
 CBOR metadata is a `data` region. Overloaded functions share one name.
 Report schema `riffcat-solc-functions/1`.
@@ -199,7 +203,8 @@ after the code. Cause kinds: `pcs:` a pc set, `pattern:` a byte pattern,
 `sonatina-functions` facet), `regions:` function regions whose name contains
 one of the names, `bodies:` instructions whose Fe primary source (or
 synthetic-for source) body contains one of the names. Names must be distinct
-and not those of role buckets. `--detail` cross-tabulates each bucket by the
+and not those of role buckets, and a `regions:`, `bodies:` or `duplicates:`
+name that selects nothing is an error. `--detail` cross-tabulates each bucket by the
 first detail set holding the instruction. Role buckets describe what leftover
 bytes do; they are not causes. Ledger schema `riffcat-evm-byte-causes/2`.
 
@@ -232,6 +237,7 @@ Fe bytes are the primary-source bytes of the named bodies (from the stage
 report's expansion by body); solc bytes are the named functions' bytes in each
 build's `solc-functions` report. Inlined code counts toward the function it
 came from on both sides. Every name must be in its report and every build
-must be given, or the command refuses. With `--fe-total`, a residual row holds
-everything outside the pairs, so each column adds up to its artifact; it is
+must be given, or the command refuses. With `--fe-total` (which must be the
+artifact size the stage report records), a residual row holds everything
+outside the pairs, so each column adds up to its artifact; it is
 negative when pairs overlap. Report schema `riffcat-function-comparison/1`.
