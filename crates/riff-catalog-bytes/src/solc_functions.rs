@@ -17,9 +17,11 @@ use serde::{Deserialize, Serialize};
 use riff_catalog_bloat::{EvmRunOptions, RegionManifest, RegionSpec};
 
 pub const SOLC_REGIONS_ADAPTER: &str = "solc-source-map-functions/1";
+pub const SOLC_FUNCTIONS_SCHEMA: &str = "riffcat-solc-functions/1";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SolcFunctions {
+    pub schema: String,
     pub source: String,
     pub contract: String,
     pub runtime_bytes: usize,
@@ -109,6 +111,7 @@ pub fn solc_functions(
         evm_runs,
     };
     let report = SolcFunctions {
+        schema: SOLC_FUNCTIONS_SCHEMA.into(),
         source: source.into(),
         contract: contract.into(),
         runtime_bytes: code.len(),

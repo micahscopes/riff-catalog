@@ -28,6 +28,15 @@ pub struct FunctionClass {
     pub upper_bound_saving: u64,
 }
 
+pub const SONATINA_FUNCTIONS_SCHEMA: &str = "riffcat-sonatina-functions/1";
+
+/// The `sonatina-functions` report: one census per facet.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SonatinaFunctions {
+    pub schema: String,
+    pub facets: Vec<FunctionFacetCensus>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionFacetCensus {
     pub facet: String,
