@@ -611,3 +611,172 @@ fn producer_outputs_are_not_replaced_without_force() {
     args.push("--force".into());
     ok(&strs(&args));
 }
+
+/// The fixture trace with its first (metadata) line and code hash replaced.
+fn trace_variant(dir: &Path, name: &str, metadata: Option<&str>, code_hash: &str) -> String {
+    let text = std::fs::read_to_string(fixture("fe-base/trace.jsonl")).unwrap();
+    let (first, rest) = text.split_once('\n').unwrap();
+    assert!(first.contains("\"metadata\""));
+    let hash = "\"blake3:83c1ebd700a30ea46e4b70ec7d3f44b1a0b48916c759a728cc73337ea2214b90\"";
+    assert!(rest.contains(hash));
+    let rest = rest.replace(hash, code_hash);
+    let text = match metadata {
+        Some(m) => format!("{m}\n{rest}"),
+        None => rest,
+    };
+    write(dir, name, &text)
+}
+
+fn trace_bytes_args(trace: &str, artifact: &str) -> Vec<String> {
+    let mut args = base_args("fe-trace-bytes", artifact);
+    args[2] = trace.to_string();
+    args
+}
+
+#[test]
+fn fe_trace_bytes_reads_trace_schemas_one_and_two_only() {
+    let dir = scratch("trace-schemas");
+    let runtime = fixture("fe-base/runtime.bin");
+    let hash = "\"blake3:83c1ebd700a30ea46e4b70ec7d3f44b1a0b48916c759a728cc73337ea2214b90\"";
+    for (k, meta) in [
+        r#"{"record":"metadata","schema_version":1,"input_path":"demo"}"#,
+        r#"{"record":"metadata","schema_version":2,"input_path":"demo"}"#,
+        r#"{ "input_path": "demo", "schema_version": 2, "record": "metadata" }"#,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let trace = trace_variant(&dir, &format!("ok{k}.jsonl"), Some(meta), hash);
+        ok(&strs(&trace_bytes_args(&trace, &runtime)));
+    }
+    for (k, meta) in [
+        Some(r#"{"record":"metadata","schema_version":3}"#),
+        Some(r#"{"schema_version":99,"record":"metadata"}"#),
+        Some(r#"{"record":"metadata","input_path":"demo"}"#),
+        Some(r#"{"record":"metadata","schema_version":"2"}"#),
+        None,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let trace = trace_variant(&dir, &format!("bad{k}.jsonl"), meta, hash);
+        let err = refused(&strs(&trace_bytes_args(&trace, &runtime)));
+        assert!(
+            err.contains("schema") || err.contains("metadata"),
+            "{meta:?}: {err}"
+        );
+    }
+}
+
+#[test]
+fn fe_trace_bytes_checks_the_code_hash() {
+    let dir = scratch("code-hash");
+    let runtime = fixture("fe-base/runtime.bin");
+    let meta = Some(r#"{"record":"metadata","schema_version":2}"#);
+    // The fixture's own hash: checked.
+    let out = ok(&strs(&base_args("fe-trace-bytes", &runtime)));
+    assert!(out.contains("code hash included"), "{out}");
+    // Another artifact's hash: refused.
+    let other = format!("\"blake3:{}\"", blake3::hash(b"other").to_hex());
+    let trace = trace_variant(&dir, "other.jsonl", meta, &other);
+    let err = refused(&strs(&trace_bytes_args(&trace, &runtime)));
+    assert!(err.contains("differs from trace code hash"), "{err}");
+    // Two bytes of data after the code: proven by the hash, refused without.
+    let longer = [0x60u8, 0x80, 0x52, 0x00, 0xaa, 0xbb];
+    let longer_path = dir.join("longer.bin");
+    std::fs::write(&longer_path, longer).unwrap();
+    let longer_path = longer_path.to_str().unwrap();
+    let hash = format!("\"blake3:{}\"", blake3::hash(&longer).to_hex());
+    let trace = trace_variant(&dir, "longer.jsonl", meta, &hash);
+    let out = ok(&strs(&trace_bytes_args(&trace, longer_path)));
+    assert!(out.contains("2 data bytes after the code"), "{out}");
+    let trace = trace_variant(&dir, "nohash.jsonl", meta, "null");
+    let err = refused(&strs(&trace_bytes_args(&trace, longer_path)));
+    assert!(err.contains("no code hash"), "{err}");
+    // Without a hash the opcodes are still compared.
+    let changed = dir.join("changed.bin");
+    std::fs::write(&changed, [0x60, 0x80, 0x53, 0x00]).unwrap();
+    let err = refused(&strs(&trace_bytes_args(&trace, changed.to_str().unwrap())));
+    assert!(err.contains("opcode at pc 2"), "{err}");
+}
+
+#[test]
+fn every_command_gives_the_same_output_twice() {
+    let dir = scratch("determinism");
+    let regions = base_regions(&dir);
+    let runtime = fixture("fe-base/runtime.bin");
+    let (solc_artifact, solc_manifest, _) = solc_build(&dir);
+    let json = |k: usize| {
+        dir.join(format!("run{k}.json"))
+            .to_str()
+            .unwrap()
+            .to_string()
+    };
+    let commands: Vec<Vec<String>> = vec![
+        base_args("fe-trace-bytes", &runtime),
+        {
+            let mut a = base_args("fe-trace-stages", &runtime);
+            a.extend(["--regions".to_string(), regions.clone()]);
+            a
+        },
+        vec![
+            "evm-dataflow".into(),
+            "--artifact".into(),
+            solc_artifact.clone(),
+            "--regions".into(),
+            solc_manifest.clone(),
+            "--blocks-out".into(),
+            dir.join("blocks.json").to_str().unwrap().into(),
+        ],
+        vec![
+            "evm-byte-causes".into(),
+            "--artifact".into(),
+            solc_artifact.clone(),
+            "--regions".into(),
+            solc_manifest.clone(),
+            "--cause".into(),
+            "regions:g=B.g".into(),
+        ],
+    ];
+    for command in commands {
+        let outputs: Vec<(String, Vec<u8>)> = (0..2)
+            .map(|k| {
+                let mut args = command.clone();
+                args.extend(["--json-out".to_string(), json(k)]);
+                let stdout = ok(&strs(&args));
+                (stdout, std::fs::read(json(k)).unwrap())
+            })
+            .collect();
+        assert_eq!(outputs[0], outputs[1], "{command:?}");
+    }
+}
+
+#[test]
+fn solc_functions_tiles_the_real_runtime() {
+    let dir = scratch("solc");
+    let (artifact, manifest, report) = solc_build(&dir);
+    let code = std::fs::read(&artifact).unwrap();
+    assert_eq!(code.len(), 406);
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+    assert_eq!(report["schema"], "riffcat-solc-functions/1");
+    assert_eq!(report["code_end"], 353);
+    let total: u64 = report["by_owner"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row[1].as_u64().unwrap())
+        .sum();
+    assert_eq!(total, 406);
+    let manifest: riff_catalog_bloat::RegionManifest =
+        serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+    let mut end = 0;
+    for r in &manifest.regions {
+        assert_eq!(r.start, end, "{r:?}");
+        end = r.end;
+    }
+    assert_eq!(end, 406);
+    // The regions name source functions, and the census reads the pair.
+    assert!(manifest.regions.iter().any(|r| r.name == "B.g"));
+    riff_catalog_bloat::census_regions(&code, manifest).unwrap();
+}

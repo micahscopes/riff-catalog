@@ -1391,6 +1391,85 @@ mod tests {
         assert!(text.contains("sonatina.postopt.function s function:FuncRef(3)"));
     }
 
+    /// A dispatcher `root` with two inlined recv arms in blocks b1 and b2,
+    /// where arm 0 calls `helper`: each arm owns its blocks, and the helper
+    /// counts toward arm 0 once reach is added. Every table adds up, and a
+    /// table that does not is refused.
+    #[test]
+    fn inlined_arms_own_their_blocks_and_the_helpers_only_they_reach() {
+        // root: CALLER | CALLER, PUSH1 0x06 | CALLER, STOP ; helper: JUMPDEST, STOP
+        let code = [0x33, 0x33, 0x60, 0x06, 0x33, 0x00, 0x5b, 0x00];
+        let arm =
+            |a: u32| format!("hir.expr\u{1f}hir-body:contract_recv$L$d$d$contract$C$0${a}\u{1f}0");
+        let mut insts = vec![
+            inst(0, 1, Some("root")),
+            inst(1, 2, Some("root")),
+            inst(2, 4, Some("root")),
+            inst(4, 5, Some("root")),
+            inst(5, 6, Some("root")),
+            inst(6, 7, Some("helper")),
+            inst(7, 8, Some("helper")),
+        ];
+        for (i, block, origin) in [
+            (0, "b0", None),
+            (1, "b1", Some(0)),
+            (2, "b1", Some(0)),
+            (3, "b2", Some(1)),
+            (4, "b2", Some(1)),
+        ] {
+            insts[i].postopt_block = Some(block.into());
+            insts[i].all_origins = origin.map(arm).into_iter().collect();
+        }
+        let mut l = ledger(insts);
+        l.cfgs.insert(
+            "root".into(),
+            riff_catalog_ingest_trace::bytes::FunctionCfg {
+                blocks: vec!["b0".into(), "b1".into(), "b2".into()],
+                edges: vec![("b0".into(), "b1".into()), ("b0".into(), "b2".into())],
+            },
+        );
+        let check = ArtifactCheck {
+            instruction_bytes: 8,
+            trailing_bytes: 0,
+            code_hash_checked: false,
+        };
+        let options = EvmRunOptions {
+            min_run_bytes: 32,
+            run_key: riff_catalog_bloat::EvmRunKey::Exact,
+            min_run_instructions: 2,
+        };
+        let (_, _, report) = census_ledger(&l, &check, "C", &code, &options).unwrap();
+        let bytes = |rows: &[Row], key: &str| {
+            rows.iter()
+                .find(|r| r.key.ends_with(key))
+                .map_or(0, |r| r.bytes)
+        };
+        assert_eq!(bytes(&report.by_recv_arm, "$0$0"), 3);
+        assert_eq!(bytes(&report.by_recv_arm, "$0$1"), 2);
+        assert_eq!(bytes(&report.by_recv_arm, NO_ARM), 3);
+        assert_eq!(bytes(&report.by_recv_arm_with_helpers, "$0$0"), 5);
+        assert_eq!(bytes(&report.by_recv_arm_with_helpers, "$0$1"), 2);
+        assert_eq!(bytes(&report.by_recv_arm_with_helpers, NO_ARM), 1);
+        let a0 = report
+            .arms
+            .iter()
+            .find(|a| a.arm.ends_with("$0$0"))
+            .unwrap();
+        assert_eq!(a0.inlined_into.as_deref(), Some("root"));
+        assert_eq!(a0.inlined_bytes, 3);
+        let reach = report
+            .arm_reach
+            .iter()
+            .find(|a| a.arm.ends_with("$0$0"))
+            .unwrap();
+        assert_eq!(reach.exclusive_functions, vec![("helper".to_string(), 2)]);
+        check_totals(&report).unwrap();
+        let mut broken = report.clone();
+        broken.by_recv_arm[0].bytes += 1;
+        let err = check_totals(&broken).unwrap_err().to_string();
+        assert!(err.contains("recv arm table sums to 9"), "{err}");
+    }
+
     #[test]
     fn an_unlinked_entry_joins_its_function_but_a_shared_tail_does_not() {
         // root: PUSH2 0x0005, JUMP, STOP | gap: JUMPDEST | f: PUSH0, STOP
