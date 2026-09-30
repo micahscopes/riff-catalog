@@ -8,33 +8,14 @@
 use anyhow::{Context, Result};
 use riff_catalog_core::{Dimension, Graph};
 use riff_catalog_evm::dataflow::{EVM_DATAFLOW_LEVEL, address, dataflow_policy, lift_code};
+pub use riff_catalog_evm::dataflow::{
+    MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW, MEMORY_OFFSETS_BLIND_VIEW, PORT_ORDER_BLIND_VIEW,
+};
 use riff_catalog_evm::runs::{RunKey, RunKeyer, decode, with_labels};
 use riff_catalog_view::ViewPlan;
 use serde::{Deserialize, Serialize};
 
 pub const EVM_DATAFLOW_BLOCKS_SCHEMA: &str = "riffcat-evm-dataflow-blocks/1";
-
-/// Forgets which constants are memory or calldata offsets, keeps the rest.
-pub const MEMORY_OFFSETS_BLIND_VIEW: &str = r#"
-language "riffcat-view/1"
-view "evm-dataflow.memory-offsets-blind/1"
-input "evm-dataflow/1"
-root node-kind "evm.block"
-traverse children
-retain structure, constants
-erase constants.memory_offset
-"#;
-
-/// Forgets the stack positions of a block's inputs and outputs.
-pub const PORT_ORDER_BLIND_VIEW: &str = r#"
-language "riffcat-view/1"
-view "evm-dataflow.port-order-blind/1"
-input "evm-dataflow/1"
-root node-kind "evm.block"
-traverse children
-retain structure, constants
-erase structure.slot
-"#;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockRecord {
@@ -77,16 +58,8 @@ fn view_address(plan: &ViewPlan, graph: &Graph, dims: &[Dimension]) -> Result<St
 pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
     let offsets_blind = ViewPlan::parse(MEMORY_OFFSETS_BLIND_VIEW).context("offsets view")?;
     let ports_blind = ViewPlan::parse(PORT_ORDER_BLIND_VIEW).context("ports view")?;
-    let both_text = MEMORY_OFFSETS_BLIND_VIEW
-        .replace(
-            "memory-offsets-blind/1",
-            "memory-offsets-and-port-order-blind/1",
-        )
-        .replace(
-            "erase constants.memory_offset",
-            "erase constants.memory_offset, structure.slot",
-        );
-    let both_blind = ViewPlan::parse(&both_text).context("combined view")?;
+    let both_blind =
+        ViewPlan::parse(MEMORY_OFFSETS_AND_PORT_ORDER_BLIND_VIEW).context("combined view")?;
     let policy = dataflow_policy(EVM_DATAFLOW_LEVEL)?;
     let sc = [Dimension::Structure, Dimension::Constants];
     let s = [Dimension::Structure];
