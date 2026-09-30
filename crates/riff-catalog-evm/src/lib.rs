@@ -149,16 +149,23 @@ pub fn split_metadata(bytecode: &[u8]) -> (usize, Option<&[u8]>) {
 pub fn solc_metadata_start(bytecode: &[u8]) -> Option<usize> {
     let (start, trailer) = split_metadata(bytecode);
     let cbor = &trailer?[..bytecode.len() - start - 2];
-    (cbor_item_len(cbor, 0)? == cbor.len()).then_some(start)
+    (cbor_item_len(cbor, 0, 0)? == cbor.len()).then_some(start)
 }
 
-/// Bytes taken by the CBOR item at `at` (definite lengths only), if it is
-/// well formed and inside `data`.
-fn cbor_item_len(data: &[u8], at: usize) -> Option<usize> {
+/// solc's trailer is a flat map; nothing deeper than this is a trailer.
+const MAX_CBOR_DEPTH: usize = 4;
+
+/// Bytes taken by the CBOR item at `at` (definite lengths only, at most
+/// [`MAX_CBOR_DEPTH`] levels of arrays and maps), if it is well formed and
+/// inside `data`.
+fn cbor_item_len(data: &[u8], at: usize, depth: usize) -> Option<usize> {
+    if depth > MAX_CBOR_DEPTH {
+        return None;
+    }
     let head = *data.get(at)?;
     let (major, info) = (head >> 5, head & 0x1f);
     let (arg, mut len) = match info {
-        0..=23 => (u64::from(info), 1),
+        0..=23 => (u64::from(info), 1usize),
         24..=27 => {
             let n = 1usize << (info - 24);
             let bytes = data.get(at + 1..at + 1 + n)?;
@@ -174,14 +181,19 @@ fn cbor_item_len(data: &[u8], at: usize) -> Option<usize> {
         2 | 3 => len = len.checked_add(usize::try_from(arg).ok()?)?,
         4 | 5 => {
             let items = if major == 5 { arg.checked_mul(2)? } else { arg };
+            // Every item takes at least one byte.
+            if items > (data.len() - at) as u64 {
+                return None;
+            }
             for _ in 0..items {
-                len += cbor_item_len(data, at + len)?;
+                let item = cbor_item_len(data, at.checked_add(len)?, depth + 1)?;
+                len = len.checked_add(item)?;
             }
         }
         7 if info <= 27 => {}
         _ => return None,
     }
-    (at + len <= data.len()).then_some(len)
+    (at.checked_add(len)? <= data.len()).then_some(len)
 }
 
 #[cfg(test)]
@@ -242,6 +254,39 @@ mod tests {
         assert_eq!(a.0, other.0);
         let diff_code = structure_and_constants(&[0x60, 0x01, 0x01]); // PUSH1 1 ADD
         assert_ne!(a.0, diff_code.0);
+    }
+
+    #[test]
+    fn malformed_trailers_are_refused_without_panicking() {
+        let trailer = |cbor: Vec<u8>| {
+            let mut code = vec![0x00];
+            let len = cbor.len() as u16;
+            code.extend(cbor);
+            code.extend(len.to_be_bytes());
+            code
+        };
+        // A map whose value nests 20000 one-element arrays deep.
+        let mut deep = vec![0xa1, 0x00];
+        deep.extend(std::iter::repeat_n(0x81, 20000));
+        deep.push(0x00);
+        // A byte string claiming 2^64 - 10 bytes.
+        let mut big = vec![0xa1, 0x00, 0x5b];
+        big.extend((u64::MAX - 9).to_be_bytes());
+        // An array claiming 2^64 - 1 items.
+        let mut many = vec![0xa1, 0x00, 0x9b];
+        many.extend(u64::MAX.to_be_bytes());
+        for cbor in [deep, big, many] {
+            let code = trailer(cbor);
+            let start = std::thread::Builder::new()
+                .stack_size(256 * 1024)
+                .spawn(move || solc_metadata_start(&code))
+                .unwrap()
+                .join();
+            assert_eq!(start.ok(), Some(None));
+        }
+        // A real solc trailer still counts.
+        let cbor = vec![0xa1, 0x64, b's', b'o', b'l', b'c', 0x43, 0x00, 0x08, 0x21];
+        assert_eq!(solc_metadata_start(&trailer(cbor)), Some(1));
     }
 
     #[test]
