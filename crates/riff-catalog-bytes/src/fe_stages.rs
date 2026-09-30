@@ -770,7 +770,7 @@ impl StageInputs<'_> {
             c.bytes_per_construct.dedup();
             if c.spans.len() > 8 {
                 let mut v: Vec<(String, u64)> = c.spans.clone().into_iter().collect();
-                v.sort_by(|a, b| b.1.cmp(&a.1));
+                v.sort_by_key(|entry| std::cmp::Reverse(entry.1));
                 c.spans = v.into_iter().take(8).collect();
             }
         }
@@ -890,7 +890,7 @@ pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
         if !s.memory_buckets.is_empty() {
             let _ = writeln!(out, "   memory operations by origin (instructions, bytes):");
             let mut v: Vec<_> = s.memory_buckets.iter().collect();
-            v.sort_by(|a, b| b.1.instructions.cmp(&a.1.instructions));
+            v.sort_by_key(|entry| std::cmp::Reverse(entry.1.instructions));
             for (k, t) in v {
                 let _ = writeln!(out, "     {:>6} {:>6}  {k}", t.instructions, t.bytes);
             }

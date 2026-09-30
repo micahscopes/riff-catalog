@@ -86,7 +86,7 @@ pub fn push_selection(name: &str, code: &[u8], target: u32) -> Selection {
 pub fn pattern_matches(code: &[u8], pattern: &str) -> Result<Vec<(u32, u32)>> {
     let hex: String = pattern.chars().filter(|c| !c.is_whitespace()).collect();
     anyhow::ensure!(
-        hex.len() % 2 == 0 && !hex.is_empty(),
+        hex.len().is_multiple_of(2) && !hex.is_empty(),
         "pattern must be whole bytes"
     );
     let bytes: Vec<Option<u8>> = (0..hex.len())
