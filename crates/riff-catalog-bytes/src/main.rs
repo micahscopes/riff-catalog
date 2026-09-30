@@ -411,7 +411,7 @@ fn main() -> Result<()> {
                 tables.insert(name.to_string(), table);
             }
             let pairs: Vec<FunctionPair> = serde_json::from_slice(&fs::read(&pairs)?)?;
-            let mut rows = compare_functions(&fe, &tables, &pairs);
+            let mut rows = compare_functions(&fe, &tables, &pairs)?;
             if let Some(total) = fe_total {
                 let residual = residual_row(&rows, total, &tables);
                 rows.push(residual);
