@@ -984,3 +984,55 @@ fn solc_functions_reads_a_runtime_that_embeds_another_contract() {
         assert_eq!(blocks["code_bytes"], data[0].start);
     }
 }
+
+#[test]
+fn selectors_that_match_nothing_are_refused() {
+    let dir = scratch("empty-selectors");
+    let regions = base_regions(&dir);
+    let names: Vec<String> = serde_json::from_slice::<riff_catalog_bloat::RegionManifest>(
+        &std::fs::read(&regions).unwrap(),
+    )
+    .unwrap()
+    .regions
+    .into_iter()
+    .filter(|r| r.kind == "function")
+    .map(|r| r.name)
+    .collect();
+    assert!(!names.is_empty());
+    let son = write(
+        &dir,
+        "son.json",
+        r#"{"schema":"riffcat-sonatina-functions/1","facets":[{"facet":"exact","functions":2,"upper_bound_saving":5,"classes":[{"address":"a","functions":[["other_a",5],["other_b",5]],"emitted_bytes":10,"upper_bound_saving":5}]}]}"#,
+    );
+    let out = dir.join("out.json");
+    let run = |cause: &str| {
+        vec![
+            "evm-byte-causes".to_string(),
+            "--artifact".into(),
+            fixture("fe-base/runtime.bin"),
+            "--regions".into(),
+            regions.clone(),
+            "--attribution".into(),
+            fixture("fe-base/details.json"),
+            "--contract".into(),
+            "C".into(),
+            "--cause".into(),
+            cause.to_string(),
+            "--json-out".into(),
+            out.to_str().unwrap().into(),
+        ]
+    };
+    for cause in [
+        format!("regions:r={}|no_such_function", names[0]),
+        "bodies:b=body_a|no_such_body".to_string(),
+        format!("duplicates:d={son}#0"),
+    ] {
+        let err = refused(&strs(&run(&cause)));
+        assert!(
+            err.contains("no_such") || err.contains("other_a"),
+            "{cause}: {err}"
+        );
+    }
+    ok(&strs(&run(&format!("regions:r={}", names[0]))));
+    ok(&strs(&run("bodies:b=body_a")));
+}
