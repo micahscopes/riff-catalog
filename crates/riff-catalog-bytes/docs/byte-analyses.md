@@ -33,7 +33,9 @@ describe the same code, and refuses otherwise:
 
 Artifact files are read with `--artifact-format auto` by default: hex text
 (an optional `0x`, whitespace and line breaks ignored) when the file is only
-hex digits, else raw bytes. Pass `hex` or `raw` to say which. The code end
+hex digits and whitespace and has a `0x` prefix or a line break, raw bytes
+when it is not only hex digits. A file of bare hex digits could be either,
+so it is refused; pass `hex` or `raw` to say which. The code end
 (`--code-end`) defaults to the start of the manifest's `data` region, else to
 the start of a solc CBOR metadata trailer, else to the end of the artifact,
 and may not pass the artifact.

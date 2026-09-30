@@ -154,8 +154,10 @@ pub fn check_schema(found: &str, expected: &str, path: &Path) -> Result<()> {
 /// How an artifact file is written.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
 pub enum ArtifactFormat {
-    /// Hex text when the file is only hex digits and whitespace (with an
-    /// optional `0x`), else raw bytes.
+    /// Hex text when the file is only hex digits and whitespace and says
+    /// so with a `0x` prefix or a line break; raw bytes when it is not only
+    /// hex digits and whitespace. A file of bare hex digits could be either
+    /// and is refused: pass `hex` or `raw`.
     #[default]
     Auto,
     /// Hex text (optional `0x`, whitespace and line breaks ignored).
@@ -182,7 +184,14 @@ pub fn decode_artifact_as(raw: &[u8], format: ArtifactFormat) -> Result<Vec<u8>>
     let digits = match format {
         ArtifactFormat::Raw => return Ok(raw.to_vec()),
         ArtifactFormat::Auto => match hex_text() {
-            Some(d) => d,
+            Some(d) => {
+                let marked = raw.starts_with(b"0x") || raw.iter().any(|b| b.is_ascii_whitespace());
+                ensure!(
+                    marked,
+                    "the file is only hex digits, which could be hex text or raw bytes; pass --artifact-format hex or raw"
+                );
+                d
+            }
             None => return Ok(raw.to_vec()),
         },
         ArtifactFormat::Hex => hex_text().context("not hex text")?,
@@ -233,7 +242,10 @@ mod tests {
     fn artifacts_decode_from_hex_or_raw() {
         let auto = |raw: &[u8]| decode_artifact_as(raw, ArtifactFormat::Auto);
         assert_eq!(auto(b"0x6080\n").unwrap(), vec![0x60, 0x80]);
-        assert_eq!(auto(b"6080").unwrap(), vec![0x60, 0x80]);
+        assert_eq!(auto(b"6080\n").unwrap(), vec![0x60, 0x80]);
+        // Bare hex digits could be either: refused, with the way out named.
+        let err = auto(b"6080").unwrap_err().to_string();
+        assert!(err.contains("--artifact-format"), "{err}");
         assert_eq!(auto(&[0x60, 0x80]).unwrap(), vec![0x60, 0x80]);
         // Hex wrapped over lines is still hex.
         assert_eq!(
@@ -242,9 +254,13 @@ mod tests {
         );
         // An odd number of hex digits is an error, not raw bytes.
         assert!(auto(b"608060405").is_err());
-        // Raw bytes that happen to be hex digits: say so.
+        // Raw bytes that happen to be hex digits: not guessed.
         let raw = [0x36u8, 0x30, 0x36, 0x30];
-        assert_eq!(auto(&raw).unwrap(), vec![0x60, 0x60]);
+        assert!(auto(&raw).is_err());
+        assert_eq!(
+            decode_artifact_as(&raw, ArtifactFormat::Hex).unwrap(),
+            vec![0x60, 0x60]
+        );
         assert_eq!(
             decode_artifact_as(&raw, ArtifactFormat::Raw).unwrap(),
             raw.to_vec()

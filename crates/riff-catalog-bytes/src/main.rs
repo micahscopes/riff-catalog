@@ -23,8 +23,9 @@ enum Command {
         /// Runtime artifact (raw bytes or hex).
         #[arg(long)]
         artifact: PathBuf,
-        /// How the artifact file is written: `auto` (hex text when it is only
-        /// hex digits, else raw bytes), `hex` or `raw`.
+        /// How the artifact file is written: `auto` (hex text with a `0x` or a
+        /// line break, raw bytes if not hex; bare hex digits are refused),
+        /// `hex` or `raw`.
         #[arg(long, value_enum, default_value = "auto")]
         artifact_format: ArtifactFormat,
         /// Lift only the first N bytes. Default: up to the manifest's data
@@ -64,8 +65,9 @@ enum Command {
         contract: String,
         #[arg(long)]
         artifact: PathBuf,
-        /// How the artifact file is written: `auto` (hex text when it is only
-        /// hex digits, else raw bytes), `hex` or `raw`.
+        /// How the artifact file is written: `auto` (hex text with a `0x` or a
+        /// line break, raw bytes if not hex; bare hex digits are refused),
+        /// `hex` or `raw`.
         #[arg(long, value_enum, default_value = "auto")]
         artifact_format: ArtifactFormat,
         /// riffcat-regions manifest with `function` regions.
@@ -189,8 +191,9 @@ enum Command {
     EvmByteCauses {
         #[arg(long)]
         artifact: PathBuf,
-        /// How the artifact file is written: `auto` (hex text when it is only
-        /// hex digits, else raw bytes), `hex` or `raw`.
+        /// How the artifact file is written: `auto` (hex text with a `0x` or a
+        /// line break, raw bytes if not hex; bare hex digits are refused),
+        /// `hex` or `raw`.
         #[arg(long, value_enum, default_value = "auto")]
         artifact_format: ArtifactFormat,
         /// End of the instructions. Default: the start of the manifest's
@@ -245,8 +248,9 @@ enum Command {
         /// Runtime artifact (raw bytes or Fe's hex `.bin`).
         #[arg(long)]
         artifact: PathBuf,
-        /// How the artifact file is written: `auto` (hex text when it is only
-        /// hex digits, else raw bytes), `hex` or `raw`.
+        /// How the artifact file is written: `auto` (hex text with a `0x` or a
+        /// line break, raw bytes if not hex; bare hex digits are refused),
+        /// `hex` or `raw`.
         #[arg(long, value_enum, default_value = "auto")]
         artifact_format: ArtifactFormat,
         /// Report repeated EVM runs of at least this many bytes per copy.
