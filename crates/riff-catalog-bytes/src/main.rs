@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
-use riff_catalog_bloat::{EvmRunOptions, RegionManifest};
+use riff_catalog_bloat::{EvmRunKey, EvmRunOptions, RegionManifest};
 use riff_catalog_bytes::*;
 
 #[derive(Parser)]
@@ -212,17 +212,15 @@ enum Command {
         /// Report repeated EVM runs of at least this many bytes per copy.
         #[arg(long, default_value_t = 32)]
         min_run_bytes: u32,
-        /// Compare PUSH constants as ports too (copies that differ only in
-        /// constants group together).
-        #[arg(long)]
-        constants_as_ports: bool,
+        /// Run key: `exact`, `memory-offsets-blind` (constants classed as
+        /// memory or calldata offsets are ports, so the same code for another
+        /// struct layout groups together) or `constants-blind` (every constant
+        /// is a port).
+        #[arg(long, value_enum, default_value = "exact")]
+        run_key: EvmRunKey,
         /// Runs of fewer instructions are not reported.
         #[arg(long, default_value_t = 2)]
         min_run_instructions: u32,
-        /// Compare only constants that are memory or calldata offsets as
-        /// ports (the same code for different struct layouts groups together).
-        #[arg(long)]
-        memory_offsets_as_ports: bool,
         /// Write the full report as JSON.
         #[arg(long)]
         json_out: Option<PathBuf>,
@@ -379,9 +377,8 @@ fn main() -> Result<()> {
             let output = riff_catalog_solc::SolcOutput::new(raw);
             let evm_runs = min_run_bytes.map(|m| EvmRunOptions {
                 min_run_bytes: m,
-                constants_as_ports: false,
+                run_key: EvmRunKey::Exact,
                 min_run_instructions: 2,
-                memory_offsets_as_ports: false,
             });
             let (code, report, manifest) = solc_functions(&output, &source, &contract, evm_runs)?;
             fs::write(&artifact_out, &code)?;
@@ -601,9 +598,8 @@ fn main() -> Result<()> {
             contract,
             artifact,
             min_run_bytes,
-            constants_as_ports,
+            run_key,
             min_run_instructions,
-            memory_offsets_as_ports,
             json_out,
             census_dir,
             top,
@@ -621,9 +617,8 @@ fn main() -> Result<()> {
                 &bytes,
                 &EvmRunOptions {
                     min_run_bytes,
-                    constants_as_ports,
+                    run_key,
                     min_run_instructions,
-                    memory_offsets_as_ports,
                 },
             )?;
             if let Some(dir) = census_dir {

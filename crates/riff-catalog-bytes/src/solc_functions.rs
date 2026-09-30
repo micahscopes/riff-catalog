@@ -98,7 +98,7 @@ pub fn solc_functions(
     let mut by_owner: Vec<(String, u64)> = by_owner.into_iter().collect();
     by_owner.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     let manifest = RegionManifest {
-        schema: "riffcat-regions/1".into(),
+        schema: RegionManifest::schema_for(evm_runs.as_ref()).into(),
         artifact_blake3: blake3::hash(&code).to_hex().to_string(),
         adapter: SOLC_REGIONS_ADAPTER.into(),
         regions,

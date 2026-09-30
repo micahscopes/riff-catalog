@@ -9,6 +9,15 @@ const MAX_BYTES: usize = 64 * 1024 * 1024;
 const MAX_REGIONS: usize = 100_000;
 const WGSL_POLICY: &str = "wgsl-projection-run/root-renaming-preserve-members-indices/1";
 
+/// Region manifest schemas. Version 2 adds `evm_runs`; a manifest without it
+/// is written as version 1, and both are read.
+pub const REGIONS_SCHEMA_V1: &str = "riffcat-regions/1";
+pub const REGIONS_SCHEMA_V2: &str = "riffcat-regions/2";
+/// Census schemas. Version 2 is written when the manifest asked for EVM runs
+/// (pattern groups may then carry `evm_ports`).
+pub const CENSUS_SCHEMA_V1: &str = "riffcat-artifact-census/1";
+pub const CENSUS_SCHEMA_V2: &str = "riffcat-artifact-census/2";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegionSpec {
@@ -35,23 +44,55 @@ pub struct RegionManifest {
     pub evm_runs: Option<EvmRunOptions>,
 }
 
+impl RegionManifest {
+    /// The schema a manifest with these EVM run options is written with.
+    pub fn schema_for(evm_runs: Option<&EvmRunOptions>) -> &'static str {
+        if evm_runs.is_some() {
+            REGIONS_SCHEMA_V2
+        } else {
+            REGIONS_SCHEMA_V1
+        }
+    }
+}
+
+/// Which run key the EVM run census compares copies on.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvmRunKey {
+    /// Same opcodes and the same non-label PUSH values.
+    #[default]
+    Exact,
+    /// Like exact, except that PUSH values classed as memory or calldata
+    /// offsets are first-use ports: the same code for different struct
+    /// layouts groups together.
+    MemoryOffsetsBlind,
+    /// Every non-label PUSH value is a first-use port: copies that differ
+    /// only in constants group together.
+    ConstantsBlind,
+}
+
+impl EvmRunKey {
+    pub fn run_key(self) -> riff_catalog_evm::runs::RunKey {
+        use riff_catalog_evm::runs::RunKey;
+        match self {
+            Self::Exact => RunKey::Exact,
+            Self::MemoryOffsetsBlind => RunKey::MemoryOffsetsBlind,
+            Self::ConstantsBlind => RunKey::ConstantsBlind,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EvmRunOptions {
     /// Runs shorter than this many bytes per copy are not reported.
     pub min_run_bytes: u32,
-    /// Compare non-label PUSH values as ports too, grouping copies that
-    /// differ only in constants.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub constants_as_ports: bool,
+    /// The run key (default `exact`).
+    #[serde(default)]
+    pub run_key: EvmRunKey,
     /// Runs of fewer instructions are not reported (default 2).
     #[serde(default = "default_min_run_instructions")]
     pub min_run_instructions: u32,
-    /// Compare only PUSH values classed as memory or calldata offsets as
-    /// ports (the memory-offsets-blind key), grouping the same code for
-    /// different struct layouts. Ignored with `constants_as_ports`.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub memory_offsets_as_ports: bool,
 }
 
 fn default_min_run_instructions() -> u32 {
@@ -157,8 +198,13 @@ pub fn census_regions(bytes: &[u8], manifest: RegionManifest) -> Result<Artifact
         "artifact exceeds 64 MiB census limit"
     );
     ensure!(
-        manifest.schema == "riffcat-regions/1",
-        "unsupported region schema"
+        manifest.schema == REGIONS_SCHEMA_V1 || manifest.schema == REGIONS_SCHEMA_V2,
+        "unsupported region schema `{}` (expected {REGIONS_SCHEMA_V1} or {REGIONS_SCHEMA_V2})",
+        manifest.schema
+    );
+    ensure!(
+        manifest.evm_runs.is_none() || manifest.schema == REGIONS_SCHEMA_V2,
+        "evm_runs needs a {REGIONS_SCHEMA_V2} manifest"
     );
     ensure!(
         !manifest.adapter.is_empty(),
@@ -249,7 +295,7 @@ pub fn census_regions(bytes: &[u8], manifest: RegionManifest) -> Result<Artifact
             .then_with(|| a.digest.cmp(&b.digest))
     });
     let mut report = ArtifactCensus {
-        schema: "riffcat-artifact-census/1".into(), artifact_blake3: digest,
+        schema: if evm_runs.is_some() { CENSUS_SCHEMA_V2 } else { CENSUS_SCHEMA_V1 }.into(), artifact_blake3: digest,
         artifact_bytes: bytes.len(), adapter: manifest.adapter, regions,
         region_union_bytes: union, outside_region_bytes: bytes.len() - union, patterns,
         caveats: vec![
@@ -305,7 +351,7 @@ fn assign_function_scopes(
 /// overlap, so their covered bytes may be added; they still overlap the
 /// `function` regions that contain them.
 fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptions) -> Result<()> {
-    use riff_catalog_evm::runs::{RunCensusOptions, RunKey, Scope, census_runs};
+    use riff_catalog_evm::runs::{RunCensusOptions, Scope, census_runs};
     let mut functions: Vec<&CensusRegion> = report
         .regions
         .iter()
@@ -324,13 +370,7 @@ fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptio
         &scopes,
         RunCensusOptions {
             min_run_bytes: options.min_run_bytes,
-            key: if options.constants_as_ports {
-                RunKey::ConstantsBlind
-            } else if options.memory_offsets_as_ports {
-                RunKey::MemoryOffsetsBlind
-            } else {
-                RunKey::Exact
-            },
+            key: options.run_key.run_key(),
             min_run_instructions: options.min_run_instructions,
             ..RunCensusOptions::default()
         },
@@ -411,12 +451,12 @@ fn add_evm_runs(bytes: &[u8], report: &mut ArtifactCensus, options: &EvmRunOptio
     report.caveats.push(format!(
         "EVM runs use {}: same opcodes, {}, internal jump labels equal by offset from the run start, outside labels as first-use ports. Runs are at least {} bytes and {} instructions, stay inside one function region, and the selected classes never overlap (greedy by covered bytes, not an optimal cover). A match is structural correspondence, not proof of equal behavior or of safe sharing.",
         census.policy,
-        if options.constants_as_ports {
-            "non-label immediates as first-use ports"
-        } else if options.memory_offsets_as_ports {
-            "same non-label immediates except memory and calldata offsets, which are first-use ports"
-        } else {
-            "same non-label immediates"
+        match options.run_key {
+            EvmRunKey::ConstantsBlind => "non-label immediates as first-use ports",
+            EvmRunKey::MemoryOffsetsBlind => {
+                "same non-label immediates except memory and calldata offsets, which are first-use ports"
+            }
+            EvmRunKey::Exact => "same non-label immediates",
         },
         options.min_run_bytes,
         options.min_run_instructions,
@@ -1211,7 +1251,7 @@ mod tests {
         code.extend(body);
         code.push(0x00);
         let manifest = RegionManifest {
-            schema: "riffcat-regions/1".into(),
+            schema: REGIONS_SCHEMA_V2.into(),
             artifact_blake3: blake3::hash(&code).to_hex().to_string(),
             adapter: "test-evm/1".into(),
             regions: vec![
@@ -1232,9 +1272,8 @@ mod tests {
             ],
             evm_runs: Some(EvmRunOptions {
                 min_run_bytes: 8,
-                constants_as_ports: false,
+                run_key: EvmRunKey::Exact,
                 min_run_instructions: 2,
-                memory_offsets_as_ports: false,
             }),
         };
         let report = census_regions(&code, manifest).unwrap();
@@ -1269,5 +1308,57 @@ mod tests {
         .unwrap();
         assert!(plain.evm_runs.is_none());
         assert!(census_regions(&code, plain).unwrap().patterns.is_empty());
+    }
+
+    fn evm_manifest(
+        code: &[u8],
+        schema: &str,
+        evm_runs: &str,
+    ) -> serde_json::Result<RegionManifest> {
+        serde_json::from_str(&format!(
+            r#"{{"schema":"{schema}","artifact_blake3":"{}","adapter":"x/1","regions":[{{"id":"f","kind":"function","name":"f","start":0,"end":{}}}]{evm_runs}}}"#,
+            blake3::hash(code).to_hex(),
+            code.len()
+        ))
+    }
+
+    #[test]
+    fn evm_runs_need_version_two_schemas_and_one_run_key() {
+        let code = [0x60u8, 0x01, 0x80, 0x01, 0x00];
+        // Version 2 with a run key: the census says version 2 too.
+        let m = evm_manifest(
+            &code,
+            "riffcat-regions/2",
+            r#","evm_runs":{"min_run_bytes":4,"run_key":"constants-blind"}"#,
+        )
+        .unwrap();
+        let census = census_regions(&code, m).unwrap();
+        assert_eq!(census.schema, "riffcat-artifact-census/2");
+        // Without EVM runs, both versions read and the census stays version 1.
+        for schema in ["riffcat-regions/1", "riffcat-regions/2"] {
+            let m = evm_manifest(&code, schema, "").unwrap();
+            assert_eq!(
+                census_regions(&code, m).unwrap().schema,
+                "riffcat-artifact-census/1"
+            );
+        }
+        // Version 1 never had evm_runs.
+        let m = evm_manifest(
+            &code,
+            "riffcat-regions/1",
+            r#","evm_runs":{"min_run_bytes":4,"run_key":"exact"}"#,
+        )
+        .unwrap();
+        assert!(census_regions(&code, m).is_err());
+        // The two linked flags are gone; an unknown run key is refused.
+        for bad in [
+            r#","evm_runs":{"min_run_bytes":4,"constants_as_ports":true}"#,
+            r#","evm_runs":{"min_run_bytes":4,"run_key":"nearly-exact"}"#,
+        ] {
+            assert!(
+                evm_manifest(&code, "riffcat-regions/2", bad).is_err(),
+                "{bad}"
+            );
+        }
     }
 }

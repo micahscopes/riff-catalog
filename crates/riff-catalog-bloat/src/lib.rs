@@ -14,8 +14,9 @@ mod report;
 mod validate;
 
 pub use census::{
-    ArtifactCensus, CensusCaptureContext, CensusRegion, EvmRunOptions, EvmRunPorts, EvmRunSummary,
-    PatternGroup, RegionManifest, RegionSpec, census_capture, census_file, census_regions,
+    ArtifactCensus, CENSUS_SCHEMA_V1, CENSUS_SCHEMA_V2, CensusCaptureContext, CensusRegion,
+    EvmRunKey, EvmRunOptions, EvmRunPorts, EvmRunSummary, PatternGroup, REGIONS_SCHEMA_V1,
+    REGIONS_SCHEMA_V2, RegionManifest, RegionSpec, census_capture, census_file, census_regions,
     census_wgsl, evm_run_summary, render_census,
 };
 pub use census_store::{
