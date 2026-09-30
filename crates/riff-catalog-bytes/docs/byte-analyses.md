@@ -126,7 +126,7 @@ naming each file and the code it describes.
 
 Chains from each HIR construct to its bytes are content addressed at level
 `fe-stage-chain/1`; constructs with one address expanded the same way through
-every stage. Report schema `riffcat-fe-stages/2`.
+every stage. Report schema `riffcat-fe-stages/3`.
 
 ## solc contracts: `solc-functions`
 

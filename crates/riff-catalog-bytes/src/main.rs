@@ -500,8 +500,16 @@ fn main() -> Result<()> {
             fe_total,
             json_out,
         } => {
-            let fe: FeStagesReport = read_json(&fe_stages)?;
-            check_schema(&fe.schema, FE_STAGES_SCHEMA, &fe_stages)?;
+            let value: serde_json::Value = read_json(&fe_stages)?;
+            let schema = value["schema"].as_str().unwrap_or("(none)");
+            ensure!(
+                schema != "riffcat-fe-stages/2",
+                "{} is riffcat-fe-stages/2, which does not record the artifact it describes; rerun fe-trace-stages to write {FE_STAGES_SCHEMA}",
+                fe_stages.display()
+            );
+            check_schema(schema, FE_STAGES_SCHEMA, &fe_stages)?;
+            let fe: FeStagesReport = serde_json::from_value(value)
+                .with_context(|| format!("parse {}", fe_stages.display()))?;
             let mut builds = Vec::new();
             let mut tables = BTreeMap::new();
             for item in &solc {
