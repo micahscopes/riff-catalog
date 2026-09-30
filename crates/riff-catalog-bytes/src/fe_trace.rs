@@ -1222,7 +1222,7 @@ pub fn render_fe_trace_bytes(report: &FeTraceBytesReport, top: usize) -> String 
         }
     }
     out.push_str("\nnote: extra bytes are a rough upper bound on what sharing could save, before call, return and parameter costs. A repeated run is structural correspondence under the stated key, not proof that the copies behave alike or that sharing them is safe.\n");
-    out
+    crate::shown(&out)
 }
 
 #[cfg(test)]
@@ -1355,6 +1355,40 @@ mod tests {
         let with = json();
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(without, with, "the report read the source file");
+    }
+
+    #[test]
+    fn text_tables_show_key_separators_as_spaces() {
+        // A function the trace names only by its key, and a source file
+        // named only by its key.
+        let key = "sonatina.postopt.function\u{1f}s\u{1f}function:FuncRef(3)";
+        let origin = "hir.expr\u{1f}hir-body:b\u{1f}0";
+        let mut l = ledger(vec![inst(0, 1, Some(key))]);
+        l.instructions[0].primary_source = Some(origin.into());
+        l.source_spans.insert(
+            origin.into(),
+            riff_catalog_ingest_trace::bytes::LedgerSpan {
+                file: "source.file\u{1f}f\u{1f}0".into(),
+                start_byte: 0,
+                end_byte: 1,
+                start_line: 1,
+                end_line: 1,
+            },
+        );
+        let check = ArtifactCheck {
+            instruction_bytes: 1,
+            trailing_bytes: 0,
+            code_hash_checked: false,
+        };
+        let options = EvmRunOptions {
+            min_run_bytes: 32,
+            run_key: riff_catalog_bloat::EvmRunKey::Exact,
+            min_run_instructions: 2,
+        };
+        let (_, _, report) = census_ledger(&l, &check, "C", &[0x33], &options).unwrap();
+        let text = render_fe_trace_bytes(&report, 10);
+        assert!(!text.contains('\u{1f}'), "{text:?}");
+        assert!(text.contains("sonatina.postopt.function s function:FuncRef(3)"));
     }
 
     #[test]

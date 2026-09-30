@@ -197,7 +197,7 @@ pub fn render_function_comparison(rows: &[FunctionComparison], builds: &[String]
         let _ = write!(out, " {:>9}", totals.get(b.as_str()).copied().unwrap_or(0));
     }
     let _ = writeln!(out, "  (paired totals)");
-    out
+    crate::shown(&out)
 }
 
 #[cfg(test)]

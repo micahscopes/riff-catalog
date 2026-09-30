@@ -964,7 +964,7 @@ pub fn render_fe_stages(report: &FeStagesReport, n: usize) -> String {
             c.total_bytes, c.constructs, c.bytes_per_construct, c.nodes_by_stage, c.spans
         );
     }
-    out
+    crate::shown(&out)
 }
 
 #[cfg(test)]

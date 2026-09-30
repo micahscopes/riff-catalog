@@ -423,7 +423,7 @@ pub fn render_dataflow_report(report: &DataflowReport, top: usize) -> String {
             f.facet, f.min_block_bytes, f.classes, f.covered, f.extra, f.hidden
         );
     }
-    out
+    crate::shown(&out)
 }
 
 /// Blocks of two artifacts that share a facet address: content-addressed
