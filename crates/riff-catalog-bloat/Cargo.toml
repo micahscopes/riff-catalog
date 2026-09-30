@@ -16,11 +16,6 @@ clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-riff-catalog-core.workspace = true
 riff-catalog-evm.workspace = true
-riff-catalog-view.workspace = true
-riff-catalog-ingest-trace.workspace = true
-riff-catalog-solc.workspace = true
-riff-catalog-sonatina.workspace = true
 
 [dev-dependencies]

@@ -965,6 +965,20 @@ dependencies = [
  "anyhow",
  "blake3",
  "clap",
+ "riff-catalog-evm",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "riff-catalog-bytes"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "clap",
+ "riff-catalog-bloat",
  "riff-catalog-core",
  "riff-catalog-evm",
  "riff-catalog-ingest-trace",
@@ -973,7 +987,6 @@ dependencies = [
  "riff-catalog-view",
  "serde",
  "serde_json",
- "sha2",
 ]
 
 [[package]]
