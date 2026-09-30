@@ -401,7 +401,6 @@ fn census_ledger(
     artifact: &[u8],
     run_options: &EvmRunOptions,
 ) -> Result<(RegionManifest, ArtifactCensus, FeTraceBytesReport)> {
-    let ledger = ledger;
     let total: u64 = ledger
         .instructions
         .iter()

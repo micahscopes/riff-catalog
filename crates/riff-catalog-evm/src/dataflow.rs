@@ -150,7 +150,7 @@ fn op_info(opcode: u8) -> (usize, usize, OpKind) {
         0x52 | 0x53 | 0x55 | 0x5d => (2, 0, Effect),
         0x56 => (1, 0, Terminator),
         0x57 => (2, 0, Terminator),
-        0x58 | 0x59 | 0x5a => (0, 1, Effect),
+        0x58..=0x5a => (0, 1, Effect),
         0x5e => (3, 0, Effect),
         0xa0..=0xa4 => (2 + (opcode - 0xa0) as usize, 0, Effect),
         0xf0 => (3, 1, Effect),
