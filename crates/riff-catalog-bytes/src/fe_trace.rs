@@ -339,7 +339,7 @@ pub fn emitted_function_manifest(
         .chain(data)
         .collect();
     RegionManifest {
-        schema: "riffcat-regions/1".into(),
+        schema: RegionManifest::schema_for(evm_runs.as_ref()).into(),
         artifact_blake3: blake3::hash(artifact).to_hex().to_string(),
         adapter: FE_TRACE_REGIONS_ADAPTER.into(),
         regions,
@@ -1288,9 +1288,8 @@ mod tests {
         };
         let options = EvmRunOptions {
             min_run_bytes: 32,
-            constants_as_ports: false,
+            run_key: riff_catalog_bloat::EvmRunKey::Exact,
             min_run_instructions: 2,
-            memory_offsets_as_ports: false,
         };
         let (manifest, _, report) =
             std::panic::catch_unwind(|| census_ledger(&l, &check, "C", &code, &options).unwrap())
@@ -1328,9 +1327,8 @@ mod tests {
         };
         let options = EvmRunOptions {
             min_run_bytes: 32,
-            constants_as_ports: false,
+            run_key: riff_catalog_bloat::EvmRunKey::Exact,
             min_run_instructions: 2,
-            memory_offsets_as_ports: false,
         };
         let json = || {
             let (_, _, report) = census_ledger(&l, &check, "C", &[0x33], &options).unwrap();
