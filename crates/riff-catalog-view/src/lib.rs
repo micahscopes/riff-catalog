@@ -143,6 +143,16 @@ impl ViewPlan {
         if dimensions.is_empty() {
             return Err(parse_error(1, "view must retain at least one dimension"));
         }
+        if let Some((dimension, name)) = erased.iter().find(|(d, _)| !dimensions.contains(d)) {
+            return Err(parse_error(
+                1,
+                format!(
+                    "erase {}.{name}: dimension `{}` is not retained, so there is nothing to erase",
+                    dimension.as_str(),
+                    dimension.as_str()
+                ),
+            ));
+        }
 
         Ok(Self {
             schema_version: VIEW_SCHEMA_VERSION,
@@ -723,5 +733,9 @@ retain structure, constants
             2
         );
         assert!(ViewPlan::parse(&format!("{base}erase constants\n")).is_err());
+        // A field class of a dimension the plan does not retain erases
+        // nothing and would only change the plan id: refused.
+        let err = ViewPlan::parse(&format!("{base}erase types.width\n")).unwrap_err();
+        assert!(err.to_string().contains("not retained"), "{err}");
     }
 }
