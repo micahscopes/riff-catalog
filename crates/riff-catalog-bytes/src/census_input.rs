@@ -15,8 +15,9 @@ pub struct CensusRunClass {
     pub ranges: Vec<(u32, u32)>,
 }
 
-/// The `evm_run` patterns of a census, in the census's order.
-pub fn census_run_classes(census: &ArtifactCensus) -> Vec<CensusRunClass> {
+/// The `evm_run` patterns of a census, in the census's order. A pattern
+/// naming a region the census does not list is an error.
+pub fn census_run_classes(census: &ArtifactCensus) -> Result<Vec<CensusRunClass>> {
     let by_id: BTreeMap<&str, (u32, u32)> = census
         .regions
         .iter()
@@ -31,14 +32,20 @@ pub fn census_run_classes(census: &ArtifactCensus) -> Vec<CensusRunClass> {
         .patterns
         .iter()
         .filter(|p| p.region_kind == "evm_run")
-        .map(|p| CensusRunClass {
-            digest: p.digest.clone(),
-            covered_bytes: p.covered_bytes as u64,
-            ranges: p
-                .regions
-                .iter()
-                .filter_map(|id| by_id.get(id.as_str()).copied())
-                .collect(),
+        .map(|p| {
+            Ok(CensusRunClass {
+                digest: p.digest.clone(),
+                covered_bytes: p.covered_bytes as u64,
+                ranges: p
+                    .regions
+                    .iter()
+                    .map(|id| {
+                        by_id.get(id.as_str()).copied().with_context(|| {
+                            format!("run class {} names unknown region `{id}`", p.digest)
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            })
         })
         .collect()
 }
@@ -75,5 +82,46 @@ pub fn parse_census_runs(json: &[u8], artifact: &[u8], name: &str) -> Result<Vec
         "{name} is a census of the artifact with blake3 {}, not of this one (blake3 {actual})",
         census.artifact_blake3
     );
-    Ok(census_run_classes(&census))
+    census_run_classes(&census).with_context(|| name.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_run_naming_an_unknown_region_is_an_error() {
+        // Two copies of a 12-byte body in two functions: one run class.
+        let body = [
+            0x60u8, 0x01, 0x80, 0x01, 0x90, 0x50, 0x60, 0x07, 0x02, 0x80, 0x01, 0x50,
+        ];
+        let mut code = body.to_vec();
+        code.push(0x00);
+        code.extend(body);
+        code.push(0x00);
+        let manifest: riff_catalog_bloat::RegionManifest =
+            serde_json::from_value(serde_json::json!({
+                "schema": "riffcat-regions/2",
+                "artifact_blake3": blake3::hash(&code).to_hex().to_string(),
+                "adapter": "t/1",
+                "regions": [
+                    {"id": "f", "kind": "function", "name": "f", "start": 0, "end": 13},
+                    {"id": "g", "kind": "function", "name": "g", "start": 13, "end": 26}
+                ],
+                "evm_runs": {"min_run_bytes": 8}
+            }))
+            .unwrap();
+        let mut census = riff_catalog_bloat::census_regions(&code, manifest).unwrap();
+        let json = serde_json::to_vec(&census).unwrap();
+        assert_eq!(parse_census_runs(&json, &code, "c").unwrap().len(), 1);
+        let run = census
+            .patterns
+            .iter_mut()
+            .find(|p| p.region_kind == "evm_run")
+            .unwrap();
+        run.regions[0] = "evm-run:999".into();
+        let json = serde_json::to_vec(&census).unwrap();
+        let err = format!("{:#}", parse_census_runs(&json, &code, "c").unwrap_err());
+        assert!(err.contains("evm-run:999"), "{err}");
+    }
 }
