@@ -363,10 +363,24 @@ fn collect_fact(c: &mut Collected, line: usize, kind: &str, text: &str) -> Resul
                 .filter(|o| !o.is_null())
                 .map(|_| key_of(&v, "owner_function_or_contract", line))
                 .transpose()?;
-            let hash = v
-                .get("code_hash")
-                .and_then(|h| h.as_str())
-                .map(str::to_string);
+            // Absent or null: no hash. Anything else must be a blake3 hash,
+            // never silently read as "no hash".
+            let hash = match v.get("code_hash") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(h))
+                    if h.strip_prefix("blake3:").is_some_and(|x| {
+                        x.len() == 64 && x.bytes().all(|b| b.is_ascii_hexdigit())
+                    }) =>
+                {
+                    Some(h.clone())
+                }
+                Some(other) => {
+                    return Err(LedgerError::Trace {
+                        line,
+                        message: format!("code_hash {other} is not a blake3:<hex> hash"),
+                    });
+                }
+            };
             c.code_objects.push((code_object, object_kind, owner, hash));
         }
         "instruction_extent" => {
@@ -388,10 +402,16 @@ fn collect_fact(c: &mut Collected, line: usize, kind: &str, text: &str) -> Resul
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            let immediate = v
-                .get("immediate")
-                .and_then(|i| i.as_str())
-                .map(str::to_string);
+            let immediate = match v.get("immediate") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(i)) => Some(i.clone()),
+                Some(other) => {
+                    return Err(LedgerError::Trace {
+                        line,
+                        message: format!("immediate {other} is not a hex string"),
+                    });
+                }
+            };
             c.opcodes.insert(pc, (opcode, immediate));
         }
         "instruction_block" => {
@@ -703,7 +723,25 @@ impl ByteLedger {
                     inst.pc_end - inst.pc_start
                 )));
             }
-            if let Some(imm) = &inst.immediate {
+            // Every PUSH1..PUSH32 must name its immediate so the artifact's
+            // bytes can be compared; other opcodes have none.
+            let imm = match (&inst.immediate, push_len(opcode) > 0) {
+                (Some(imm), true) => Some(imm),
+                (None, false) => None,
+                (None, true) => {
+                    return Err(LedgerError::Inconsistent(format!(
+                        "the trace gives no immediate for the {} at pc {}",
+                        inst.mnemonic, inst.pc_start
+                    )));
+                }
+                (Some(imm), false) => {
+                    return Err(LedgerError::Inconsistent(format!(
+                        "the trace gives immediate {imm} for the {} at pc {}, which has none",
+                        inst.mnemonic, inst.pc_start
+                    )));
+                }
+            };
+            if let Some(imm) = imm {
                 let hex: String = code[inst.pc_start as usize + 1..inst.pc_end as usize]
                     .iter()
                     .map(|b| format!("{b:02x}"))
@@ -1468,6 +1506,32 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(err.contains("no instruction extent"), "{err}");
+    }
+
+    #[test]
+    fn a_push_without_an_immediate_or_a_malformed_code_hash_is_refused() {
+        let read = |text: &str| {
+            ByteLedger::read(
+                text.as_bytes(),
+                &details(),
+                &LedgerSelector {
+                    contract: "C".into(),
+                },
+            )
+        };
+        // The trace names no immediate for PUSH1: the artifact's other
+        // immediate must not pass as verified.
+        for missing in ["\"immediate\":null", "\"unused\":null"] {
+            let text = trace().replace("\"immediate\":\"0x80\"", missing);
+            assert_ne!(text, trace());
+            let result = read(&text).and_then(|l| l.verify_artifact(&[0x60, 0x81, 0x52, 0x00]));
+            assert!(result.is_err(), "{missing}: accepted");
+        }
+        // A code hash that is present but not a blake3 hash string.
+        for bad in ["{\"blake3\":\"x\"}", "7", "\"sha256:00\"", "\"blake3:xyz\""] {
+            let text = trace().replace("\"code_hash\":null", &format!("\"code_hash\":{bad}"));
+            assert!(read(&text).is_err(), "code hash {bad} accepted");
+        }
     }
 
     #[test]
