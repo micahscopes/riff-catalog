@@ -50,7 +50,7 @@ pub fn load_regions_unbound(path: &Path) -> Result<RegionManifest> {
 }
 
 /// Where the instructions of `artifact` end. A requested end may not pass
-/// the artifact. Without one: the start of the manifest's `data` regions
+/// the artifact or fall inside an instruction. Without one: the start of the manifest's `data` regions
 /// that run, one after another, to the end of the artifact, else the start
 /// of a well-formed Solidity CBOR metadata trailer, else the whole artifact.
 pub fn code_end(
@@ -58,11 +58,21 @@ pub fn code_end(
     requested: Option<usize>,
     manifest: Option<&RegionManifest>,
 ) -> Result<usize> {
+    // Whether `end` falls between two whole instructions.
+    let boundary = |end: usize| {
+        riff_catalog_evm::decode::decode(&artifact[..end])
+            .last()
+            .is_none_or(|i| i.len as usize == 1 + riff_catalog_evm::decode::push_len(i.opcode))
+    };
     if let Some(end) = requested {
         ensure!(
             end <= artifact.len(),
             "--code-end {end} is past the end of the {}-byte artifact",
             artifact.len()
+        );
+        ensure!(
+            boundary(end),
+            "--code-end {end} is inside an instruction (a PUSH's immediate runs past it)"
         );
         return Ok(end);
     }
@@ -81,8 +91,15 @@ pub fn code_end(
         }
         start
     });
-    Ok(data
-        .or_else(|| riff_catalog_evm::solc_metadata_start(artifact))
+    if let Some(start) = data {
+        ensure!(
+            boundary(start),
+            "the manifest's data starts at {start}, inside an instruction"
+        );
+        return Ok(start);
+    }
+    Ok(riff_catalog_evm::solc_metadata_start(artifact)
+        .filter(|start| boundary(*start))
         .unwrap_or(artifact.len()))
 }
 
@@ -184,6 +201,16 @@ pub fn decode_artifact_as(raw: &[u8], format: ArtifactFormat) -> Result<Vec<u8>>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_code_may_not_end_inside_an_instruction() {
+        // PUSH2 0x0000, STOP
+        let code = [0x61, 0x00, 0x00, 0x00];
+        assert!(code_end(&code, Some(2), None).is_err());
+        assert!(code_end(&code, Some(1), None).is_err());
+        assert_eq!(code_end(&code, Some(3), None).unwrap(), 3);
+        assert_eq!(code_end(&code, Some(0), None).unwrap(), 0);
+    }
 
     #[test]
     fn only_a_whole_cbor_trailer_ends_the_code() {
