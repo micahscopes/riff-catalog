@@ -43,6 +43,68 @@ pub enum LowerError {
     MissingCalleeNode { callee: String },
 }
 
+fn name_of(graph: &Graph, key: &NodeKey) -> String {
+    graph.nodes[key]
+        .fields
+        .iter()
+        .find(|f| f.dimension == Dimension::Names && f.name.as_str() == "name")
+        .and_then(|f| match &f.value {
+            riff_catalog_core::Value::Text(t) => Some(t.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| key.canonical_key())
+}
+
+/// Split a lowered module into one graph per function, keyed by function
+/// name: the function node, everything under it (blocks, values,
+/// instructions) and the data and control edges among them. Calls leave the
+/// function, so call edges are dropped: two callers count as equal when they
+/// differ only in which instance they call.
+pub fn project_functions(lowered: &LoweredModule) -> Result<BTreeMap<String, Graph>, LowerError> {
+    let g = &lowered.graph;
+    let mut children: BTreeMap<&NodeKey, Vec<&riff_catalog_core::ChildEdge>> = BTreeMap::new();
+    for c in &g.children {
+        children.entry(&c.parent).or_default().push(c);
+    }
+    let mut out = BTreeMap::new();
+    for (key, node) in &g.nodes {
+        if node.kind.as_str() != "sonatina.function" {
+            continue;
+        }
+        let mut members: BTreeSet<&NodeKey> = BTreeSet::new();
+        let mut todo = vec![key];
+        while let Some(k) = todo.pop() {
+            if members.insert(k) {
+                for c in children.get(k).into_iter().flatten() {
+                    todo.push(&c.child);
+                }
+            }
+        }
+        let mut sub = Graph::new(GraphKey::new(key.owner().clone(), "function")?);
+        for m in &members {
+            sub.nodes.insert((*m).clone(), g.nodes[*m].clone());
+        }
+        sub.children = g
+            .children
+            .iter()
+            .filter(|c| members.contains(&c.parent))
+            .cloned()
+            .collect();
+        sub.edges = g
+            .edges
+            .iter()
+            .filter(|e| {
+                e.role != EdgeRole::Call
+                    && members.contains(&e.source)
+                    && members.contains(&e.target)
+            })
+            .cloned()
+            .collect();
+        out.insert(name_of(g, key), sub);
+    }
+    Ok(out)
+}
+
 /// Parse and lower one textual Sonatina module.
 pub fn parse_and_lower_module(owner: &str, source: &str) -> Result<LoweredModule, LowerError> {
     Ok(parse_and_lower_views(owner, source)?.0)

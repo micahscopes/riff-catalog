@@ -2,21 +2,18 @@
 //! are the same code at a facet that forgets types (or types and constants),
 //! for example one generic Fe function specialized for several layouts.
 //!
-//! Each function becomes its own graph: the function node, everything under
-//! it (blocks, values, instructions) and the data and control edges among
-//! them, lowered by `riff_catalog_sonatina` at level `sonatina-ir/1`. Calls
-//! leave the function, so call edges are dropped: two callers count as equal
-//! when they differ only in which instance they call. Names never enter an
-//! address (anonymous shape, and names are their own dimension).
+//! Each function becomes its own graph
+//! ([`riff_catalog_sonatina::project_functions`]) at level `sonatina-ir/1`.
+//! Names never enter an address (anonymous shape, and names are their own
+//! dimension).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use riff_catalog_core::{
-    CyclePolicy, DigestRequest, Dimension, EdgeRole, Facet, Graph, GraphKey, HashPolicy, NodeKey,
-    Value, ViewMode, digest_graph,
+    CyclePolicy, DigestRequest, Dimension, Facet, HashPolicy, ViewMode, digest_graph,
 };
-use riff_catalog_sonatina::{SONATINA_IR_LEVEL, parse_and_lower_module};
+use riff_catalog_sonatina::{SONATINA_IR_LEVEL, parse_and_lower_module, project_functions};
 use serde::{Deserialize, Serialize};
 
 /// One class: functions with one address at a facet.
@@ -40,65 +37,6 @@ pub struct FunctionFacetCensus {
     pub upper_bound_saving: u64,
 }
 
-fn name_of(graph: &Graph, key: &NodeKey) -> String {
-    graph.nodes[key]
-        .fields
-        .iter()
-        .find(|f| f.dimension == Dimension::Names && f.name.as_str() == "name")
-        .and_then(|f| match &f.value {
-            Value::Text(t) => Some(t.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| key.canonical_key())
-}
-
-/// Per-function graphs of a module, keyed by function name.
-pub fn function_graphs(source: &str) -> Result<BTreeMap<String, Graph>> {
-    let lowered = parse_and_lower_module("sonatina", source)?;
-    let g = &lowered.graph;
-    let mut children: BTreeMap<&NodeKey, Vec<&riff_catalog_core::ChildEdge>> = BTreeMap::new();
-    for c in &g.children {
-        children.entry(&c.parent).or_default().push(c);
-    }
-    let mut out = BTreeMap::new();
-    for (key, node) in &g.nodes {
-        if node.kind.as_str() != "sonatina.function" {
-            continue;
-        }
-        let mut members: BTreeSet<&NodeKey> = BTreeSet::new();
-        let mut todo = vec![key];
-        while let Some(k) = todo.pop() {
-            if members.insert(k) {
-                for c in children.get(k).into_iter().flatten() {
-                    todo.push(&c.child);
-                }
-            }
-        }
-        let mut sub = Graph::new(GraphKey::new(key.owner().clone(), "function")?);
-        for m in &members {
-            sub.nodes.insert((*m).clone(), g.nodes[*m].clone());
-        }
-        sub.children = g
-            .children
-            .iter()
-            .filter(|c| members.contains(&c.parent))
-            .cloned()
-            .collect();
-        sub.edges = g
-            .edges
-            .iter()
-            .filter(|e| {
-                e.role != EdgeRole::Call
-                    && members.contains(&e.source)
-                    && members.contains(&e.target)
-            })
-            .cloned()
-            .collect();
-        out.insert(name_of(g, key), sub);
-    }
-    Ok(out)
-}
-
 /// Group a module's functions at three facets: Structure + Types +
 /// Constants (exact), Structure + Constants (types blind), and Structure
 /// (types and constants blind). `bytes` gives emitted bytes per function.
@@ -106,7 +44,7 @@ pub fn sonatina_function_facets(
     source: &str,
     bytes: &BTreeMap<String, u64>,
 ) -> Result<Vec<FunctionFacetCensus>> {
-    let graphs = function_graphs(source)?;
+    let graphs = project_functions(&parse_and_lower_module("sonatina", source)?)?;
     let policy = HashPolicy::new(
         SONATINA_IR_LEVEL,
         ViewMode::AnonymousShape,

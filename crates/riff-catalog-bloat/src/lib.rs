@@ -68,7 +68,5 @@ pub use selection::{
     range_selection, read_pc_set,
 };
 pub use solc_functions::{SOLC_REGIONS_ADAPTER, SolcFunctions, solc_functions};
-pub use sonatina_functions::{
-    FunctionClass, FunctionFacetCensus, function_graphs, sonatina_function_facets,
-};
+pub use sonatina_functions::{FunctionClass, FunctionFacetCensus, sonatina_function_facets};
 pub use validate::{reachable_union, validate};
