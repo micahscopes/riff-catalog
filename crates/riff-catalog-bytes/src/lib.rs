@@ -19,7 +19,10 @@ mod selection;
 mod solc_functions;
 mod sonatina_functions;
 
-pub use artifact::{check_schema, decode_artifact, read_file, read_json};
+pub use artifact::{
+    check_schema, decode_artifact, load_artifact, load_regions, load_regions_unbound, read_file,
+    read_json,
+};
 pub use byte_causes::{
     BYTE_CAUSES_COMPARE_SCHEMA, BYTE_CAUSES_SCHEMA, ByteCauses, CauseComparison, CauseDelta,
     CauseInputs, CauseTally, apportion_excess, byte_cause_ledger, cause_selection, classify_bytes,
