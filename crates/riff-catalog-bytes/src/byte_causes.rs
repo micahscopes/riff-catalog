@@ -152,6 +152,8 @@ pub fn classify_bytes(
 
 /// What a `--cause` or `--detail` argument can refer to.
 pub struct CauseInputs<'a> {
+    /// The whole artifact, which census inputs must describe.
+    pub artifact: &'a [u8],
     /// The instructions (the artifact up to its code end).
     pub code: &'a [u8],
     pub functions: &'a FunctionRegions,
@@ -176,9 +178,13 @@ pub fn cause_selection(
         "pcs" => read_pc_set(name, &read(arg)?)?.pcs,
         "pattern" => pattern_selection(name, code, arg)?.pcs,
         "repeats" => {
-            let value: serde_json::Value = serde_json::from_slice(&read(arg)?)?;
+            let classes = crate::census_input::parse_census_runs(
+                &read(arg)?,
+                inputs.artifact,
+                &format!("repeats: {arg}"),
+            )?;
             let mut ranges = Vec::new();
-            for class in crate::census_input::census_run_classes(&value) {
+            for class in classes {
                 let mut occ = class.ranges;
                 occ.sort();
                 ranges.extend(occ.into_iter().skip(1));

@@ -322,7 +322,11 @@ fn main() -> Result<()> {
                 })
                 .collect::<Result<Vec<_>>>()?;
             let census_runs = match census {
-                Some(path) => census_run_classes(&serde_json::from_slice(&fs::read(&path)?)?),
+                Some(path) => parse_census_runs(
+                    &read_file(&path)?,
+                    &artifact_bytes,
+                    &path.display().to_string(),
+                )?,
                 None => Vec::new(),
             };
             let request = StageRequest {
@@ -532,6 +536,7 @@ fn main() -> Result<()> {
                 _ => None,
             };
             let inputs = CauseInputs {
+                artifact: &code,
                 code: &code[..end],
                 functions: &functions,
                 rows: rows.as_deref(),
