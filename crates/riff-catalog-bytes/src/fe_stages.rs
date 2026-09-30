@@ -951,9 +951,7 @@ mod tests {
 
     #[test]
     fn a_runtime_pc_lowered_from_another_code_objects_pc_is_not_counted_as_runtime() {
-        let key = |kind: &str, owner: &str, local: &str| {
-            serde_json::json!({"kind": kind, "owner_key": owner, "local_key": local})
-        };
+        let key = |kind: &str, owner: &str, local: &str| serde_json::json!({"kind": kind, "owner_key": owner, "local_key": local});
         let pc = key("bytecode.pc", "C:runtime", "pc:0");
         let init = key("bytecode.pc", "C:init", "pc:7");
         let hir = key("hir.expr", "hir-body:b", "0");

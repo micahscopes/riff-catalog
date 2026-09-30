@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::regions::FunctionRegions;
 use anyhow::{Context, Result, bail, ensure};
 use riff_catalog_ingest_trace::bytes::{
-    ByteLedger, LedgerError, LedgerInstruction, LedgerSelector, Tally, dominates,
+    ArtifactCheck, ByteLedger, LedgerError, LedgerInstruction, LedgerSelector, Tally, dominates,
     immediate_dominators, source_body, tally_by, tally_origin_anywhere,
 };
 use serde::{Deserialize, Serialize};
@@ -377,6 +377,20 @@ pub fn fe_trace_bytes(
     let check = ledger
         .verify_artifact(artifact)
         .map_err(|e| anyhow::anyhow!("trace does not describe this artifact: {e}"))?;
+    let (manifest, census, report) =
+        census_ledger(&ledger, &check, contract, artifact, run_options)?;
+    Ok((ledger, manifest, census, report))
+}
+
+/// The census of a ledger already checked against `artifact`.
+fn census_ledger(
+    ledger: &ByteLedger,
+    check: &ArtifactCheck,
+    contract: &str,
+    artifact: &[u8],
+    run_options: &EvmRunOptions,
+) -> Result<(RegionManifest, ArtifactCensus, FeTraceBytesReport)> {
+    let ledger = ledger;
     let total: u64 = ledger
         .instructions
         .iter()
@@ -401,11 +415,11 @@ pub fn fe_trace_bytes(
         rows
     };
 
-    let manifest = emitted_function_manifest(&ledger, artifact, Some(run_options.clone()));
+    let manifest = emitted_function_manifest(ledger, artifact, Some(run_options.clone()));
     let census = census_regions(artifact, manifest.clone())?;
 
     let by_classification = rows(
-        tally_by(&ledger, |i| {
+        tally_by(ledger, |i| {
             format!(
                 "{} / {} / {}",
                 i.classification,
@@ -420,7 +434,7 @@ pub fn fe_trace_bytes(
             .unwrap_or_else(|| "(no emitted function in trace)".into())
     };
     let by_emitted_function_linked =
-        rows(tally_by(&ledger, |i| i.emitted_function.clone()), fn_label);
+        rows(tally_by(ledger, |i| i.emitted_function.clone()), fn_label);
     // By position: the function region (from the manifest) holding each pc.
     let functions = FunctionRegions::from_manifest(&manifest);
     let region_name = |pc: u32| -> String {
@@ -429,27 +443,27 @@ pub fn fe_trace_bytes(
             .unwrap_or(BETWEEN_FUNCTIONS)
             .to_string()
     };
-    let by_emitted_function = rows(tally_by(&ledger, |i| region_name(i.pc_start)), |k| {
-        k.clone()
-    });
-    let mut first_linked: BTreeMap<&str, u32> = BTreeMap::new();
-    for inst in &ledger.instructions {
-        if let Some(f) = inst.emitted_function.as_deref() {
-            first_linked.entry(f).or_insert(inst.pc_start);
-        }
-    }
+    let by_emitted_function = rows(tally_by(ledger, |i| region_name(i.pc_start)), |k| k.clone());
+    // A region's entry: its bytes before the first one the trace links to
+    // the region's function. A function split over several regions has one
+    // entry per region.
     let entry_bytes_by_position: u64 = functions
         .iter()
         .filter_map(|r| {
-            first_linked
-                .get(r.name.as_str())
-                .map(|f| u64::from(*f) - u64::from(r.start))
+            let first = ledger
+                .instructions
+                .partition_point(|i| i.pc_start < r.start);
+            ledger.instructions[first..]
+                .iter()
+                .take_while(|i| i.pc_start < r.end)
+                .find(|i| i.emitted_function.as_deref() == Some(r.name.as_str()))
+                .map(|i| u64::from(i.pc_start - r.start))
         })
         .sum();
     let no_primary =
         |i: &LedgerInstruction| format!("(no single primary source: {})", i.classification);
     let by_primary_body = rows(
-        tally_by(&ledger, |i| {
+        tally_by(ledger, |i| {
             primary_body(i)
                 .map(str::to_string)
                 .unwrap_or_else(|| no_primary(i))
@@ -457,7 +471,7 @@ pub fn fe_trace_bytes(
         |k| k.clone(),
     );
     let by_primary_file = rows(
-        tally_by(&ledger, |i| {
+        tally_by(ledger, |i| {
             i.primary_source
                 .as_ref()
                 .and_then(|o| ledger.source_spans.get(o))
@@ -473,7 +487,7 @@ pub fn fe_trace_bytes(
         |k| k.clone(),
     );
     let no_primary_by_emitted_function = rows(
-        tally_by(&ledger, |i| {
+        tally_by(ledger, |i| {
             i.primary_source.is_none().then(|| region_name(i.pc_start))
         }),
         |k| match k {
@@ -484,7 +498,7 @@ pub fn fe_trace_bytes(
     .into_iter()
     .filter(|r| r.key != "(has a primary source)")
     .collect();
-    let origin_anywhere_by_body = rows(tally_origin_anywhere(&ledger), |k| k.clone());
+    let origin_anywhere_by_body = rows(tally_origin_anywhere(ledger), |k| k.clone());
 
     // Body locations from every span the ledger carries.
     let mut bodies: BTreeMap<String, BodyInfo> = BTreeMap::new();
@@ -533,9 +547,9 @@ pub fn fe_trace_bytes(
             .and_then(|(f, l)| source_line(f, l));
     }
 
-    let (arm_of, arms) = recv_arms(&ledger, &functions);
+    let (arm_of, arms) = recv_arms(ledger, &functions);
     let by_recv_arm = rows(
-        tally_by(&ledger, |i| {
+        tally_by(ledger, |i| {
             arm_of
                 .get(&i.pc_start)
                 .cloned()
@@ -543,7 +557,7 @@ pub fn fe_trace_bytes(
         }),
         |k| k.clone(),
     );
-    let (arm_reach, by_recv_arm_with_helpers) = arm_reach(&ledger, &functions, artifact, &arm_of)?;
+    let (arm_reach, by_recv_arm_with_helpers) = arm_reach(ledger, &functions, artifact, &arm_of)?;
 
     // Runs joined back to the ledger.
     let starts: Vec<u32> = ledger.instructions.iter().map(|i| i.pc_start).collect();
@@ -680,7 +694,7 @@ pub fn fe_trace_bytes(
         runs,
     };
     check_totals(&report)?;
-    Ok((ledger, manifest, census, report))
+    Ok((manifest, census, report))
 }
 
 /// Row label for code between function regions.
@@ -840,6 +854,15 @@ fn recv_arms(
     (arm_of, arms.into_values().collect())
 }
 
+/// Bytes of each named function over all of its regions.
+fn function_bytes(functions: &FunctionRegions) -> BTreeMap<&str, u64> {
+    let mut out: BTreeMap<&str, u64> = BTreeMap::new();
+    for r in functions.iter() {
+        *out.entry(r.name.as_str()).or_default() += u64::from(r.end - r.start);
+    }
+    out
+}
+
 /// Row labels for `by_recv_arm_with_helpers`.
 pub const SHARED_BY_ARMS: &str = "(functions reached from several recv arms)";
 pub const DISPATCH_ONLY: &str = "(functions reached only from shared dispatch code)";
@@ -860,10 +883,7 @@ fn arm_reach(
         .iter()
         .map(|r| (r.start, r.name.as_str()))
         .collect();
-    let bytes_of: BTreeMap<&str, u64> = functions
-        .iter()
-        .map(|r| (r.name.as_str(), u64::from(r.end - r.start)))
-        .collect();
+    let bytes_of = function_bytes(functions);
     let owner_of = |pc: u32| functions.name_at(pc);
     // Functions that are some arm's own (not inlined) body.
     let own_arm: BTreeMap<&str, &str> = ledger
@@ -1288,6 +1308,36 @@ mod tests {
             source_files: BTreeMap::new(),
             cfgs: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn a_function_split_over_several_regions_counts_each_region() {
+        // root | helper | root, root: the trace interleaves the two functions.
+        let code = [0x33, 0x33, 0x33, 0x00];
+        let l = ledger(vec![
+            inst(0, 1, Some("root")),
+            inst(1, 2, Some("helper")),
+            inst(2, 3, Some("root")),
+            inst(3, 4, Some("root")),
+        ]);
+        let check = ArtifactCheck {
+            instruction_bytes: 4,
+            trailing_bytes: 0,
+            code_hash_checked: false,
+        };
+        let options = EvmRunOptions {
+            min_run_bytes: 32,
+            constants_as_ports: false,
+            min_run_instructions: 2,
+            memory_offsets_as_ports: false,
+        };
+        let (manifest, _, report) =
+            std::panic::catch_unwind(|| census_ledger(&l, &check, "C", &code, &options).unwrap())
+                .expect("an interleaved function made the census panic");
+        assert_eq!(report.entry_bytes_by_position, 0);
+        let functions = FunctionRegions::from_manifest(&manifest);
+        assert_eq!(functions.len(), 3);
+        assert_eq!(function_bytes(&functions)["root"], 3);
     }
 
     #[test]
