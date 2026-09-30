@@ -66,7 +66,7 @@ use riff_catalog_core::{
 use riff_catalog_view::ViewPlan;
 
 pub use crate::decode::{Instruction, decode};
-use crate::decode::{jump_labels, jumpdests, push_value};
+use crate::decode::{jump_labels, jumpdests, push_len, push_value};
 
 /// Versioned lowering of one run into a core graph ([`run_graph`]). Run
 /// classes are equal core facet addresses of these graphs.
@@ -377,14 +377,21 @@ fn build_stream(code: &[u8], scopes: &[Scope], keyer: &RunKeyer) -> Stream {
         }
         while cursor < insts.len() && insts[cursor].pc + insts[cursor].len <= scope.end {
             let inst = insts[cursor];
+            if inst.len as usize != 1 + push_len(inst.opcode) {
+                // A PUSH cut off by the end of the code is not an instruction
+                // any run may hold; it can only be the last one.
+                cursor += 1;
+                continue;
+            }
             let bytes = &code[inst.pc as usize..(inst.pc + inst.len) as usize];
             let target = push_value(code, &inst).filter(|v| jumpdests.contains(v));
             let as_port = target.is_none() && bytes.len() > 1 && keyer.constant_is_port(inst.pc);
             let key = if target.is_some() {
                 vec![inst.opcode]
             } else if as_port {
-                // The value is compared per occurrence; the policies never mix
-                // in one stream, so this marker cannot meet an exact key.
+                // The value is compared per occurrence. Under the
+                // memory-offsets-blind key this marker can equal a real
+                // `PUSH1 0xfe` token; the core address then tells them apart.
                 vec![inst.opcode, 0xfe]
             } else {
                 // Non-label: opcode plus exact immediate bytes. A non-label PUSH
@@ -1167,6 +1174,34 @@ mod tests {
                 .classes
                 .is_empty()
         );
+    }
+
+    /// A PUSH cut off by the end of the code is not a whole instruction, so
+    /// it is never part of a run: under the constants-blind key it would
+    /// otherwise look like a full PUSH of the same width.
+    #[test]
+    fn a_truncated_trailing_push_is_never_in_a_run() {
+        // ADD MUL SUB DIV PUSH2 aa bb STOP | ADD MUL SUB DIV PUSH2 cc (cut off)
+        let code = [
+            0x01, 0x02, 0x03, 0x04, PUSH2, 0xaa, 0xbb, STOP, 0x01, 0x02, 0x03, 0x04, PUSH2, 0xcc,
+        ];
+        for key in [
+            RunKey::Exact,
+            RunKey::ConstantsBlind,
+            RunKey::MemoryOffsetsBlind,
+        ] {
+            let census = std::panic::catch_unwind(|| {
+                census_runs(&code, &whole(&code), RunCensusOptions { key, ..options(4) })
+            })
+            .expect("a truncated PUSH made the census panic")
+            .unwrap();
+            for class in &census.classes {
+                for o in &class.occurrences {
+                    assert!(o.end <= 12, "{key:?}: {o:?} includes the cut-off PUSH");
+                    assert_eq!(o.end - o.start, class.bytes_per_copy);
+                }
+            }
+        }
     }
 
     /// Every window of every length: the fast per-occurrence key partitions
