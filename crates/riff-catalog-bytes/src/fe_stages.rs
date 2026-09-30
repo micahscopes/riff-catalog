@@ -27,7 +27,7 @@ use riff_catalog_ingest_trace::bytes::{DetailsRow, Tally, source_body};
 use riff_catalog_ingest_trace::stages::{Stage, StageGraph};
 use serde::{Deserialize, Serialize};
 
-pub const FE_STAGES_SCHEMA: &str = "riffcat-fe-stages/1";
+pub const FE_STAGES_SCHEMA: &str = "riffcat-fe-stages/2";
 /// Level of chain graphs ([`StageGraph::chain_graph`]).
 pub const STAGE_CHAIN_LEVEL: &str = "fe-stage-chain/1";
 
@@ -278,6 +278,7 @@ impl StageInputs<'_> {
         Ok(FeStagesReport {
             schema: FE_STAGES_SCHEMA.into(),
             contract: request.contract.to_string(),
+            code_blake3: blake3::hash(self.code).to_hex().to_string(),
             stage_graph_nodes: self.graph.len(),
             selections: selections
                 .iter()
@@ -820,6 +821,9 @@ pub struct ChainClass {
 pub struct FeStagesReport {
     pub schema: String,
     pub contract: String,
+    /// blake3 of the code the stages were traced on (the artifact up to the
+    /// end of the trace's instructions).
+    pub code_blake3: String,
     pub stage_graph_nodes: usize,
     pub selections: Vec<StageReport>,
     pub expansion_by_body: Vec<BodyExpansion>,

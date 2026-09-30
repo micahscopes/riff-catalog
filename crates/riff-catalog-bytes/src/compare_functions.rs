@@ -209,6 +209,7 @@ mod tests {
         FeStagesReport {
             schema: crate::fe_stages::FE_STAGES_SCHEMA.into(),
             contract: "C".into(),
+            code_blake3: String::new(),
             stage_graph_nodes: 0,
             selections: Vec::new(),
             expansion_by_body: bodies
@@ -229,7 +230,8 @@ mod tests {
     fn solc(owners: &[(&str, u64)], total: usize) -> BTreeMap<String, SolcFunctions> {
         let table: SolcFunctions = serde_json::from_value(serde_json::json!({
             "schema": crate::solc_functions::SOLC_FUNCTIONS_SCHEMA,
-            "source": "a.sol", "contract": "C", "runtime_bytes": total, "code_end": total,
+            "source": "a.sol", "contract": "C", "runtime_bytes": total,
+            "runtime_blake3": "", "code_end": total,
             "by_owner": owners.iter().map(|(n, b)| (n.to_string(), *b)).collect::<Vec<_>>(),
         }))
         .unwrap();

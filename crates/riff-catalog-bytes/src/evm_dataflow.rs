@@ -52,6 +52,8 @@ pub struct BlockRecord {
 pub struct DataflowBlocks {
     pub schema: String,
     pub code_bytes: usize,
+    /// blake3 of the lifted code bytes.
+    pub code_blake3: String,
     /// Facet name to a description of what it keeps.
     pub facets: std::collections::BTreeMap<String, String>,
     pub blocks: Vec<BlockRecord>,
@@ -146,7 +148,7 @@ pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
         ),
         (
             "flat_memory_offsets_blind",
-            "view evm-run.memory-offsets-blind/1, Structure + Constants",
+            "view evm-run.memory-offsets-blind/2, Structure + Constants",
         ),
         ("dataflow", "evm-dataflow/2, Structure + Constants"),
         ("dataflow_constants_blind", "evm-dataflow/2, Structure"),
@@ -169,6 +171,7 @@ pub fn evm_dataflow_blocks(code: &[u8]) -> Result<DataflowBlocks> {
     Ok(DataflowBlocks {
         schema: EVM_DATAFLOW_BLOCKS_SCHEMA.into(),
         code_bytes: code.len(),
+        code_blake3: blake3::hash(code).to_hex().to_string(),
         facets,
         blocks,
     })
@@ -223,6 +226,7 @@ pub struct BlockClass {
 pub struct DataflowReport {
     pub schema: String,
     pub code_bytes: usize,
+    pub code_blake3: String,
     pub blocks: usize,
     pub scheduling: SchedulingBytes,
     /// Scheduling bytes inside instructions with no source link, and all
@@ -378,6 +382,7 @@ pub fn dataflow_report(
     DataflowReport {
         schema: EVM_DATAFLOW_REPORT_SCHEMA.into(),
         code_bytes: blocks.code_bytes,
+        code_blake3: blocks.code_blake3.clone(),
         blocks: blocks.blocks.len(),
         scheduling,
         scheduling_in_no_source: no_source.map(|_| in_no_source),

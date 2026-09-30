@@ -25,6 +25,7 @@ pub struct SolcFunctions {
     pub source: String,
     pub contract: String,
     pub runtime_bytes: usize,
+    pub runtime_blake3: String,
     /// End of the instructions (the CBOR metadata trailer starts here).
     pub code_end: usize,
     /// Bytes by owner: `Contract.function`, `(contract) C`, `(file) N`,
@@ -115,6 +116,7 @@ pub fn solc_functions(
         source: source.into(),
         contract: contract.into(),
         runtime_bytes: code.len(),
+        runtime_blake3: blake3::hash(&code).to_hex().to_string(),
         code_end,
         by_owner,
     };
