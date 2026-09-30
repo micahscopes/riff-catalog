@@ -19,33 +19,16 @@ use anyhow::{Context, Result};
 use riff_catalog_core::{CyclePolicy, DigestRequest, Facet, HashPolicy, ViewMode, digest_graph};
 pub use riff_catalog_evm::decode::MEMORY_OPCODES;
 use riff_catalog_evm::decode::decode;
-use riff_catalog_ingest_trace::bytes::{DetailsRow, source_body};
+
+use crate::regions::FunctionRegions;
+use crate::selection::{Selection, pattern_matches};
+use riff_catalog_ingest_trace::bytes::{DetailsRow, Tally, source_body};
 use riff_catalog_ingest_trace::stages::{Stage, StageGraph};
 use serde::{Deserialize, Serialize};
 
 pub const FE_STAGES_SCHEMA: &str = "riffcat-fe-stages/1";
 /// Level of chain graphs ([`StageGraph::chain_graph`]).
 pub const STAGE_CHAIN_LEVEL: &str = "fe-stage-chain/1";
-
-/// A named set of emitted instructions (pc starts).
-#[derive(Clone, Debug)]
-pub struct Selection {
-    pub name: String,
-    pub pcs: BTreeSet<u32>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Tally {
-    pub bytes: u64,
-    pub instructions: u64,
-}
-
-impl Tally {
-    fn add(&mut self, bytes: u64) {
-        self.bytes += bytes;
-        self.instructions += 1;
-    }
-}
 
 fn top(map: BTreeMap<String, Tally>, n: usize) -> Vec<(String, Tally)> {
     let mut v: Vec<(String, Tally)> = map.into_iter().collect();
@@ -307,19 +290,19 @@ impl StageInputs<'_> {
                 .provenance_ends_at
                 .entry(f.ends_at.as_str().into())
                 .or_default()
-                .add(f.bytes);
+                .add_bytes(f.bytes);
             let category = f.node.and_then(|n| g.category(n)).unwrap_or("(none)");
             report
                 .by_category
                 .entry(category.into())
                 .or_default()
-                .add(f.bytes);
+                .add_bytes(f.bytes);
             if let Some(reason) = f.node.and_then(|n| g.gap(n)) {
                 report
                     .gap_reasons
                     .entry(reason.into())
                     .or_default()
-                    .add(f.bytes);
+                    .add_bytes(f.bytes);
             }
             let join = |s: &BTreeSet<String>| {
                 if s.is_empty() {
@@ -328,16 +311,18 @@ impl StageInputs<'_> {
                     s.iter().cloned().collect::<Vec<_>>().join("+")
                 }
             };
-            post.entry(join(&f.postopt_ops)).or_default().add(f.bytes);
-            mir.entry(join(&f.mir_ops)).or_default().add(f.bytes);
+            post.entry(join(&f.postopt_ops))
+                .or_default()
+                .add_bytes(f.bytes);
+            mir.entry(join(&f.mir_ops)).or_default().add_bytes(f.bytes);
             let span = row
                 .primary_source
                 .as_deref()
                 .map(|p| self.span_of(p))
                 .unwrap_or_else(|| "(no primary source)".into());
-            spans.entry(span).or_default().add(f.bytes);
+            spans.entry(span).or_default().add_bytes(f.bytes);
             for i in &f.mir_instances {
-                instances.entry(i.clone()).or_default().add(f.bytes);
+                instances.entry(i.clone()).or_default().add_bytes(f.bytes);
             }
             let opcode = self.code.get(row.pc_start as usize).copied().unwrap_or(0);
             if MEMORY_OPCODES.contains(&opcode) {
@@ -360,7 +345,7 @@ impl StageInputs<'_> {
                     .memory_buckets
                     .entry(bucket)
                     .or_default()
-                    .add(f.bytes);
+                    .add_bytes(f.bytes);
             }
         }
         let closure = g.trace_back(starts);
@@ -424,15 +409,16 @@ impl StageInputs<'_> {
         out
     }
 
-    /// Bytes by the trace's instruction category per function region
-    /// `(name, start, end)`, largest functions first.
+    /// Bytes by the trace's instruction category per function region,
+    /// largest functions first.
     pub fn category_by_function(
         &self,
-        functions: &[(String, u32, u32)],
+        functions: &FunctionRegions,
     ) -> Vec<(String, u64, BTreeMap<String, u64>)> {
         let mut out: Vec<(String, u64, BTreeMap<String, u64>)> = functions
             .iter()
-            .map(|(name, start, end)| {
+            .map(|f| {
+                let (name, start, end) = (&f.name, &f.start, &f.end);
                 let mut cats: BTreeMap<String, u64> = BTreeMap::new();
                 let first = self.rows.partition_point(|r| r.pc_start < *start);
                 for r in self.rows[first..].iter().take_while(|r| r.pc_start < *end) {
@@ -744,48 +730,6 @@ pub struct FeStagesReport {
     pub category_by_function: Vec<(String, u64, BTreeMap<String, u64>)>,
 }
 
-/// Non-overlapping byte ranges matching `pattern` (hex, `??` any byte),
-/// scanning left to right.
-pub fn pattern_matches(code: &[u8], pattern: &str) -> Result<Vec<(u32, u32)>> {
-    let hex: String = pattern.chars().filter(|c| !c.is_whitespace()).collect();
-    anyhow::ensure!(
-        hex.len() % 2 == 0 && !hex.is_empty(),
-        "pattern must be whole bytes"
-    );
-    let bytes: Vec<Option<u8>> = (0..hex.len())
-        .step_by(2)
-        .map(|i| match &hex[i..i + 2] {
-            "??" => Ok(None),
-            h => u8::from_str_radix(h, 16).map(Some),
-        })
-        .collect::<Result<_, _>>()
-        .context("pattern hex")?;
-    let mut out = Vec::new();
-    let mut at = 0usize;
-    while at + bytes.len() <= code.len() {
-        let hit = bytes
-            .iter()
-            .enumerate()
-            .all(|(k, b)| b.is_none_or(|b| code[at + k] == b));
-        if hit {
-            out.push((at as u32, (at + bytes.len()) as u32));
-            at += bytes.len();
-        } else {
-            at += 1;
-        }
-    }
-    Ok(out)
-}
-
-/// pcs of instructions that start inside a match of `pattern`.
-pub fn pattern_selection(name: &str, code: &[u8], pattern: &str) -> Result<Selection> {
-    Ok(range_selection(
-        name,
-        code,
-        &pattern_matches(code, pattern)?,
-    ))
-}
-
 /// pcs of the first instruction after each match of `pattern`: the code a
 /// pattern with no provenance of its own sits in front of.
 pub fn pattern_next_selection(name: &str, code: &[u8], pattern: &str) -> Result<Selection> {
@@ -797,30 +741,6 @@ pub fn pattern_next_selection(name: &str, code: &[u8], pattern: &str) -> Result<
             .filter_map(|(_, end)| starts.range(end..).next().copied())
             .collect(),
     })
-}
-
-/// pcs of every instruction whose opcode is in `opcodes`.
-pub fn opcode_selection(name: &str, code: &[u8], opcodes: &[u8]) -> Selection {
-    Selection {
-        name: name.into(),
-        pcs: decode(code)
-            .into_iter()
-            .filter(|i| opcodes.contains(&i.opcode))
-            .map(|i| i.pc)
-            .collect(),
-    }
-}
-
-/// pcs of every instruction inside the given byte ranges.
-pub fn range_selection(name: &str, code: &[u8], ranges: &[(u32, u32)]) -> Selection {
-    Selection {
-        name: name.into(),
-        pcs: decode(code)
-            .into_iter()
-            .filter(|i| ranges.iter().any(|(s, e)| *s <= i.pc && i.pc < *e))
-            .map(|i| i.pc)
-            .collect(),
-    }
 }
 
 /// Render the headline numbers.
@@ -960,15 +880,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pattern_selection_takes_every_instruction_in_a_match() {
-        // PUSH1 0x40 MLOAD | PUSH1 0x40 MLOAD with a wildcard on the value.
+    fn pattern_next_selection_takes_the_instruction_after_each_match() {
         let code = [0x60, 0x40, 0x51, 0x00, 0x60, 0x41, 0x51];
-        let s = pattern_selection("p", &code, "60 ?? 51").unwrap();
-        assert_eq!(s.pcs.into_iter().collect::<Vec<_>>(), vec![0, 2, 4, 6]);
         let next = pattern_next_selection("n", &code, "60 40 51").unwrap();
         assert_eq!(next.pcs.into_iter().collect::<Vec<_>>(), vec![3]);
-        let m = opcode_selection("m", &code, &MEMORY_OPCODES);
-        assert_eq!(m.pcs.len(), 2);
     }
 
     #[test]

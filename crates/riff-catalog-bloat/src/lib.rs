@@ -4,6 +4,7 @@
 //! artifact measurements, and compatibility traces. Missing evidence stays
 //! absent. It is never silently converted to zero.
 
+mod artifact;
 mod byte_causes;
 mod census;
 mod census_store;
@@ -15,11 +16,14 @@ mod fe_stages;
 mod fe_trace;
 mod manifest;
 mod model;
+mod regions;
 mod report;
+mod selection;
 mod solc_functions;
 mod sonatina_functions;
 mod validate;
 
+pub use artifact::decode_artifact;
 pub use byte_causes::{
     BYTE_CAUSES_SCHEMA, ByteCauses, CauseDelta, CauseTally, apportion_excess, classify_bytes,
     compare_causes,
@@ -46,17 +50,20 @@ pub use fe::{FeImport, import_fe_trace};
 pub use fe_events::{FeEventsImport, import_fe_events};
 pub use fe_stages::{
     BodyExpansion, ChainClass, ConstructExpansion, FE_STAGES_SCHEMA, FeStagesReport,
-    MEMORY_OPCODES, STAGE_CHAIN_LEVEL, Selection, StageInputs, StageReport, memory_bucket,
-    opcode_selection, pattern_matches, pattern_next_selection, pattern_selection, range_selection,
-    render_fe_stages,
+    MEMORY_OPCODES, STAGE_CHAIN_LEVEL, StageInputs, StageReport, memory_bucket,
+    pattern_next_selection, render_fe_stages,
 };
 pub use fe_trace::{
     BodyInfo, FE_TRACE_REGIONS_ADAPTER, FeTraceBytesReport, Row, RunInfo, RunOccurrenceInfo,
-    body_name, decode_artifact, emitted_function_manifest, fe_trace_bytes, render_fe_trace_bytes,
+    body_name, emitted_function_manifest, fe_trace_bytes, render_fe_trace_bytes,
 };
 pub use manifest::{artifact_digest, capture_id, load_capture, save_capture, verify_artifacts};
 pub use model::*;
+pub use regions::{FunctionRegion, FunctionRegions, OUTSIDE_FUNCTIONS};
 pub use report::{CompareReport, Report, compare, render_compare_table, render_table, report};
+pub use selection::{
+    Selection, opcode_selection, pattern_matches, pattern_selection, range_selection,
+};
 pub use solc_functions::{SOLC_REGIONS_ADAPTER, SolcFunctions, solc_functions};
 pub use sonatina_functions::{
     FunctionClass, FunctionFacetCensus, function_graphs, sonatina_function_facets,

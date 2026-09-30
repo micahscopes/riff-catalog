@@ -438,17 +438,12 @@ fn main() -> Result<()> {
             let end = code_end.unwrap_or(bytes.len()).min(bytes.len());
             let blocks = evm_dataflow_blocks(&bytes[..end])?;
             fs::write(&out, serde_json::to_vec(&blocks)?)?;
-            let functions: Vec<(String, u32, u32)> = match &regions {
+            let functions = match &regions {
                 Some(path) => {
                     let manifest: RegionManifest = serde_json::from_slice(&fs::read(path)?)?;
-                    manifest
-                        .regions
-                        .iter()
-                        .filter(|r| r.kind == "function")
-                        .map(|r| (r.name.clone(), r.start as u32, r.end as u32))
-                        .collect()
+                    FunctionRegions::from_manifest(&manifest)
                 }
-                None => Vec::new(),
+                None => FunctionRegions::default(),
             };
             let no_source: Option<Vec<(u32, u32)>> = match (&attribution, &contract) {
                 (Some(path), Some(contract)) => Some(
@@ -504,11 +499,7 @@ fn main() -> Result<()> {
             );
             let graph = riff_catalog_ingest_trace::stages::StageGraph::read(reader)?;
             let manifest: RegionManifest = serde_json::from_slice(&fs::read(&regions)?)?;
-            let functions: Vec<&RegionSpec> = manifest
-                .regions
-                .iter()
-                .filter(|r| r.kind == "function")
-                .collect();
+            let functions = FunctionRegions::from_manifest(&manifest);
             let mut selections = vec![
                 range_selection("all", code, &[(0, code.len() as u32)]),
                 opcode_selection("memory_ops", code, &MEMORY_OPCODES),
@@ -603,9 +594,9 @@ fn main() -> Result<()> {
                     selections.push(range_selection(
                         &format!("function {}", f.name),
                         code,
-                        &[(f.start as u32, f.end as u32)],
+                        &[(f.start, f.end)],
                     ));
-                    let entry = f.start as u32;
+                    let entry = f.start;
                     let callers: std::collections::BTreeSet<u32> = insts
                         .iter()
                         .filter(|i| riff_catalog_evm::decode::push_value(code, i) == Some(entry))
@@ -660,12 +651,7 @@ fn main() -> Result<()> {
                 expansion_by_body: inputs.expansion_by_body(),
                 chain_classes,
                 top_constructs,
-                category_by_function: inputs.category_by_function(
-                    &functions
-                        .iter()
-                        .map(|f| (f.name.clone(), f.start as u32, f.end as u32))
-                        .collect::<Vec<_>>(),
-                ),
+                category_by_function: inputs.category_by_function(&functions),
             };
             if let Some(path) = json_out {
                 fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
@@ -814,12 +800,7 @@ fn main() -> Result<()> {
             let code = decode_artifact(&fs::read(&artifact)?)?;
             let end = code_end.unwrap_or(code.len()).min(code.len());
             let manifest: RegionManifest = serde_json::from_slice(&fs::read(&regions)?)?;
-            let functions: Vec<(String, u32, u32)> = manifest
-                .regions
-                .iter()
-                .filter(|r| r.kind == "function")
-                .map(|r| (r.name.clone(), r.start as u32, r.end as u32))
-                .collect();
+            let functions = FunctionRegions::from_manifest(&manifest);
             let rows = match (&attribution, &contract) {
                 (Some(p), Some(c)) => Some(riff_catalog_ingest_trace::bytes::read_runtime_details(
                     &fs::read_to_string(p)?,
@@ -896,7 +877,10 @@ fn main() -> Result<()> {
                             for (n, b) in &class.functions {
                                 if b.is_some() && largest.as_ref().map(|l| &l.1) != Some(n) {
                                     ranges.extend(
-                                        functions.iter().filter(|f| &f.0 == n).map(|f| (f.1, f.2)),
+                                        functions
+                                            .iter()
+                                            .filter(|f| &f.name == n)
+                                            .map(|f| (f.start, f.end)),
                                     );
                                 }
                             }
@@ -907,8 +891,8 @@ fn main() -> Result<()> {
                         let needles: Vec<&str> = arg.split('|').collect();
                         let ranges: Vec<(u32, u32)> = functions
                             .iter()
-                            .filter(|f| needles.iter().any(|n| f.0.contains(n)))
-                            .map(|f| (f.1, f.2))
+                            .filter(|f| needles.iter().any(|n| f.name.contains(n)))
+                            .map(|f| (f.start, f.end))
                             .collect();
                         range_selection(name, &code[..end], &ranges).pcs
                     }
