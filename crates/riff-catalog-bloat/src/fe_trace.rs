@@ -585,6 +585,15 @@ pub fn fe_trace_bytes(
             let top = body_bytes
                 .iter()
                 .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)));
+            let mut by_arm: BTreeMap<&str, u64> = BTreeMap::new();
+            for i in insts {
+                if let Some(a) = arm_of.get(&i.pc_start) {
+                    *by_arm.entry(a).or_default() += i.bytes();
+                }
+            }
+            let top_arm = by_arm
+                .into_iter()
+                .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0)));
             occurrences.push(RunOccurrenceInfo {
                 start: s,
                 end: e,
@@ -594,27 +603,8 @@ pub fn fe_trace_bytes(
                 top_body: top.map(|(b, _)| b.to_string()),
                 top_body_bytes: top.map_or(0, |(_, n)| *n),
                 no_primary_bytes,
-                arm: {
-                    let mut by_arm: BTreeMap<&str, u64> = BTreeMap::new();
-                    for i in insts {
-                        if let Some(a) = arm_of.get(&i.pc_start) {
-                            *by_arm.entry(a).or_default() += i.bytes();
-                        }
-                    }
-                    by_arm
-                        .into_iter()
-                        .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0)))
-                        .map(|(a, _)| a.to_string())
-                },
-                arm_bytes: {
-                    let mut by_arm: BTreeMap<&str, u64> = BTreeMap::new();
-                    for i in insts {
-                        if let Some(a) = arm_of.get(&i.pc_start) {
-                            *by_arm.entry(a).or_default() += i.bytes();
-                        }
-                    }
-                    by_arm.values().copied().max().unwrap_or(0)
-                },
+                arm: top_arm.map(|(a, _)| a.to_string()),
+                arm_bytes: top_arm.map_or(0, |(_, b)| b),
             });
         }
         let copies: Vec<&[LedgerInstruction]> =
