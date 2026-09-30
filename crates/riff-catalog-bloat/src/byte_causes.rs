@@ -13,7 +13,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use riff_catalog_evm::decode::{MEMORY_OPCODES, decode};
 use serde::{Deserialize, Serialize};
 
-use crate::fe_stages::Selection;
+pub use riff_catalog_ingest_trace::bytes::Tally as CauseTally;
+
+use crate::regions::FunctionRegions;
+use crate::selection::Selection;
 
 pub const BYTE_CAUSES_SCHEMA: &str = "riffcat-evm-byte-causes/1";
 
@@ -25,12 +28,6 @@ pub const ROLE_CONSTANT: &str = "role: other constant pushes";
 pub const ROLE_ARITHMETIC: &str = "role: arithmetic, comparison, bitwise";
 pub const ROLE_EFFECT: &str = "role: calls, environment, storage, logs, hashing, halts";
 pub const ROLE_DATA: &str = "data after the code (metadata, constants)";
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct CauseTally {
-    pub bytes: u64,
-    pub instructions: u64,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ByteCauses {
@@ -75,7 +72,7 @@ pub fn classify_bytes(
     causes: &[Selection],
     labels: &BTreeSet<u32>,
     memory_address: &BTreeSet<u32>,
-    functions: &[(String, u32, u32)],
+    functions: &FunctionRegions,
     details: &[Selection],
 ) -> ByteCauses {
     let mut order: Vec<String> = causes.iter().map(|c| c.name.clone()).collect();
@@ -91,15 +88,6 @@ pub fn classify_bytes(
     ] {
         order.push(r.to_string());
     }
-    let mut functions = functions.to_vec();
-    functions.sort_by_key(|f| f.1);
-    let region_of = |pc: u32| -> String {
-        let i = functions.partition_point(|f| f.1 <= pc);
-        match i.checked_sub(1).map(|i| &functions[i]) {
-            Some((name, start, end)) if *start <= pc && pc < *end => name.clone(),
-            _ => "(outside functions)".into(),
-        }
-    };
     let mut buckets: BTreeMap<String, CauseTally> = BTreeMap::new();
     let mut regions: BTreeMap<String, BTreeMap<String, u64>> = BTreeMap::new();
     let mut detail: BTreeMap<String, BTreeMap<String, u64>> = BTreeMap::new();
@@ -122,11 +110,12 @@ pub fn classify_bytes(
                 .entry(label.to_string())
                 .or_default() += u64::from(inst.len);
         }
-        let t = buckets.entry(bucket.clone()).or_default();
-        t.bytes += u64::from(inst.len);
-        t.instructions += 1;
+        buckets
+            .entry(bucket.clone())
+            .or_default()
+            .add_bytes(u64::from(inst.len));
         *regions
-            .entry(region_of(inst.pc))
+            .entry(functions.label_at(inst.pc))
             .or_default()
             .entry(bucket)
             .or_default() += u64::from(inst.len);
@@ -235,7 +224,11 @@ mod tests {
             &[cause],
             &labels,
             &mem,
-            &[("f".into(), 0, 9)],
+            &FunctionRegions::new(vec![crate::regions::FunctionRegion {
+                name: "f".into(),
+                start: 0,
+                end: 9,
+            }]),
             &[],
         );
         let b = |k: &str| c.buckets.get(k).map_or(0, |t| t.bytes);
@@ -247,7 +240,15 @@ mod tests {
         assert_eq!(b(ROLE_DATA), 2);
         let total: u64 = c.buckets.values().map(|t| t.bytes).sum();
         assert_eq!(total, code.len() as u64);
-        let empty = classify_bytes(&code[..1], 1, &[], &labels, &mem, &[], &[]);
+        let empty = classify_bytes(
+            &code[..1],
+            1,
+            &[],
+            &labels,
+            &mem,
+            &FunctionRegions::default(),
+            &[],
+        );
         let d = compare_causes(&c, &empty);
         assert_eq!(
             d.iter().map(|x| x.excess).sum::<i64>(),

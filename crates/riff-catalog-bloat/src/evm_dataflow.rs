@@ -15,6 +15,8 @@ use riff_catalog_evm::runs::{RunKey, RunKeyer, decode, with_labels};
 use riff_catalog_view::ViewPlan;
 use serde::{Deserialize, Serialize};
 
+use crate::regions::FunctionRegions;
+
 pub const EVM_DATAFLOW_BLOCKS_SCHEMA: &str = "riffcat-evm-dataflow-blocks/1";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -237,32 +239,26 @@ fn add_scheduling(s: &mut SchedulingBytes, opcode: u8, len: u64) {
 
 /// Summarize lifted blocks: scheduling bytes (overall, per function, and
 /// inside no-source instructions) and a whole-block census per facet.
-/// `functions` are (name, start, end) regions; `no_source` lists the pc
-/// ranges with no source link.
+/// `no_source` lists the pc ranges with no source link.
 pub fn dataflow_report(
     blocks: &DataflowBlocks,
     code: &[u8],
-    functions: &[(String, u32, u32)],
+    functions: &FunctionRegions,
     no_source: Option<&[(u32, u32)]>,
     min_block_bytes: &[u32],
     top: usize,
 ) -> DataflowReport {
     use std::collections::{BTreeMap, HashSet};
-    let mut functions = functions.to_vec();
-    functions.sort_by_key(|f| f.1);
-    let function_of = |pc: u32| -> String {
-        let i = functions.partition_point(|f| f.1 <= pc);
-        match i.checked_sub(1).map(|i| &functions[i]) {
-            Some((name, start, end)) if *start <= pc && pc < *end => name.clone(),
-            _ => "(outside functions)".to_string(),
-        }
-    };
     let no_source_pcs: Option<HashSet<u32>> =
         no_source.map(|ranges| ranges.iter().map(|r| r.0).collect());
     let mut scheduling = SchedulingBytes::default();
     let mut in_no_source = SchedulingBytes::default();
     let mut per_function: BTreeMap<String, FunctionScheduling> = BTreeMap::new();
-    let block_function: Vec<String> = blocks.blocks.iter().map(|b| function_of(b.start)).collect();
+    let block_function: Vec<String> = blocks
+        .blocks
+        .iter()
+        .map(|b| functions.label_at(b.start))
+        .collect();
     for (b, name) in blocks.blocks.iter().zip(&block_function) {
         let entry = per_function
             .entry(name.clone())
@@ -512,6 +508,7 @@ pub fn compare_blocks(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::regions::FunctionRegion;
 
     #[test]
     fn scheduling_twins_share_dataflow_but_not_flat_addresses() {
@@ -576,10 +573,13 @@ mod tests {
             0x5b, 0x60, 1, 0x60, 0, 0x55, 0x00,
         ];
         let blocks = evm_dataflow_blocks(&code).unwrap();
-        let functions = vec![
-            ("f".to_string(), 0, 7),
-            ("g".to_string(), 7, code.len() as u32),
-        ];
+        let region = |name: &str, start, end| FunctionRegion {
+            name: name.into(),
+            start,
+            end,
+        };
+        let functions =
+            FunctionRegions::new(vec![region("f", 0, 7), region("g", 7, code.len() as u32)]);
         let no_source = [(13u32, 14u32)];
         let report = dataflow_report(&blocks, &code, &functions, Some(&no_source), &[4], 5);
         assert_eq!(report.scheduling.total, 1);

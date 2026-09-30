@@ -776,9 +776,14 @@ pub struct Tally {
 }
 
 impl Tally {
-    fn add(&mut self, inst: &LedgerInstruction) {
-        self.bytes += inst.bytes();
+    /// Count one instruction of `bytes` bytes.
+    pub fn add_bytes(&mut self, bytes: u64) {
+        self.bytes += bytes;
         self.instructions += 1;
+    }
+
+    fn add(&mut self, inst: &LedgerInstruction) {
+        self.add_bytes(inst.bytes());
     }
 }
 

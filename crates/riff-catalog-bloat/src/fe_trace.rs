@@ -18,6 +18,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::regions::FunctionRegions;
 use anyhow::{Context, Result, bail, ensure};
 use riff_catalog_ingest_trace::bytes::{
     ByteLedger, LedgerError, LedgerInstruction, LedgerSelector, Tally, dominates,
@@ -31,22 +32,6 @@ use crate::{
 };
 
 pub const FE_TRACE_REGIONS_ADAPTER: &str = "fe-trace-emitted-functions/1";
-
-/// Decode an artifact file: raw bytes, or Fe's hex text form (optional `0x`,
-/// surrounding whitespace allowed).
-pub fn decode_artifact(raw: &[u8]) -> Result<Vec<u8>> {
-    let text = std::str::from_utf8(raw).ok().map(str::trim);
-    if let Some(text) = text {
-        let hex = text.strip_prefix("0x").unwrap_or(text);
-        if !hex.is_empty() && hex.len() % 2 == 0 && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return (0..hex.len())
-                .step_by(2)
-                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).context("hex artifact"))
-                .collect();
-        }
-    }
-    Ok(raw.to_vec())
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Row {
@@ -437,17 +422,12 @@ pub fn fe_trace_bytes(
     let by_emitted_function_linked =
         rows(tally_by(&ledger, |i| i.emitted_function.clone()), fn_label);
     // By position: the function region (from the manifest) holding each pc.
-    let code_regions: Vec<&RegionSpec> = manifest
-        .regions
-        .iter()
-        .filter(|r| r.kind == "function" || r.kind == "unattributed")
-        .collect();
+    let functions = FunctionRegions::from_manifest(&manifest);
     let region_name = |pc: u32| -> String {
-        let at = code_regions.partition_point(|r| r.start <= pc as usize);
-        match at.checked_sub(1).map(|i| code_regions[i]) {
-            Some(r) if (pc as usize) < r.end && r.kind == "function" => r.name.clone(),
-            _ => BETWEEN_FUNCTIONS.to_string(),
-        }
+        functions
+            .name_at(pc)
+            .unwrap_or(BETWEEN_FUNCTIONS)
+            .to_string()
     };
     let by_emitted_function = rows(tally_by(&ledger, |i| region_name(i.pc_start)), |k| {
         k.clone()
@@ -458,13 +438,12 @@ pub fn fe_trace_bytes(
             first_linked.entry(f).or_insert(inst.pc_start);
         }
     }
-    let entry_bytes_by_position: u64 = code_regions
+    let entry_bytes_by_position: u64 = functions
         .iter()
-        .filter(|r| r.kind == "function")
         .filter_map(|r| {
             first_linked
                 .get(r.name.as_str())
-                .map(|f| u64::from(*f) - r.start as u64)
+                .map(|f| u64::from(*f) - u64::from(r.start))
         })
         .sum();
     let no_primary =
@@ -554,7 +533,7 @@ pub fn fe_trace_bytes(
             .and_then(|(f, l)| source_line(f, l));
     }
 
-    let (arm_of, arms) = recv_arms(&ledger, &manifest);
+    let (arm_of, arms) = recv_arms(&ledger, &functions);
     let by_recv_arm = rows(
         tally_by(&ledger, |i| {
             arm_of
@@ -564,7 +543,7 @@ pub fn fe_trace_bytes(
         }),
         |k| k.clone(),
     );
-    let (arm_reach, by_recv_arm_with_helpers) = arm_reach(&ledger, &manifest, artifact, &arm_of)?;
+    let (arm_reach, by_recv_arm_with_helpers) = arm_reach(&ledger, &functions, artifact, &arm_of)?;
 
     // Runs joined back to the ledger.
     let starts: Vec<u32> = ledger.instructions.iter().map(|i| i.pc_start).collect();
@@ -765,22 +744,11 @@ fn arms_of(inst: &LedgerInstruction) -> BTreeSet<&str> {
 /// the dispatch itself) stay unassigned by construction.
 fn recv_arms(
     ledger: &ByteLedger,
-    manifest: &RegionManifest,
+    functions: &FunctionRegions,
 ) -> (BTreeMap<u32, String>, Vec<ArmInfo>) {
     // An arm's own function is its whole region, entry and unlinked bytes
     // included, like every other by-position table.
-    let functions: Vec<&RegionSpec> = manifest
-        .regions
-        .iter()
-        .filter(|r| r.kind == "function")
-        .collect();
-    let region_of = |pc: u32| -> Option<&str> {
-        let at = functions.partition_point(|r| r.start <= pc as usize);
-        at.checked_sub(1)
-            .map(|i| functions[i])
-            .filter(|r| (pc as usize) < r.end)
-            .map(|r| r.name.as_str())
-    };
+    let region_of = |pc: u32| functions.name_at(pc);
     let mut arm_of: BTreeMap<u32, String> = BTreeMap::new();
     let mut arms: BTreeMap<String, ArmInfo> = BTreeMap::new();
     let new_arm = |arm: &str| ArmInfo {
@@ -894,30 +862,19 @@ pub const UNREACHED: &str = "(functions not reached through inferred calls)";
 /// [`reachable_union`] over a stage whose "instructions" are bytes.
 fn arm_reach(
     ledger: &ByteLedger,
-    manifest: &RegionManifest,
+    functions: &FunctionRegions,
     artifact: &[u8],
     arm_of: &BTreeMap<u32, String>,
 ) -> Result<(Vec<ArmReach>, Vec<Row>)> {
-    let functions: Vec<&RegionSpec> = manifest
-        .regions
-        .iter()
-        .filter(|r| r.kind == "function")
-        .collect();
     let by_start: BTreeMap<u32, &str> = functions
         .iter()
-        .map(|r| (r.start as u32, r.name.as_str()))
+        .map(|r| (r.start, r.name.as_str()))
         .collect();
     let bytes_of: BTreeMap<&str, u64> = functions
         .iter()
-        .map(|r| (r.name.as_str(), (r.end - r.start) as u64))
+        .map(|r| (r.name.as_str(), u64::from(r.end - r.start)))
         .collect();
-    let owner_of = |pc: u32| -> Option<&str> {
-        let at = functions.partition_point(|r| r.start <= pc as usize);
-        at.checked_sub(1)
-            .map(|i| functions[i])
-            .filter(|r| (pc as usize) < r.end)
-            .map(|r| r.name.as_str())
-    };
+    let owner_of = |pc: u32| functions.name_at(pc);
     // Functions that are some arm's own (not inlined) body.
     let own_arm: BTreeMap<&str, &str> = ledger
         .instructions
@@ -962,7 +919,7 @@ fn arm_reach(
         .map(|r| Function {
             id: r.name.clone(),
             display_name: r.name.clone(),
-            instructions: (r.end - r.start) as u64,
+            instructions: u64::from(r.end - r.start),
         })
         .collect();
     for a in &arms {
@@ -1312,13 +1269,6 @@ mod tests {
         );
         assert_eq!(body_name("something$else"), "something$else");
         assert_eq!(body_name("func$fn"), "func$fn");
-    }
-
-    #[test]
-    fn artifacts_decode_from_hex_or_raw() {
-        assert_eq!(decode_artifact(b"0x6080\n").unwrap(), vec![0x60, 0x80]);
-        assert_eq!(decode_artifact(b"6080").unwrap(), vec![0x60, 0x80]);
-        assert_eq!(decode_artifact(&[0x60, 0x80]).unwrap(), vec![0x60, 0x80]);
     }
 
     fn inst(pc_start: u32, pc_end: u32, f: Option<&str>) -> LedgerInstruction {
