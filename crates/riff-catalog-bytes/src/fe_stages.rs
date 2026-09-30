@@ -72,12 +72,14 @@ pub struct StageReport {
     pub memory_buckets: BTreeMap<String, Tally>,
 }
 
-/// Where a memory operation came from: a mechanism and a library,
-/// `mechanism | library`. The mechanism is the first rule that holds:
+/// Where a memory operation came from: a mechanism, and with `libraries`
+/// given also a library, `mechanism | library`. The mechanism is the first
+/// rule that holds:
 ///
-/// 1. inside a selection named `free_pointer_clamp`: the allocation clamp;
-/// 2. inside a selection named `backend_spill`: a spill store or reload the
-///    EVM backend's stack scheduler inserted (tags from Sonatina's memory plan);
+/// 1. inside the free-pointer clamp (`--clamp-pattern` matches): the
+///    allocation clamp;
+/// 2. in the spill pc set (`--spill-pcs`): a spill store or reload the EVM
+///    backend's stack scheduler inserted (tags from Sonatina's memory plan);
 /// 3. provenance ends after Sonatina post-opt: other backend code with no
 ///    Sonatina IR origin;
 /// 4. lowers from a post-opt `evm_malloc`: allocation;
@@ -90,10 +92,10 @@ pub struct StageReport {
 ///    transport at internal calls;
 /// 9. anything else, named by its post-opt operations.
 ///
-/// The library is ABI when a MIR instance or the primary source body is in
-/// Fe's ABI code (`$abi$`, `calldata`, `dyn_array`), `core ptr` for memory
-/// buffers, `port` for the port's own code (`Local$`), else another library
-/// or unknown.
+/// The library is the label of the first of `libraries` with a name that
+/// occurs in a MIR instance or the primary source body of the operation
+/// (`origins`), else `other`, or `unknown` when there are no origins. The
+/// table is the caller's: this module knows no library names.
 pub fn memory_bucket(
     in_clamp: bool,
     in_spill: bool,
@@ -101,6 +103,7 @@ pub fn memory_bucket(
     postopt_ops: &BTreeSet<String>,
     mir_ops: &BTreeSet<String>,
     origins: &[&str],
+    libraries: &[(String, Vec<String>)],
 ) -> String {
     let has = |p: &str| postopt_ops.iter().any(|o| o.starts_with(p));
     let mechanism = if in_clamp {
@@ -128,18 +131,22 @@ pub fn memory_bucket(
             postopt_ops.iter().cloned().collect::<Vec<_>>().join("+")
         )
     };
-    let is_abi = |b: &str| b.contains("$abi$") || b.contains("calldata") || b.contains("dyn_array");
-    let library = if origins.iter().any(|b| is_abi(b)) {
-        "ABI"
-    } else if origins.iter().any(|b| b.contains("$ptr$")) {
-        "core ptr"
-    } else if origins.iter().any(|b| b.contains("Local$")) {
-        "port"
-    } else if origins.is_empty() {
-        "unknown"
-    } else {
-        "other library"
-    };
+    if libraries.is_empty() {
+        return mechanism;
+    }
+    let library = libraries
+        .iter()
+        .find(|(_, needles)| {
+            origins
+                .iter()
+                .any(|o| needles.iter().any(|n| o.contains(n.as_str())))
+        })
+        .map(|(label, _)| label.as_str())
+        .unwrap_or(if origins.is_empty() {
+            "unknown"
+        } else {
+            "other"
+        });
     format!("{mechanism} | {library}")
 }
 
@@ -158,6 +165,14 @@ pub struct StageRequest<'a> {
     /// Trace every function whose name starts with one of these, and its
     /// call sites.
     pub function_prefixes: &'a [String],
+    /// A byte pattern whose matches are the free-pointer clamp, for the
+    /// memory mechanism buckets; traced as a selection too.
+    pub clamp_pattern: Option<&'a str>,
+    /// Spill stores and reloads, for the memory mechanism buckets; traced as
+    /// a selection too.
+    pub spill_pcs: Option<&'a Selection>,
+    /// Library labels and the names that mark them, for the memory buckets.
+    pub libraries: &'a [(String, Vec<String>)],
     pub top: usize,
 }
 
@@ -184,8 +199,8 @@ fn mir_instance(key: &str) -> Option<String> {
 }
 
 impl StageInputs<'_> {
-    /// The selections of a request, with the pcs of the selections named
-    /// `free_pointer_clamp` and `backend_spill`.
+    /// The selections of a request, with the pcs of the free-pointer clamp
+    /// and of the spill set.
     pub fn selections(
         &self,
         request: &StageRequest,
@@ -205,19 +220,22 @@ impl StageInputs<'_> {
             },
         ];
         let mut clamp = BTreeSet::new();
-        for (name, hex) in request.patterns {
-            let sel = pattern_selection(name, code, hex)?;
-            if name == "free_pointer_clamp" {
-                clamp = sel.pcs.clone();
-            }
+        if let Some(hex) = request.clamp_pattern {
+            let sel = pattern_selection("free-pointer clamp", code, hex)?;
+            clamp = sel.pcs.clone();
             selections.push(sel);
         }
         let mut spill = BTreeSet::new();
+        if let Some(sel) = request.spill_pcs {
+            crate::selection::check_instruction_starts(sel, code)?;
+            spill = sel.pcs.clone();
+            selections.push(sel.clone());
+        }
+        for (name, hex) in request.patterns {
+            selections.push(pattern_selection(name, code, hex)?);
+        }
         for sel in request.pc_sets {
             crate::selection::check_instruction_starts(sel, code)?;
-            if sel.name == "backend_spill" {
-                spill = sel.pcs.clone();
-            }
             selections.push(sel.clone());
         }
         let mut runs: Vec<&CensusRunClass> = request.census_runs.iter().collect();
@@ -263,7 +281,7 @@ impl StageInputs<'_> {
             stage_graph_nodes: self.graph.len(),
             selections: selections
                 .iter()
-                .map(|s| self.report(s, &clamp, &spill, request.top))
+                .map(|s| self.report(s, &clamp, &spill, request.libraries, request.top))
                 .collect(),
             expansion_by_body: self.expansion_by_body(),
             chain_class_count,
@@ -328,6 +346,7 @@ impl StageInputs<'_> {
         selection: &Selection,
         clamp: &BTreeSet<u32>,
         spill: &BTreeSet<u32>,
+        libraries: &[(String, Vec<String>)],
         n: usize,
     ) -> StageReport {
         let g = self.graph;
@@ -415,6 +434,7 @@ impl StageInputs<'_> {
                     &f.postopt_ops,
                     &f.mir_ops,
                     &origins,
+                    libraries,
                 );
                 report
                     .memory_buckets
@@ -476,6 +496,7 @@ impl StageInputs<'_> {
                 f.ends_at,
                 &f.postopt_ops,
                 &f.mir_ops,
+                &[],
                 &[],
             );
             let mechanism = bucket.split(" | ").next().unwrap_or(&bucket).to_string();
@@ -1000,39 +1021,67 @@ mod tests {
     fn memory_buckets_follow_the_rules_in_order() {
         let ops = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>();
         let none = ops(&[]);
+        let bucket = |clamp, spill, ends, post: &BTreeSet<String>, mir: &BTreeSet<String>| {
+            memory_bucket(clamp, spill, ends, post, mir, &[], &[])
+        };
         assert_eq!(
-            memory_bucket(true, false, Stage::Hir, &ops(&["obj.store"]), &none, &[]),
-            "allocation: free-pointer clamp | unknown"
+            bucket(true, false, Stage::Hir, &ops(&["obj.store"]), &none),
+            "allocation: free-pointer clamp"
         );
-        assert!(memory_bucket(false, true, Stage::Hir, &none, &none, &[]).contains("spill"));
+        assert!(bucket(false, true, Stage::Hir, &none, &none).contains("spill"));
+        assert!(bucket(false, false, Stage::Vcode, &none, &none).starts_with("backend"));
+        assert_eq!(
+            bucket(
+                false,
+                false,
+                Stage::Hir,
+                &ops(&["obj.load"]),
+                &ops(&["_ = copy_into"])
+            ),
+            "aggregate copy (MIR copy_into, mcopy, memzero)"
+        );
         assert!(
-            memory_bucket(false, false, Stage::Vcode, &none, &none, &[]).starts_with("backend")
+            bucket(false, false, Stage::Hir, &ops(&["call"]), &none).starts_with("call and return")
         );
+    }
+
+    #[test]
+    fn libraries_come_from_the_callers_table_only() {
+        let post: BTreeSet<String> = ["obj.load".to_string()].into();
+        let none = BTreeSet::new();
+        let libraries = vec![
+            ("ABI".to_string(), vec!["$abi$".to_string()]),
+            ("mine".to_string(), vec!["$app$".to_string()]),
+        ];
+        let bucket = |origins: &[&str]| {
+            memory_bucket(false, false, Stage::Hir, &post, &none, origins, &libraries)
+        };
         assert_eq!(
-            memory_bucket(
-                false,
-                false,
-                Stage::Hir,
-                &ops(&["obj.load"]),
-                &ops(&["_ = copy_into"]),
-                &["func$Local$seaport$lib$x"]
-            ),
-            "aggregate copy (MIR copy_into, mcopy, memzero) | port"
-        );
-        assert_eq!(
-            memory_bucket(
-                false,
-                false,
-                Stage::Hir,
-                &ops(&["obj.load"]),
-                &none,
-                &["func$Core$core$lib$abi$fn$x", "func$Local$y"]
-            ),
+            bucket(&["func$Core$core$lib$abi$fn$x"]),
             "stack object access (obj.*) | ABI"
         );
-        assert!(
-            memory_bucket(false, false, Stage::Hir, &ops(&["call"]), &none, &[])
-                .starts_with("call and return")
+        assert_eq!(
+            bucket(&["func$L$app$lib$fn$y"]),
+            "stack object access (obj.*) | mine"
+        );
+        assert_eq!(
+            bucket(&["func$L$other$fn$z"]),
+            "stack object access (obj.*) | other"
+        );
+        assert_eq!(bucket(&[]), "stack object access (obj.*) | unknown");
+        // Without a table there is no library part, and a pattern named
+        // like the clamp is an ordinary pattern.
+        assert_eq!(
+            memory_bucket(
+                false,
+                false,
+                Stage::Hir,
+                &post,
+                &none,
+                &["func$Local$x"],
+                &[]
+            ),
+            "stack object access (obj.*)"
         );
     }
 }

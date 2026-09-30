@@ -84,9 +84,25 @@ enum Command {
         pattern: Vec<String>,
         /// A named pc set, `name=path`: a JSON array of pcs, or an object whose
         /// `entries` are objects with a `pc` (for example Sonatina memory-plan
-        /// tags). The name `backend_spill` feeds the memory-origin buckets.
+        /// tags).
         #[arg(long)]
         pc_set: Vec<String>,
+        /// A byte pattern (hex, `??` for any byte) whose matches are the
+        /// free-pointer clamp: memory operations in it are put in the
+        /// allocation-clamp mechanism bucket.
+        #[arg(long)]
+        clamp_pattern: Option<String>,
+        /// A pc set (same format as --pc-set) of spill stores and reloads the
+        /// backend's stack scheduler inserted: memory operations in it are put
+        /// in the spill mechanism bucket.
+        #[arg(long)]
+        spill_pcs: Option<PathBuf>,
+        /// A library for the memory buckets, `LABEL=name|name`: an operation
+        /// whose primary source body or MIR instance contains one of the names
+        /// is in that library. The first matching label wins; without any,
+        /// buckets name no library.
+        #[arg(long)]
+        library: Vec<String>,
         /// Write every instruction's mechanism as pc sets: a directory with
         /// one JSON array of pcs per mechanism, plus an index.
         #[arg(long)]
@@ -313,6 +329,9 @@ fn main() -> Result<()> {
             function_prefix,
             pattern,
             pc_set,
+            clamp_pattern,
+            spill_pcs,
+            library,
             mechanisms_out,
             json_out,
             top,
@@ -362,8 +381,31 @@ fn main() -> Result<()> {
                 )?,
                 None => Vec::new(),
             };
+            let spill = match &spill_pcs {
+                Some(path) => {
+                    let set = read_pc_set("backend spill", &read_file(path)?)
+                        .with_context(|| format!("pc set {}", path.display()))?;
+                    check_instruction_starts(&set, code)
+                        .with_context(|| format!("pc set {}", path.display()))?;
+                    Some(set)
+                }
+                None => None,
+            };
+            let libraries = library
+                .iter()
+                .map(|l| {
+                    let (label, names) = named(l, "--library")?;
+                    Ok((
+                        label.to_string(),
+                        needles(names)?.into_iter().map(String::from).collect(),
+                    ))
+                })
+                .collect::<Result<Vec<(String, Vec<String>)>>>()?;
             let request = StageRequest {
                 contract: &contract,
+                clamp_pattern: clamp_pattern.as_deref(),
+                spill_pcs: spill.as_ref(),
+                libraries: &libraries,
                 functions: &functions,
                 patterns: &patterns,
                 pc_sets: &pc_sets,
