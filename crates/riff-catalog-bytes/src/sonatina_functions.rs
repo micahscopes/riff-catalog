@@ -119,6 +119,48 @@ pub fn sonatina_function_facets(
 mod tests {
     use super::*;
 
+    /// A global's only identity in the lowering is a Names field, and names
+    /// never enter an address: functions reading different globals must
+    /// still differ at the facets that keep constants.
+    #[test]
+    fn functions_reading_different_globals_differ_at_the_exact_facet() {
+        let ir = r#"
+target = "evm-ethereum-london"
+
+global private i256 $G = 1;
+global private i256 $H = 2;
+
+func public %a() -> i256 {
+    block0:
+        v1.i256 = ptr_to_int $G i256;
+        return v1;
+}
+
+func public %b() -> i256 {
+    block0:
+        v1.i256 = ptr_to_int $H i256;
+        return v1;
+}
+
+func public %c() -> i256 {
+    block0:
+        v1.i256 = ptr_to_int $G i256;
+        return v1;
+}
+"#;
+        let census = sonatina_function_facets(ir, &BTreeMap::new()).unwrap();
+        let classes = |i: usize| -> Vec<Vec<String>> {
+            census[i]
+                .classes
+                .iter()
+                .map(|c| c.functions.iter().map(|f| f.0.clone()).collect())
+                .collect()
+        };
+        assert_eq!(classes(0), vec![vec!["a".to_string(), "c".to_string()]]);
+        assert_eq!(classes(2).len(), 1);
+        assert_eq!(classes(2)[0].len(), 3);
+    }
+
     #[test]
     fn types_blind_groups_functions_that_differ_only_in_types() {
         let ir = r#"

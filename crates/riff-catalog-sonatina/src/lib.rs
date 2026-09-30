@@ -59,7 +59,9 @@ fn name_of(graph: &Graph, key: &NodeKey) -> String {
 /// name: the function node, everything under it (blocks, values,
 /// instructions) and the data and control edges among them. Calls leave the
 /// function, so call edges are dropped: two callers count as equal when they
-/// differ only in which instance they call.
+/// differ only in which instance they call. A global a function reads is
+/// also kept as the Constants field `global`, so functions reading
+/// different globals of the module differ wherever constants count.
 pub fn project_functions(lowered: &LoweredModule) -> Result<BTreeMap<String, Graph>, LowerError> {
     let g = &lowered.graph;
     let mut children: BTreeMap<&NodeKey, Vec<&riff_catalog_core::ChildEdge>> = BTreeMap::new();
@@ -83,6 +85,22 @@ pub fn project_functions(lowered: &LoweredModule) -> Result<BTreeMap<String, Gra
         let mut sub = Graph::new(GraphKey::new(key.owner().clone(), "function")?);
         for m in &members {
             sub.nodes.insert((*m).clone(), g.nodes[*m].clone());
+        }
+        // A global's only identity in the module graph is its Names field.
+        // Inside one module the global it names is a constant of the
+        // function (its address), so the projection also keeps it as one.
+        for m in &members {
+            if g.nodes[*m].kind.as_str() != "sonatina.global" {
+                continue;
+            }
+            let global = g.nodes[*m]
+                .fields
+                .iter()
+                .find(|f| f.dimension == Dimension::Names && f.name.as_str() == "global")
+                .map(|f| f.value.clone());
+            if let Some(riff_catalog_core::Value::Text(global)) = global {
+                sub.add_field(m, Dimension::Constants, "global", global)?;
+            }
         }
         sub.children = g
             .children
