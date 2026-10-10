@@ -1,244 +1,104 @@
 # riff-catalog
 
-Content-addressed views of structured data, with adapters for compiler artifacts.
-Choose which information matters, find shared structure, and inspect what changes
-across programs or compiler stages.
+Finds graphs that are the same once you ignore the parts you choose to ignore.
 
-A **facet** specifies which information a comparison retains, such as names,
-constants or types. Ignoring names can reveal renamed code; ignoring constants
-can group computations that have different behavior. Matches are relative to
-that choice, not automatic proofs of semantic equivalence.
+Two functions that differ only in their variable names get the same address when names are ignored. That is
+enough to find renamed or repeated code, or to compare what two compilers make of one program.
 
-**Experimental.** APIs and formats are still evolving. The general graph index
-uses WL/SCC structural fingerprints; these are not a complete graph-isomorphism
-test. Selected Solidity syntax uses complete normalized-record comparison.
-Bounded exact comparison of selected cyclic graphs is a separate interface,
-with explicit unsupported and budget-exceeded outcomes.
+This repository is the engine and a command-line tool. It knows no programming language.
 
-## Start here
+**Experimental.** Formats and addresses change without notice.
 
-- [Runnable examples](examples/README.md): start with offline Yul, then try
-  source commonality over verified contracts.
-- [Code as query](docs/code-as-query.md): capture Solidity source, select a
-  region, and retrieve whole or partial structural matches.
-- [Exact cyclic comparisons](crates/riff-catalog-region/EXACT-CONTRACT.md):
-  the graph contract, bounds, correspondence checks and limitations.
-- [Compiler-growth analysis](crates/riff-catalog-bloat/README.md): captures,
-  measurements, attribution and report boundaries.
-- [Compiler sequence views](docs/compiler-sequence-views.md): a design proposal
-  for relating observations across compiler stages and configurations.
+## Try it
 
-The Rust libraries and `riffcat` CLI provide the analysis. Some examples need
-solc or an experimental compiler build; saved captures and offline Yul examples
-do not. Networked Sourcify examples are explicitly labeled below.
+Needs Rust and Python 3.
 
-## Crates
+```sh
+cargo install --locked --path crates/riff-catalog-tool
+examples/outside-producer/run.sh
+```
 
-| crate | what |
+The script writes six small arithmetic expressions as graphs, then asks three questions: which are identical,
+which are identical apart from variable names, and which have the same structure.
+
+## How it works
+
+1. You describe your data as graphs: nodes with a kind and some fields, children, and edges.
+2. Every field goes into one of five bins: structure, names, constants, types, trace events.
+3. Each graph is hashed once per bin.
+4. A question picks bins, for example "everything except names". The answer is put together from the stored
+   hashes. Nothing is hashed again.
+
+## Words
+
+| Word | Meaning |
 |---|---|
-| `riff-catalog-schema` | shared graph and identity data types |
-| `riff-catalog-core` | graph interchange form, canonical byte encoding, per-dimension blake3 digests, WL-refined SCC hashing, facets, indexes |
-| `riff-catalog-claims` | witnessed equivalence claims (union-find closure), property attestations (gating), claim-gated lookup |
-| `riff-catalog-solc` | `solc --standard-json` driver: AST/ir/irAst/yulCFGJson outputs, disk cache, version resolver trait |
-| `riff-catalog-yul` | one Yul AST, two front doors (solc JSON + own zero-dep text parser); `yul-ast/1` and `yul-ssa-cfg/1` lowerings |
-| `riff-catalog-solidity` | Solidity AST lowering, binding-aware selected syntax, and explanatory partial-overlap retrieval |
-| `riff-catalog-region` | explicit region boundaries, ordered computations, and bounded exact cyclic graph comparison |
-| `riff-catalog-evm` | `evm/1`: opcodes → structure, PUSH immediates → constants |
-| `riff-catalog-sonatina` | `sonatina-ir/1`: typed control/data/call graphs plus anonymous structural repetition census |
-| `riff-catalog-fe-rmir` | stable Fe runtime-MIR topology with aggregate slices plus thin materialization and call frontiers |
-| `riff-catalog-bloat` | versioned compiler-growth captures, deterministic reports, comparison, and bounded Fe stderr import |
-| `riff-catalog-sourcify` | fetch + cache verified contracts, reconstruct standard-json, recompile locally |
-| `riff-catalog-view` | parse, identify, and materialize declarative graph views |
-| `riff-catalog-cli` | the `riffcat` binary |
+| recipe | a named, versioned way to turn something into graphs, such as `calc/1` |
+| declaration | a JSON file listing what a recipe's graphs may contain; every graph is checked against it |
+| unit | one graph, with its recipe, what kind of thing it is, and a display name |
+| world | where a batch of units came from: a compiler and commit, a model, a run |
+| facet | the bins a question keeps; `names-blind` keeps all but names |
+| bound or free keys | whether node identities must match too (bound), or only the shape they form (free) |
 
-## Quickstart (runnable examples, real measured output)
+## What an equal address tells you
 
-Three scripts under [`examples/`](examples/) run against real
-Sourcify-verified mainnet contracts; [`examples/README.md`](examples/README.md)
-walks through their actual output.
+- The two graphs are the same after dropping everything outside the facet.
+- It is about the graphs. It says nothing about behavior unless the recipe was built to make it so.
+- A few very regular cyclic graphs can get equal addresses although they differ. `riff-catalog-exact` compares
+  small graphs exactly when that matters.
+- Hash collisions are assumed not to happen (BLAKE3).
 
-```console
-$ cargo build --release -p riff-catalog-cli
-$ export PATH="$PWD/target/release:$PATH"
+## Use it with your own data
 
-$ examples/01-offline-yul.sh
-# First success with no network and no solc: riffcat's own Yul parser
-# ingests examples/twins.yul; 3 yul-fn graphs -> 2 classes at the
-# names-blind facet (sum_to and total_upto are one shape under two
-# names), -> 3 classes once names count.
+Write units as JSON, one per line, and a declaration as a JSON file. Any language will do;
+[`examples/outside-producer/producer.py`](examples/outside-producer/producer.py) is about 100 lines.
 
-$ examples/02-same-function-across-contracts.sh
-# Two unrelated Sourcify-verified mainnet deployments (MerkleDistributor
-# and Airdrop, both exact_match, both solc 0.8.28), fetched and
-# recompiled with the pinned compiler. Needs network. At sol-fn
-# names-blind: 12 shared classes, their OpenZeppelin vocabulary matched
-# function by function. At yul-fn: 49 shared classes, Jaccard 0.318,
-# including one class holding fun_rescue and fun_transferOwnership from
-# one codebase and fun_setBeneficiary and fun_setReleaseCaller from the
-# other: the same shape under four names.
-
-$ examples/03-shared-shape-census.sh
-# Five deployments, one census. 321 sol-fn graphs -> 215 classes at the
-# strict facet (33.0% dedup), -> 180 names-blind (43.9%); the standout
-# names-blind class merges Ownable.onlyOwner with Pausable.whenNotPaused
-# and Pausable.whenPaused. Whole vendored contracts (Context, IERC20)
-# collapse to one class each across all five. `riffcat root` closes with
-# one order-independent commitment over the corpus.
+```sh
+riffcat-core check --declaration calc-1.json left.jsonl right.jsonl    # do the files fit the declaration?
+riffcat-core add --declaration calc-1.json --world left left.jsonl     # store them
+riffcat-core add --world right right.jsonl
+riffcat-core bucket --unit calc-expr --facet names-blind               # group what is the same
 ```
 
-Local `.sol` files ingest too (`riffcat ingest Contract.sol`, needs solc
-on PATH or `--solc`), as do direct `.sona` Sonatina IR snapshots, Fe `.rmir`
-observations, and Yul at the SSA level via solc's `yulCFGJson` (the ingestion
-path for fe-emitted Yul). Set `FE_RUNTIME_IR_SNAPSHOT_DIR` while compiling Fe
-to emit content-addressed `.rmir` files. One ingest emits the full
-`rmir-package` graph, the transitive `rmir-aggregate` data slice, the thin
-`rmir-materialization` frontier, and the `rmir-call` frontier. The thin views
-separate representation pressure and helper fan-out from unrelated producer
-work, making pre-inline growth attributable without changing the five digest
-dimensions. Add `--units rmir-function` to emit one complete-body unit per Fe
-function. Direct callees remain lightweight but carry their complete anonymous
-body digests in every facet dimension, so buckets can find post-erasure
-duplicate candidates without confusing wrappers that call different helpers.
-Use at least `structure+constants` when constants affect semantics, and retain
-independent behavior gates before changing compiler ownership. Witnessed
-claims and attestations live under `riffcat claim --help` and `riffcat attest
---help`; `riffcat conformance` runs the dual-path and
-SSA-round-trip drift detectors over local `.sol` files.
+| Command | What it does |
+|---|---|
+| `check` | checks unit files against their declaration; stores nothing |
+| `add` | stores unit files under a world; adding a file again replaces what it stored before |
+| `bucket` | groups units that have the same address at a facet |
+| `overlap` | lists the addresses two selections share |
+| `diff` | compares two selections bin by bin |
+| `root` | one hash for everything stored, whatever the order it was added in |
+| `recipes`, `declaration` | lists recipes; prints a declaration, or drafts one from example units |
+| `view` | applies a saved graph transform and stores the results |
+| `claim`, `attest` | records that two addresses are equivalent, or that one has a property, with the evidence |
 
-## Solc SSA observations
+Everything is stored as JSON-lines files in one directory (`--corpus`, default `./corpus`).
 
-The optional solc `yulssatrace` tool emits `solc-ssa-observation/1` JSONL.
-Riff-cat lowers every transform and stack-layout snapshot, assigns normal
-identity and shape addresses, and stores the accompanying cost metrics:
+## Use it from Rust
 
-```console
-$ yulssatrace input.yul > trace.jsonl
-$ riffcat ingest-ssa-trace trace.jsonl
-$ riffcat observations --function many
+Depend on `riff-catalog-tool`, declare your recipes to a `Corpus`, store units with `admit_units`, and add the
+commands above to your own tool with `#[command(flatten)]`.
+
+| Crate | Contents |
+|---|---|
+| `riff-catalog-schema` | graphs, units, declarations and their JSON form |
+| `riff-catalog-core` | hashing, facets, addresses |
+| `riff-catalog-exact` | exact comparison of small graphs |
+| `riff-catalog-claims` | equivalence claims and property attestations |
+| `riff-catalog-view` | saved graph transforms |
+| `riff-catalog-tool` | storage, the commands, the `riffcat-core` program |
+
+## Checked twice
+
+The hashing is written a second time in Lean, and both versions must produce the same bytes on a set of test
+graphs. See [`lean/`](lean/README.md).
+
+```sh
+cargo test --workspace
+(cd lean && lake exe check)
 ```
 
-The query exposes live-in, live-out, operation liveness, spills, maximum
-block-entry stack depth, shuffle count, shuffle gas, duration, and the
-snapshot's shape address.
-Use `--owner` during ingestion when a caller already has a stable identity
-namespace.
+## Where the language support is
 
-### SSA context Lego pilot
-
-The paired real-solc pilot asks whether one ordered computation keeps its
-address when moved from straight-line Yul into a loop, a guarded loop, and a
-loop-carried SSA context. It also checks optimized top-level code and a changed
-constant as a negative control:
-
-```console
-$ RIFFCAT_SOLC=/path/to/solc cargo run -p riff-catalog-yul --example ssa_lego_pilot
-```
-
-It reports instruction-local, instruction-subtree, whole-body, SCC, and
-whole-function comparisons. The whole-body projection keeps ordered payload
-children and internal data edges while treating edges across the region
-boundary as ports.
-
-## Solc stack decisions
-
-The SSA stack backend can emit one stream containing target construction,
-shuffle results, join candidates, spill closure, and layout iterations. Riff-cat
-lowers each event while preserving stack-slot equality without retaining SSA
-value numbers:
-
-```console
-$ yulssatrace --stack-event-output stack.jsonl input.yul > stages.jsonl
-$ riffcat ingest-stack-trace stack.jsonl
-$ riffcat observations --stage-kind stack-event
-```
-
-`--compiler-event-output` adds SSA snapshots, emitted shuffle playback, and the
-final bytecode size and hash to the same stream. `ingest-compiler-trace` is an
-alias for the same ingester. A `solc-stack-in-policy/1` file can then replay a
-candidate selected from a content-addressed join context through code generation.
-
-Problem and solution are separate graph subtrees. Declarative views can
-therefore assign one address to a search problem even when different heuristics
-produce different results:
-
-```console
-$ riffcat view examples/views/solc-shuffle-problem.riffview <selector> --unit solc-shuffle
-$ riffcat view examples/views/solc-join-context.riffview <selector> --unit solc-stack-in-candidate
-$ riffcat view examples/views/solc-stack-in-tradeoff.riffview <selector> --unit solc-stack-in-tradeoff
-$ riffcat stack-policy <tradeoff-address> --selector policy-default > policy.json
-```
-
-The tradeoff view normalizes each join candidate against solc's default choice.
-It can therefore group the same local compromise, such as paying two gas now to
-remove one stack slot, even when the surrounding layouts and absolute costs
-differ.
-`stack-policy` closes the loop by resolving every matching profile back to its
-object, graph, block, iteration, and candidate coordinates in a replayable
-`solc-stack-in-policy/1` document.
-
-The corresponding solution view is
-[`examples/views/solc-shuffle-solution.riffview`](examples/views/solc-shuffle-solution.riffview).
-
-## Declarative graph views
-
-The `view` command materializes a content-addressed graph projection from a
-`.riffview` file. The first view retains only the reachable computation in a
-standalone Yul SSA function:
-
-```console
-$ riffcat view examples/views/yul-reachable.riffview <selector> --unit yulssa-fn
-```
-
-The view plan digest is part of the output hash policy. Changing the view's
-roots, traversal, or retained dimensions therefore creates a distinct facet.
-See [`examples/views/yul-reachable.riffview`](examples/views/yul-reachable.riffview)
-for the `riffcat-view/1` syntax.
-
-[`examples/views/yul-reachable-cfg.riffview`](examples/views/yul-reachable-cfg.riffview)
-defines a second facet without Rust changes. It retains only reachable blocks
-and their control-flow structure.
-
-A view can also forget one field class inside a retained dimension:
-`erase constants.memory_offset` drops the Constants fields named
-`memory_offset` and keeps every other constant. The dimension must be one the
-view retains. Erasures are part of the plan digest; a plan without them keeps
-the digest it had before `erase` existed.
-[`examples/views/evm-dataflow-memory-offsets-blind.riffview`](examples/views/evm-dataflow-memory-offsets-blind.riffview)
-is the EVM dataflow view that groups the same code for different struct
-layouts.
-
-The `language` directive reserves an explicit syntax version. Other ways of
-defining facets can be evaluated later without changing the graph contract.
-## Sonatina analysis facets
-
-For Sonatina snapshots, use `structure` to measure anonymous topology and
-repeated shapes, `structure+types` to include representation and ABI changes,
-`structure+constants` to include generated literal content, and
-`structure+types+constants` for the usual compiler-growth inquiry. These are
-query-time projections of the same stored digests. They are analysis facets,
-not correctness claims: a smaller repeated-shape count does not by itself
-prove that a lowering preserves behavior. Call, data, and control edges stay
-in the graph's structural topology, while names and origins remain available
-for identity and provenance-sensitive views.
-
-Compiler investigations often need more than one linear before and after pair.
-[`docs/compiler-sequence-views.md`](docs/compiler-sequence-views.md) describes
-the planned ragged product of lowering-stage and compiler-world DAGs, including
-analysis projections, causal edges, build coordinates, and measurements that
-remain deliberately separate from the five semantic digest dimensions.
-
-## Identity and compatibility
-
-Graph lowering, edge direction, region boundaries and retained labels determine
-what a hash means. Matching under one projection does not imply matching under
-another. Claims and attestations carry additional evidence separately from
-structural identity. Golden tests freeze the encoding; changing a frozen value
-requires a `SCHEMA_VERSION` bump.
-
-Known v1 scope limits: facet
-space is the Boolean lattice over 5 dimensions × view mode × level; 1-WL
-incompleteness accepted and documented; per-function unit graphs treat
-out-of-graph callees as opaque; `yulCFGJson` is experimental upstream and
-fenced by the `yul-ssa-cfg/1` level string; sourcify ingestion needs an
-svm-style multi-version solc resolver for exact-pinned pragmas (the trait
-exists, argotorg/solc-bin is the natural backend).
+Recipes and tools for Solidity, Yul, EVM bytecode, Fe and others live in a separate repository,
+riff-catalog-lab, which is not public yet.

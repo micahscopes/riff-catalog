@@ -10,8 +10,6 @@ pub enum CatalogError {
     EmptyDimensions,
     #[error("digest must be 64 lowercase hex characters")]
     InvalidDigest,
-    #[error("unsupported digest algorithm {algorithm}")]
-    UnsupportedAlgorithm { algorithm: &'static str },
     #[error("unsupported schema version {found}, this build speaks {supported}")]
     SchemaVersionMismatch { found: u32, supported: u32 },
     #[error("duplicate node key {key}")]
@@ -28,6 +26,8 @@ pub enum CatalogError {
     IndexPolicyMismatch { expected: String, actual: String },
     #[error("facet {actual} does not match {expected}")]
     FacetMismatch { expected: String, actual: String },
+    #[error("this graph's address at the facet needs the joint pass; pass the graph")]
+    FacetNeedsJointPass,
     #[error("facet address dimensions do not match the facet's dimension set")]
     FacetDimensionMismatch,
     #[error("graph hashes are missing dimension {dimension} required by the facet")]

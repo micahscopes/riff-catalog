@@ -27,7 +27,7 @@ def localNodeDigest (policy : HashPolicy) (node : Node) (dimension : Dimension)
   digestRecord policy dimension "node.local" fun b =>
     Id.run do
       let mut b := b
-      if policy.viewMode == ViewMode.identityBound then
+      if policy.keys == Keys.bound then
         b := pushNodeKey b node.key
       if dimension == Dimension.structure_ then
         b := pushStr b node.kind.asStr

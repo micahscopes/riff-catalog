@@ -7,10 +7,10 @@
 //! ([`FacetAddress::address_digest`]).
 //!
 //! Design invariants (see PLAN.md at the workspace root for the full list):
-//! - I1: every digest record's header commits to schema version, algorithm,
-//!   level, view mode, cycle policy, and dimension - a bare hash never overclaims.
-//! - I5: in [`ViewMode::AnonymousShape`], no node-key-derived bytes influence any
-//!   digest; WL colors replace key order inside SCCs.
+//! - I1: every digest record's header commits to schema version, recipe,
+//!   dimension and keys mode - a bare hash never overclaims.
+//! - I5: in [`Keys::Free`], no node-key-derived bytes influence any
+//!   digest; refined colours replace key order.
 //! - I8: any change to the encoding requires a [`SCHEMA_VERSION`] bump; golden
 //!   tests enforce this mechanically.
 
@@ -28,7 +28,7 @@ mod encode;
 // the internal `crate::<module>::Item` references in the hashing modules keep
 // resolving unchanged. Hashing (encode, hash, policy, reference, index) stays here.
 use riff_catalog_schema::serde_pairs;
-pub use riff_catalog_schema::{dimension, error, graph, key, record, text, value};
+pub use riff_catalog_schema::{dimension, error, graph, key, recipe, record, text, unit, value};
 
 pub use dimension::Dimension;
 pub use error::CatalogError;
@@ -41,11 +41,20 @@ pub use index::{
     DigestIndex, DigestIndexEntry, FacetIndex, FacetIndexEntry, LookupRequest, LookupResult,
 };
 pub use key::{EntityKey, GraphKey, NodeKey};
-pub use policy::{Algorithm, CyclePolicy, HashPolicy, PolicyId, ViewMode};
+pub use hash::{
+    check_acyclic, check_recipe, dimensions_key, facet_address, joint_digest, joint_digests,
+    mask_needs_joint, pair_bit,
+};
+pub use policy::{HashPolicy, Keys, PolicyId};
+pub use recipe::{
+    Acyclic, ChildDecl, EdgeDecl, FieldDecl, KindDecl, LabelPattern, Occurs, RecipeDecl, Shape,
+    ValueType, Violation,
+};
 pub use record::FingerprintRecord;
-pub use reference::{ArtifactRef, Facet, FacetAddress};
+pub use reference::{AddressValue, ArtifactRef, Facet, FacetAddress};
 pub use root::set_root;
 pub use text::{Digest, Name};
+pub use unit::{Status, Unit, read_units, write_units};
 pub use value::Value;
 
 /// Version of the canonical encoding contract. Any change to record layouts,
@@ -55,4 +64,11 @@ pub use value::Value;
 /// records, not only Structure, so a rewiring or argument-reorder moves every
 /// dimension's digest. Fixes the `f(1, 2)` vs `f(2, 1)` collision at the
 /// Constants/Names/Types facets and the flat-edge role-swap collision.
-pub const SCHEMA_VERSION: u32 = 2;
+///
+/// v3: one fold for every cycle policy (the condensed fold), and `graph.full`
+/// refines colours over the whole skeleton, so in free mode a node is known by
+/// its full context and a flat edge cannot be swapped between equal-content
+/// nodes unnoticed. The graph key is no longer hashed. The policy is the
+/// recipe and the keys mode only: the cycle policy and the algorithm name are
+/// gone from the header and the policy id.
+pub const SCHEMA_VERSION: u32 = 3;

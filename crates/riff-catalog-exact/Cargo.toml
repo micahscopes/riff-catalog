@@ -1,0 +1,10 @@
+[package]
+name = "riff-catalog-exact"
+description = "Bounded exact canonicalisation of small labelled multigraphs: the reference the engine's hashes are tested against"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true

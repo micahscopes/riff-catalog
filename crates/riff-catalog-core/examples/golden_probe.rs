@@ -1,14 +1,14 @@
 use riff_catalog_core::*;
 
 fn main() {
-    let policy = HashPolicy::new("test/1", ViewMode::IdentityBound, CyclePolicy::Reject).unwrap();
+    let policy = HashPolicy::new("test/1", Keys::Bound).unwrap();
     println!(
-        "policy_id_identity_reject = {}",
+        "policy_id_bound = {}",
         policy.policy_id().to_hex()
     );
     let anon =
-        HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap();
-    println!("policy_id_anon_condense = {}", anon.policy_id().to_hex());
+        HashPolicy::new("test/1", Keys::Free).unwrap();
+    println!("policy_id_free = {}", anon.policy_id().to_hex());
 
     // fixture: body -> literal(13), one reference edge
     let owner = "golden";
@@ -36,7 +36,7 @@ fn main() {
         .add_edge(&lit, "uses", &body, EdgeRole::Reference)
         .unwrap();
 
-    for (label, p) in [("identity_reject", &policy), ("anon_condense", &anon)] {
+    for (label, p) in [("bound", &policy), ("free", &anon)] {
         let req = DigestRequest::all_dimensions(gk.clone(), p.clone());
         let hashes = digest_graph(&req, &graph).unwrap().hashes;
         for (dim, digest) in hashes.graph.iter() {

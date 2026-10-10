@@ -31,7 +31,7 @@ fn result_for(owner: &str, value: u64, policy: &HashPolicy) -> DigestResult {
 }
 
 fn anon_policy() -> HashPolicy {
-    HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap()
+    HashPolicy::new("test/1", Keys::Free).unwrap()
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn digest_index_groups_same_shapes() {
 #[test]
 fn digest_index_rejects_policy_mismatch() {
     let policy = anon_policy();
-    let other = HashPolicy::new("test/1", ViewMode::IdentityBound, CyclePolicy::Reject).unwrap();
+    let other = HashPolicy::new("test/1", Keys::Bound).unwrap();
     let result = result_for("owner-a", 13, &policy);
     assert!(matches!(
         DigestIndex::from_results(other.policy_id(), vec![result]),

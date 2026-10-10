@@ -2,20 +2,26 @@
 Final `graph.full` assembly per dimension, mirroring
 `crates/riff-catalog-core/src/hash/graph_digest.rs`.
 
-Flat edges (every role except Origin) fold through every dimension using that
-dimension's endpoint digests. Role and label are Structure-only payload (carried
-in every dimension's edge record though, since they define topology). Node keys
-ride along in identity mode.
+Colour refinement over the whole skeleton: every node starts from its final
+per-node digest and repeatedly takes in its neighbours' colours along every
+edge (child edges with label and ordinal; flat and Dependency edges with role
+and label, ordinal 0; Origin edges skipped), in both directions, until the
+number of colour classes stops growing (at most n rounds).
 
-  payload (graph.full):
-    if identity: graph key (str)
-    node count (u32), then per node entry (sorted by key in identity, by digest
-      in anonymous):
-        if identity: node key (str)
-        node final digest (raw 32)
-    sorted edge-record multiset (u32 count + concat), each edge record:
-        if identity: source key (str), target key (str)
-        role (str), label (str), src final digest, dst final digest
+  graph.colour payload: own colour, sorted out-records, sorted in-records,
+    each record: role (str), label (str), ordinal (u32), neighbour colour
+  graph.full payload: node count (u32), sorted final colours (raw 32 each),
+    sorted edge records: role, label, ordinal, source colour, target colour
+
+Edge order never matters: every multiset is byte-sorted before hashing. The
+graph key is not hashed.
+
+The same refinement is shared (`refineAndDigest`) by the per-dimension digests,
+which also return the final colour of every node, and by the bare shape
+(`shapeDigest`): no facts and no kinds, every node starting from a `shape.init`
+record in bin `shape` (carrying the node key only when keys are bound), ending
+in `graph.full` in bin `shape`. The shape's colours tell which nodes the
+skeleton alone cannot tell apart.
 -/
 
 import Riffcat.Hash.View
@@ -28,49 +34,97 @@ namespace Hash
 
 open Encode View
 
-private structure NodeEntry where
-  id : UInt32
-  digest : Digest
+/-- One skeleton edge in id space. -/
+private structure SkeletonEdge where
+  role : String
+  label : String
+  ordinal : UInt32
+  src : Nat
+  dst : Nat
 
-def graphDigestForDimension (policy : HashPolicy) (g : Graph) (v : IndexedGraph)
-    (finalDigests : Array DimDigests) (dimension : Dimension) : Except String Digest := do
-  let digestOf (id : UInt32) : Digest := (finalDigests[id.toNat]!).getD dimension
-  -- node entries
-  let entries : Array NodeEntry := (Array.range v.len).map (fun id =>
-    { id := UInt32.ofNat id, digest := digestOf (UInt32.ofNat id) })
-  let sortedNodes :=
-    match policy.viewMode with
-    | .identityBound =>
-        entries.qsort (fun a b =>
-          (v.key a.id.toNat).canonicalKey < (v.key b.id.toNat).canonicalKey)
-    | .anonymousShape =>
-        entries.qsort (fun a b => byteLt a.digest.bytes b.digest.bytes)
-  -- edge records (skip Origin)
+private def skeletonEdges (g : Graph) (v : IndexedGraph) : Array SkeletonEdge :=
+  Id.run do
+    let mut out : Array SkeletonEdge := #[]
+    for parent in [0:v.len] do
+      for c in v.children[parent]! do
+        out := out.push { role := "child", label := c.label, ordinal := c.ordinal,
+                          src := parent, dst := c.child.toNat }
+    for e in g.edges do
+      if e.role != EdgeRole.origin then
+        out := out.push { role := e.role.asStr, label := e.label.asStr, ordinal := 0,
+                          src := ((v.idOf e.source).getD 0).toNat,
+                          dst := ((v.idOf e.target).getD 0).toNat }
+    return out
+
+private def edgeRecord (e : SkeletonEdge) (endColour : Digest) : ByteArray :=
+  let r := empty
+  let r := pushStr r e.role
+  let r := pushStr r e.label
+  let r := pushU32 r e.ordinal
+  pushDigest r endColour
+
+private def classCount (colours : Array Digest) : Nat :=
+  (colours.toList.map (fun d => d.toHex)).eraseDups.length
+
+/-- Refine colours to a fixpoint over the skeleton edges, both directions, then
+hash the bag of colours and the edges written with colours. Returns the graph
+digest and the final colour of every node. Mirrors `refine_and_digest`. -/
+private def refineAndDigest (policy : HashPolicy) (bin : String)
+    (edges : Array SkeletonEdge) (initial : Array Digest)
+    : Except String (Digest × Array Digest) := do
+  let n := initial.size
+  let mut colours : Array Digest := initial
+  let mut classes := classCount colours
+  for _ in [0:n] do
+    let mut next : Array Digest := #[]
+    for id in [0:n] do
+      let outRecords : List ByteArray :=
+        (edges.toList.filter (fun e => e.src == id)).map (fun e => edgeRecord e colours[e.dst]!)
+      let inRecords : List ByteArray :=
+        (edges.toList.filter (fun e => e.dst == id)).map (fun e => edgeRecord e colours[e.src]!)
+      let own := colours[id]!
+      let d ← digestRecordIn policy bin "graph.colour" fun b =>
+        let b := pushDigest b own
+        let b := pushSortedRecords b outRecords
+        pushSortedRecords b inRecords
+      next := next.push d
+    let nextClasses := classCount next
+    colours := next
+    if nextClasses == classes then
+      break
+    classes := nextClasses
+  let sorted := colours.qsort (fun a b => byteLt a.bytes b.bytes)
   let edgeRecords : List ByteArray :=
-    (g.edges.filter (fun e => e.role != EdgeRole.origin)).map (fun e =>
-      let src := (v.idOf e.source).getD 0
-      let dst := (v.idOf e.target).getD 0
-      let r := empty
-      let r := if policy.viewMode == ViewMode.identityBound then
-                 let r := pushNodeKey r e.source
-                 pushNodeKey r e.target
-               else r
-      let r := pushStr r e.role.asStr
-      let r := pushStr r e.label.asStr
-      let r := pushDigest r (digestOf src)
-      pushDigest r (digestOf dst))
-  digestRecord policy dimension "graph.full" fun b =>
+    edges.toList.map (fun e => pushDigest (edgeRecord e colours[e.src]!) colours[e.dst]!)
+  let digest ← digestRecordIn policy bin "graph.full" fun b =>
     Id.run do
-      let mut b := b
-      if policy.viewMode == ViewMode.identityBound then
-        b := pushStr b g.graphKey.canonicalKey
-      b := pushU32 b (UInt32.ofNat sortedNodes.size)
-      for e in sortedNodes do
-        if policy.viewMode == ViewMode.identityBound then
-          b := pushNodeKey b (v.key e.id.toNat)
-        b := pushDigest b e.digest
-      b := pushSortedRecords b edgeRecords
-      return b
+      let mut b := pushU32 b (UInt32.ofNat sorted.size)
+      for c in sorted do
+        b := pushDigest b c
+      return pushSortedRecords b edgeRecords
+  return (digest, colours)
+
+/-- `graph.full` for one dimension, and the final colour of every node. Mirrors
+`graph_digest_for_dimension`. -/
+def graphDigestForDimension (policy : HashPolicy) (g : Graph) (v : IndexedGraph)
+    (finalDigests : Array DimDigests) (dimension : Dimension)
+    : Except String (Digest × Array Digest) :=
+  let colours : Array Digest :=
+    (Array.range v.len).map (fun id => (finalDigests[id]!).getD dimension)
+  refineAndDigest policy dimension.asStr (skeletonEdges g v) colours
+
+/-- The bare shape: the same refinement with no facts and no kinds, only the
+skeleton (and keys, with bound keys). Its digest names the coarsest atom, "same
+shape, nothing else"; its colours tell which nodes the skeleton alone cannot tell
+apart. Mirrors `shape_digest`. -/
+def shapeDigest (policy : HashPolicy) (g : Graph) (v : IndexedGraph)
+    : Except String (Digest × Array Digest) := do
+  let mut colours : Array Digest := #[]
+  for id in [0:v.len] do
+    let d ← digestRecordIn policy "shape" "shape.init" fun b =>
+      if policy.keys == Keys.bound then pushNodeKey b (v.key id) else b
+    colours := colours.push d
+  refineAndDigest policy "shape" (skeletonEdges g v) colours
 
 end Hash
 end Riffcat

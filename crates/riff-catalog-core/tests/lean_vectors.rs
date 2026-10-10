@@ -17,8 +17,8 @@
 //! riffcat actually ships.
 
 use riff_catalog_core::{
-    CyclePolicy, Digest, DigestRequest, Dimension, EdgeRole, EntityKey, Facet, Graph, GraphKey,
-    HashPolicy, NodeKey, ViewMode, digest_graph,
+    AddressValue, Digest, DigestRequest, Dimension, EdgeRole, EntityKey, Facet, Graph, GraphKey,
+    HashPolicy, NodeKey, Keys, digest_graph, facet_address, joint_digests,
 };
 
 const VECTORS_PATH: &str = "../../lean/golden/vectors.json";
@@ -503,29 +503,76 @@ fn corpus() -> Vec<Vector> {
                 edge(o, "q", "calls", o, "p", EdgeRole::Call),
             ],
         },
+        // 8. joint pass, case (i): one parent with two children under the same
+        //    label and ordinal 0, which the bare shape cannot tell apart in
+        //    free keys mode. Children differ in Names and in Types, so the
+        //    pair (names, types) is flagged and the {names, types} facet (and
+        //    the full facet) is answered by the joint pass. Under bound keys
+        //    the keys tell the children apart and nothing is flagged.
+        Vector {
+            name: "joint_pairs_a",
+            graph_key: ("test.unit", "g", "unit:0", "unit"),
+            ops: vec![
+                node("n", o, "p", "call"),
+                node("n", o, "a", "op"),
+                node("n", o, "b", "op"),
+                ftext(o, "a", Names, "n", "add"),
+                ftext(o, "a", Types, "t", "u8"),
+                ftext(o, "b", Names, "n", "mul"),
+                ftext(o, "b", Types, "t", "u16"),
+                child(o, "p", "arg", 0, o, "a"),
+                child(o, "p", "arg", 0, o, "b"),
+            ],
+        },
+        // 8b. case (ii): the same, with the types swapped between the
+        //     children. Names and Types digests equal those of case (i); the
+        //     joint addresses at {names, types} differ.
+        Vector {
+            name: "joint_pairs_b",
+            graph_key: ("test.unit", "g", "unit:0", "unit"),
+            ops: vec![
+                node("n", o, "p", "call"),
+                node("n", o, "a", "op"),
+                node("n", o, "b", "op"),
+                ftext(o, "a", Names, "n", "add"),
+                ftext(o, "a", Types, "t", "u16"),
+                ftext(o, "b", Names, "n", "mul"),
+                ftext(o, "b", Types, "t", "u8"),
+                child(o, "p", "arg", 0, o, "a"),
+                child(o, "p", "arg", 0, o, "b"),
+            ],
+        },
+        // 8c. the shape-equal children also differ in kind and in a constant,
+        //     so structure, names and constants all vary inside one group:
+        //     three flagged pairs, several joint digests, and the joint pass
+        //     with kinds kept (Structure among the dimensions).
+        Vector {
+            name: "joint_three_way",
+            graph_key: ("test.unit", "g", "unit:0", "unit"),
+            ops: vec![
+                node("n", o, "p", "call"),
+                node("n", o, "a", "lit"),
+                node("n", o, "b", "var"),
+                ftext(o, "a", Names, "n", "x"),
+                fu64(o, "a", Constants, "v", 1),
+                ftext(o, "b", Names, "n", "y"),
+                fu64(o, "b", Constants, "v", 2),
+                child(o, "p", "arg", 0, o, "a"),
+                child(o, "p", "arg", 0, o, "b"),
+            ],
+        },
     ]
 }
 
-/// The two policies the golden tests pin, plus a NonRecursiveGraphEdges variant.
+/// The two policies: keys bound and keys free.
 fn policies() -> Vec<(&'static str, HashPolicy)> {
     vec![
-        (
-            "identity_reject",
-            HashPolicy::new("test/1", ViewMode::IdentityBound, CyclePolicy::Reject).unwrap(),
-        ),
-        (
-            "anon_condense",
-            HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap(),
-        ),
-        (
-            "identity_condense",
-            HashPolicy::new("test/1", ViewMode::IdentityBound, CyclePolicy::CondenseScc).unwrap(),
-        ),
+        ("bound", HashPolicy::new("test/1", Keys::Bound).unwrap()),
+        ("free", HashPolicy::new("test/1", Keys::Free).unwrap()),
     ]
 }
 
-/// A policy is applicable to a vector only if the cycle policy admits the graph
-/// (Reject rejects the cyclic vectors). Returns None if not applicable.
+/// Digests of a vector under a policy; every valid graph hashes under both.
 fn try_digests(policy: &HashPolicy, gk: &GraphKey, g: &Graph) -> Option<Vec<(Dimension, Digest)>> {
     let req = DigestRequest::all_dimensions(gk.clone(), policy.clone());
     match digest_graph(&req, g) {
@@ -584,10 +631,9 @@ fn dump_lean_vectors() {
     let pols = policies();
     for (i, (label, p)) in pols.iter().enumerate() {
         let comma = if i + 1 < pols.len() { "," } else { "" };
-        let (view, cyc) = (p.view_mode.as_str(), p.cycle_policy.as_str());
         json.push_str(&format!(
-            "    {{\"label\": \"{}\", \"level\": \"{}\", \"view_mode\": \"{}\", \"cycle_policy\": \"{}\", \"policy_id\": \"{}\"}}{}\n",
-            label, "test/1", view, cyc, p.policy_id().to_hex(), comma
+            "    {{\"label\": \"{}\", \"recipe\": \"{}\", \"keys\": \"{}\", \"policy_id\": \"{}\"}}{}\n",
+            label, p.recipe.as_str(), p.keys.as_str(), p.policy_id().to_hex(), comma
         ));
     }
     json.push_str("  ],\n");
@@ -604,7 +650,8 @@ fn dump_lean_vectors() {
             .iter()
             .map(|o| format!("        {}", o.to_json()))
             .collect();
-        // per applicable policy: graph digests + facet ids/addresses
+        // per applicable policy: shape digest + mixed-pairs mask, graph digests,
+        // joint digests, facet ids/addresses
         let mut results: Vec<String> = Vec::new();
         for (label, p) in &pols {
             if let Some(digests) = try_digests(p, &gk, &g) {
@@ -614,28 +661,48 @@ fn dump_lean_vectors() {
                         format!(r#"{{"dim":"{}","digest":"{}"}}"#, d.as_str(), h.to_hex())
                     })
                     .collect();
-                // facet addresses for full and names_blind
+                // facet addresses: combined where the mixed-pairs mask allows it,
+                // the joint pass where the graph is flagged
                 let res = digest_graph(&DigestRequest::all_dimensions(gk.clone(), p.clone()), &g)
                     .unwrap();
+                let hashes = &res.hashes;
                 let facets = [
                     ("full", Facet::full(p.policy_id())),
                     ("names_blind", Facet::names_blind(p.policy_id())),
                     ("structure_only", Facet::structure_only(p.policy_id())),
+                    (
+                        "names_types",
+                        Facet::new(p.policy_id(), [Dimension::Names, Dimension::Types]).unwrap(),
+                    ),
                 ];
                 let mut facet_json: Vec<String> = Vec::new();
                 for (fname, facet) in facets.iter() {
-                    let addr = res.hashes.facet_address(facet).unwrap();
+                    let addr = facet_address(p, &g, hashes, facet).unwrap();
+                    let mode = match addr.value {
+                        AddressValue::Combined(_) => "combined",
+                        AddressValue::Joint(_) => "joint",
+                    };
                     facet_json.push(format!(
-                        r#"{{"name":"{}","facet_id":"{}","address_digest":"{}"}}"#,
+                        r#"{{"name":"{}","facet_id":"{}","mode":"{}","address_digest":"{}"}}"#,
                         fname,
                         facet.facet_id().to_hex(),
+                        mode,
                         addr.address_digest().to_hex()
                     ));
                 }
+                // the stored joint digests of the flagged dimension sets
+                let joint_json: Vec<String> = joint_digests(p, &g, hashes)
+                    .unwrap()
+                    .iter()
+                    .map(|(key, h)| format!(r#"{{"key":"{}","digest":"{}"}}"#, key, h.to_hex()))
+                    .collect();
                 results.push(format!(
-                    "        {{\"policy\": \"{}\", \"graph\": [{}], \"facets\": [{}]}}",
+                    "        {{\"policy\": \"{}\", \"shape\": \"{}\", \"mixed_pairs\": {}, \"graph\": [{}], \"joint_digests\": [{}], \"facets\": [{}]}}",
                     label,
+                    hashes.shape.to_hex(),
+                    hashes.mixed_pairs,
                     dim_json.join(", "),
+                    joint_json.join(", "),
                     facet_json.join(", ")
                 ));
             }

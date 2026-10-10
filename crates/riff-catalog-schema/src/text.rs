@@ -9,9 +9,19 @@ use crate::error::CatalogError;
 pub(crate) const UNIT_SEP: char = '\u{1f}';
 
 /// A validated non-empty string: never empty, never contains [`UNIT_SEP`].
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+///
+/// Reading one from JSON applies the same checks as [`Name::new`], so a
+/// producer in any language cannot hand in a name Rust code could not build.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct Name(String);
+
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Name::new(value, "name").map_err(serde::de::Error::custom)
+    }
+}
 
 impl Name {
     pub fn new(value: impl Into<String>, field: &'static str) -> Result<Self, CatalogError> {

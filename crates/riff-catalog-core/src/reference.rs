@@ -136,31 +136,58 @@ impl Facet {
     }
 }
 
-/// A graph's digests projected onto a facet — the unit that indexes and the
-/// claims layer key on.
+/// The value an address is computed from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AddressValue {
+    /// The stored per-dimension digests of the facet's dimensions, combined
+    /// after hashing. Exact when the graph's mixed-pairs mask allows it (see
+    /// [`crate::hash::GraphHashes::needs_joint`]).
+    Combined(BTreeMap<Dimension, Digest>),
+    /// One digest of the graph with all of the facet's facts hashed together
+    /// (the joint pass), used where combining would over-match.
+    Joint(Digest),
+}
+
+/// A graph's address at a facet: equal addresses mean the graphs are the
+/// same once only the facet's facts are kept (up to the documented colour
+/// refinement limit). The unit indexes and the claims layer key on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FacetAddress {
     pub facet: Facet,
-    pub digests: BTreeMap<Dimension, Digest>,
+    pub value: AddressValue,
 }
 
 impl FacetAddress {
+    /// A combined address from the facet's per-dimension digests.
     pub fn new(facet: Facet, digests: BTreeMap<Dimension, Digest>) -> Result<Self, CatalogError> {
         if digests.keys().copied().collect::<BTreeSet<_>>() != facet.dimensions {
             return Err(CatalogError::FacetDimensionMismatch);
         }
-        Ok(Self { facet, digests })
+        Ok(Self { facet, value: AddressValue::Combined(digests) })
     }
 
-    /// The digest that defines "equal at this facet".
+    /// A joint address from one joint-pass digest.
+    pub fn joint(facet: Facet, digest: Digest) -> Self {
+        Self { facet, value: AddressValue::Joint(digest) }
+    }
+
+    /// The digest that defines "equal at this facet". Combined and joint
+    /// addresses are hashed under different tags, so they never coincide.
     pub fn address_digest(&self) -> Digest {
-        encode::digest_meta("riffcat.facet_address", |bytes| {
-            encode::push_digest(bytes, &self.facet.facet_id());
-            for (dimension, digest) in &self.digests {
-                encode::push_str(bytes, dimension.as_str());
+        match &self.value {
+            AddressValue::Combined(digests) => encode::digest_meta("riffcat.facet_address", |bytes| {
+                encode::push_digest(bytes, &self.facet.facet_id());
+                for (dimension, digest) in digests {
+                    encode::push_str(bytes, dimension.as_str());
+                    encode::push_digest(bytes, digest);
+                }
+            }),
+            AddressValue::Joint(digest) => encode::digest_meta("riffcat.facet_address.joint", |bytes| {
+                encode::push_digest(bytes, &self.facet.facet_id());
                 encode::push_digest(bytes, digest);
-            }
-        })
+            }),
+        }
     }
 }
 

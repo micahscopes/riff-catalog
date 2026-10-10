@@ -1,7 +1,7 @@
 /-
 The hashing policy, mirroring `crates/riff-catalog-core/src/policy.rs`.
 
-Mirrors: Algorithm, ViewMode, CyclePolicy, HashPolicy, policy_id, SCHEMA_VERSION.
+Mirrors: Keys, HashPolicy, policy_id, SCHEMA_VERSION.
 
 `policy_id` is computed in Encode (it goes through `digest_meta`); here we hold
 only the policy data and the `as_str` spellings the encoding commits to.
@@ -13,64 +13,35 @@ namespace Riffcat
 
 /-- Version of the canonical encoding contract (invariant I8). Must equal the
 Rust `SCHEMA_VERSION`. -/
-def SCHEMA_VERSION : UInt32 := 2
+def SCHEMA_VERSION : UInt32 := 3
 
-inductive Algorithm where
-  | blake3_256
-  | sha2_256
+/-- Whether node keys take part in digests: `bound` pairs nodes by key, `free`
+compares graphs up to renaming of keys. -/
+inductive Keys where
+  | bound
+  | free
 deriving DecidableEq, Repr, Inhabited
 
-def Algorithm.asStr : Algorithm → String
-  | .blake3_256 => "blake3-256"
-  | .sha2_256   => "sha2-256"
+def Keys.asStr : Keys → String
+  | .bound => "bound"
+  | .free  => "free"
 
-inductive ViewMode where
-  | identityBound
-  | anonymousShape
-deriving DecidableEq, Repr, Inhabited
-
-def ViewMode.asStr : ViewMode → String
-  | .identityBound  => "identity_bound"
-  | .anonymousShape => "anonymous_shape"
-
-inductive CyclePolicy where
-  | reject
-  | nonRecursiveGraphEdges
-  | condenseScc
-deriving DecidableEq, Repr, Inhabited
-
-def CyclePolicy.asStr : CyclePolicy → String
-  | .reject                 => "reject"
-  | .nonRecursiveGraphEdges => "non_recursive_graph_edges"
-  | .condenseScc            => "condense_scc"
-
-/-- The encoding contract a digest was computed under. Note: no dimension set
-(invariant I9). -/
+/-- What a digest was computed under: format version, recipe, keys mode. No
+dimension set (invariant I9). -/
 structure HashPolicy where
   schemaVersion : UInt32
-  algorithm : Algorithm
-  level : Name
-  viewMode : ViewMode
-  cyclePolicy : CyclePolicy
+  recipe : Name
+  keys : Keys
 deriving Inhabited
 
-def HashPolicy.new (level : String) (viewMode : ViewMode) (cyclePolicy : CyclePolicy)
-    : Except String HashPolicy := do
-  let level ← Name.new level "policy level"
-  return {
-    schemaVersion := SCHEMA_VERSION
-    algorithm := .blake3_256
-    level := level
-    viewMode := viewMode
-    cyclePolicy := cyclePolicy
-  }
+def HashPolicy.new (recipe : String) (keys : Keys) : Except String HashPolicy := do
+  let recipe ← Name.new recipe "policy recipe"
+  return { schemaVersion := SCHEMA_VERSION, recipe := recipe, keys := keys }
 
-/-- `check_supported`: only schema version 2 + blake3-256 hash. -/
+/-- `check_supported`: only the current schema version. -/
 def HashPolicy.checkSupported (p : HashPolicy) : Except String Unit := do
   if p.schemaVersion != SCHEMA_VERSION then
     .error s!"unsupported schema version {p.schemaVersion}"
-  if p.algorithm != Algorithm.blake3_256 then
-    .error s!"unsupported digest algorithm {p.algorithm.asStr}"
   return ()
 
 end Riffcat

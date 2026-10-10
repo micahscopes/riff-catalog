@@ -1,4 +1,0 @@
-name: cubical-riffcat
-include: .
-depend: cubical
-flags: --cubical --no-import-sorts --guardedness

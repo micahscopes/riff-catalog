@@ -16,6 +16,12 @@
 //! and flat-edge role-swap collisions. The schema version is committed in every
 //! record header, so all constants below were regenerated via
 //! `examples/golden_probe.rs`.
+//!
+//! SCHEMA_VERSION 2 -> 3 (consolidation, 2026-10-09): one fold for every cycle
+//! policy, and `graph.full` refines colours over the whole skeleton so free
+//! mode tells flat edges between equal-content nodes apart; the graph key is no
+//! longer hashed. The policy is now the recipe and the keys mode only (no
+//! algorithm name, no cycle policy). Regenerated via `examples/golden_probe.rs`.
 
 use riff_catalog_core::*;
 
@@ -55,43 +61,43 @@ fn graph_digests(policy: &HashPolicy) -> DimensionDigests {
 
 #[test]
 fn golden_policy_ids() {
-    let identity = HashPolicy::new("test/1", ViewMode::IdentityBound, CyclePolicy::Reject).unwrap();
+    let identity = HashPolicy::new("test/1", Keys::Bound).unwrap();
     assert_eq!(
         identity.policy_id().to_hex(),
-        "7d08fcebdad5a41b3e764b977504de08ef61716f37a7284ff1985fba91a6fda1"
+        "b2a53a46bf979ebe7ddd7060107b379244555300eae561f7facff50e8415213a"
     );
     let anonymous =
-        HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap();
+        HashPolicy::new("test/1", Keys::Free).unwrap();
     assert_eq!(
         anonymous.policy_id().to_hex(),
-        "bb6ebe47be5f1291b8f5a27a31f61a1b0d979ca9b2208e82ac539283f2d1e429"
+        "867c75215b4383e77d887c737ffa7093b9944e2d9578abd3affedaf98a398f69"
     );
 }
 
 #[test]
-fn golden_identity_reject_fixture() {
-    let policy = HashPolicy::new("test/1", ViewMode::IdentityBound, CyclePolicy::Reject).unwrap();
+fn golden_bound_fixture() {
+    let policy = HashPolicy::new("test/1", Keys::Bound).unwrap();
     let digests = graph_digests(&policy);
     let expect = [
         (
             Dimension::Structure,
-            "d3ae63812d6601b7ea2158ef04aa44f351b6a2066fe68ff276ec7daf0a0a273e",
+            "d083167dc593169c762d7d859a37e19e061c4f65cca211fd49a43bae4017f5ab",
         ),
         (
             Dimension::Names,
-            "ff6d0d724f8f4f9a7c9e6999b18c7a65c7c9d02d5c73ebb4bc389ec5ad4c6fb4",
+            "823cabf1d7e8b57fd0177d88371f41cd2cd0ddde56b3275e638e4b229fb1afe8",
         ),
         (
             Dimension::Constants,
-            "9105cde16c6ddb9147da2ed96cbca8c8ecc5ca1e142c2c0261cfe7fcb54c06b4",
+            "0d148f3a8ad5aa8d551582205ec00bf79b28ebd2fa0da6af108964f5fb9ce2e4",
         ),
         (
             Dimension::Types,
-            "fe392c9872c47ed58e9a8b0c50223c0c3c89a71e0904fb4430744040d9856961",
+            "0b7cbb70f0931a3f07622e3360892c55a2340c44e400767831d4088dd15f6250",
         ),
         (
             Dimension::TraceEvents,
-            "e7f7a6e4ca259fa2759178c1bdccac26a4a28bafa70c54cca71f01d951dd40fc",
+            "f777fde3348b40fb6ac2219f4c90c1f28f37d66b335c46a753f9753335d33d4e",
         ),
     ];
     for (dimension, hex) in expect {
@@ -104,30 +110,30 @@ fn golden_identity_reject_fixture() {
 }
 
 #[test]
-fn golden_anonymous_condense_fixture() {
+fn golden_free_fixture() {
     let policy =
-        HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap();
+        HashPolicy::new("test/1", Keys::Free).unwrap();
     let digests = graph_digests(&policy);
     let expect = [
         (
             Dimension::Structure,
-            "a16d23242592298bebe7b6a9a48895ec4a28bb395fdaf5d883797b28169cd887",
+            "2d57910e4aa2dadbbe02413bdc675a38c639c02b32a2773144ac41694b97a2a9",
         ),
         (
             Dimension::Names,
-            "bc33a965b8eab28a97082f878716d1ce36a9b566653471a81d68c164bf1e2177",
+            "df2a7dd5ae81690d2cb585bae1fa1ff63670c9e72bd44f99a60ff0ee7fa0ff48",
         ),
         (
             Dimension::Constants,
-            "04f613b01a20112d783bb347c73bb20a25deabdf5d3bbfcc924a51dce081d9fb",
+            "fe15af979180ce737c17ce74b1acc2fe51197bebc67238317afd25e977b9944c",
         ),
         (
             Dimension::Types,
-            "42bae8a527269863e4b12b5d1e0d603c8511ef9279559b4b15d5122b88e9589e",
+            "8808d3304feb1745186865b76782e961f0ea4ef977e4dbb8c75b43ade28aa7f0",
         ),
         (
             Dimension::TraceEvents,
-            "29aef97058617b2b40395b6d28d34e6e4ab79abd81169fc02edd758c7d7e0e54",
+            "efd463ff13c2157ca8a813519edba89ebe62007b014395bc014982989672329f",
         ),
     ];
     for (dimension, hex) in expect {
@@ -142,9 +148,9 @@ fn golden_anonymous_condense_fixture() {
 #[test]
 fn golden_facet_id() {
     let policy =
-        HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap();
+        HashPolicy::new("test/1", Keys::Free).unwrap();
     assert_eq!(
         Facet::names_blind(policy.policy_id()).facet_id().to_hex(),
-        "a54714f657ab35ba25195db8c2b71dca1e03f993c1f261a4db0e7b6575aaa990"
+        "7602d6196f953298273e9e3bdafeb60be4aaac9486e10f5ec61938ffdf3b0e16"
     );
 }

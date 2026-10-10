@@ -40,7 +40,7 @@ fn record_graph(owner: &str) -> (GraphKey, Graph) {
 #[test]
 fn tuple_and_record_unify_only_via_claim() {
     let policy =
-        HashPolicy::new("test/1", ViewMode::AnonymousShape, CyclePolicy::CondenseScc).unwrap();
+        HashPolicy::new("test/1", Keys::Free).unwrap();
     let facet = Facet::structure_only(policy.policy_id());
 
     let (tuple_key, tuple) = tuple_graph("prog-a");

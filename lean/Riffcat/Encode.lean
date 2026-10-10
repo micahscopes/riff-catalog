@@ -120,31 +120,43 @@ def pushSortedRecords (b : Builder) (records : List ByteArray) : Builder :=
 
 /-! ## The two record wrappers (invariant I1) -/
 
-/-- The pre-hash byte sequence of a dimension-scoped record: header commits to
-the full policy context plus dimension and record tag, then the payload.
+/-- The pre-hash byte sequence of a record scoped to a named bin: the header
+commits to the full policy context plus the bin label and record tag, then the
+payload. The bin is a dimension's name, or `shape` for the bare skeleton.
 
 Returned as the raw bytes so the lockstep harness can compare the *structural
 encoding* (pre-hash bytes) independently of the hash. -/
-def recordBytes (policy : HashPolicy) (dimension : Dimension) (recordTag : String)
+def recordBytesIn (policy : HashPolicy) (bin : String) (recordTag : String)
     (writePayload : Builder → Builder) : Builder :=
   let b := empty
   let b := pushStr b magic
   let b := pushU32 b policy.schemaVersion
-  let b := pushStr b policy.algorithm.asStr
-  let b := pushStr b policy.level.asStr
-  let b := pushStr b dimension.asStr
-  let b := pushStr b policy.viewMode.asStr
-  let b := pushStr b policy.cyclePolicy.asStr
+  let b := pushStr b policy.recipe.asStr
+  let b := pushStr b bin
+  let b := pushStr b policy.keys.asStr
   let b := pushStr b recordTag
   writePayload b
 
-/-- A dimension-scoped digest record. Mirrors `digest_record`. `check_supported`
-is the caller's responsibility (as in Rust, where `digest_record` calls it). -/
-def digestRecord (policy : HashPolicy) (dimension : Dimension) (recordTag : String)
+/-- The pre-hash byte sequence of a dimension-scoped record: `recordBytesIn`
+with the dimension's name as the bin. -/
+def recordBytes (policy : HashPolicy) (dimension : Dimension) (recordTag : String)
+    (writePayload : Builder → Builder) : Builder :=
+  recordBytesIn policy dimension.asStr recordTag writePayload
+
+/-- A record scoped to a named bin: a dimension's name, or `shape` for the bare
+skeleton (no facts at all). Mirrors `digest_record_in`. `check_supported` is the
+caller's responsibility (as in Rust, where `digest_record_in` calls it). -/
+def digestRecordIn (policy : HashPolicy) (bin : String) (recordTag : String)
     (writePayload : Builder → Builder) : Except String Digest := do
   policy.checkSupported
-  let bytes := recordBytes policy dimension recordTag writePayload
+  let bytes := recordBytesIn policy bin recordTag writePayload
   return ⟨Blake3.hash bytes⟩
+
+/-- A dimension-scoped digest record. Mirrors `digest_record`, which calls
+`digest_record_in` with the dimension's name. -/
+def digestRecord (policy : HashPolicy) (dimension : Dimension) (recordTag : String)
+    (writePayload : Builder → Builder) : Except String Digest :=
+  digestRecordIn policy dimension.asStr recordTag writePayload
 
 /-- The pre-hash byte sequence of a meta record: magic + schema version + tag +
 payload. -/
@@ -169,9 +181,7 @@ end Encode
 def HashPolicy.policyId (p : HashPolicy) : Digest :=
   Encode.digestMeta "riffcat.policy" fun b =>
     let b := Encode.pushU32 b p.schemaVersion
-    let b := Encode.pushStr b p.algorithm.asStr
-    let b := Encode.pushStr b p.level.asStr
-    let b := Encode.pushStr b p.viewMode.asStr
-    Encode.pushStr b p.cyclePolicy.asStr
+    let b := Encode.pushStr b p.recipe.asStr
+    Encode.pushStr b p.keys.asStr
 
 end Riffcat

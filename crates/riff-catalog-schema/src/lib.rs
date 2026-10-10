@@ -15,15 +15,22 @@ pub mod dimension;
 pub mod error;
 pub mod graph;
 pub mod key;
+pub mod recipe;
 pub mod record;
 pub mod serde_pairs;
 pub mod text;
+pub mod unit;
 pub mod value;
 
 pub use dimension::Dimension;
 pub use error::CatalogError;
 pub use graph::{ChildEdge, Edge, EdgeRole, Field, Graph, GraphSink, Node};
 pub use key::{EntityKey, GraphKey, NodeKey};
+pub use recipe::{
+    Acyclic, ChildDecl, EdgeDecl, FieldDecl, KindDecl, LabelPattern, Occurs, RecipeDecl, Shape,
+    ValueType, Violation,
+};
 pub use record::FingerprintRecord;
 pub use text::{Digest, Name};
+pub use unit::{Status, Unit, read_units, write_units};
 pub use value::Value;

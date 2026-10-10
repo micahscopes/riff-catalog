@@ -85,15 +85,24 @@ pub(crate) fn digest_record(
     record_tag: &str,
     write_payload: impl FnOnce(&mut Vec<u8>),
 ) -> Result<Digest, CatalogError> {
+    digest_record_in(policy, dimension.as_str(), record_tag, write_payload)
+}
+
+/// A record scoped to a named bin: a dimension's name, or `shape` for the
+/// bare skeleton (no facts at all).
+pub(crate) fn digest_record_in(
+    policy: &HashPolicy,
+    bin: &str,
+    record_tag: &str,
+    write_payload: impl FnOnce(&mut Vec<u8>),
+) -> Result<Digest, CatalogError> {
     policy.check_supported()?;
     let mut bytes = Vec::new();
     push_str(&mut bytes, MAGIC);
     push_u32(&mut bytes, policy.schema_version);
-    push_str(&mut bytes, policy.algorithm.as_str());
-    push_str(&mut bytes, policy.level.as_str());
-    push_str(&mut bytes, dimension.as_str());
-    push_str(&mut bytes, policy.view_mode.as_str());
-    push_str(&mut bytes, policy.cycle_policy.as_str());
+    push_str(&mut bytes, policy.recipe.as_str());
+    push_str(&mut bytes, bin);
+    push_str(&mut bytes, policy.keys.as_str());
     push_str(&mut bytes, record_tag);
     write_payload(&mut bytes);
     Ok(digest_bytes(&bytes))

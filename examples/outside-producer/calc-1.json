@@ -1,0 +1,79 @@
+{
+ "recipe": "calc/1",
+ "roots": [
+  "calc.bin",
+  "calc.num",
+  "calc.var"
+ ],
+ "single_root": true,
+ "kinds": [
+  {
+   "kind": "calc.bin",
+   "fields": [
+    {
+     "name": "op",
+     "dimensions": [
+      "structure"
+     ],
+     "value": "text",
+     "occurs": "one"
+    }
+   ]
+  },
+  {
+   "kind": "calc.var",
+   "fields": [
+    {
+     "name": "name",
+     "dimensions": [
+      "names"
+     ],
+     "value": "text",
+     "occurs": "one"
+    }
+   ]
+  },
+  {
+   "kind": "calc.num",
+   "fields": [
+    {
+     "name": "value",
+     "dimensions": [
+      "constants"
+     ],
+     "value": "u64",
+     "occurs": "one"
+    }
+   ]
+  }
+ ],
+ "children": [
+  {
+   "parents": [
+    "calc.bin"
+   ],
+   "label": "lhs",
+   "children": [
+    "calc.bin",
+    "calc.num",
+    "calc.var"
+   ],
+   "shape": "one"
+  },
+  {
+   "parents": [
+    "calc.bin"
+   ],
+   "label": "rhs",
+   "children": [
+    "calc.bin",
+    "calc.num",
+    "calc.var"
+   ],
+   "shape": "one"
+  }
+ ],
+ "edges": [],
+ "acyclic": "children",
+ "keys": "owner = the expression's name; local = the path from the root (lhs/rhs steps)"
+}

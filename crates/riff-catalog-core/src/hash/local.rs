@@ -5,7 +5,7 @@ use crate::encode;
 use crate::error::CatalogError;
 use crate::graph::Node;
 use crate::hash::DimensionDigests;
-use crate::policy::{HashPolicy, ViewMode};
+use crate::policy::{HashPolicy, Keys};
 
 /// Per-dimension digest of a node's own content: key (identity mode only),
 /// kind (Structure only), and this dimension's fields sorted by (name, value).
@@ -17,7 +17,7 @@ pub(crate) fn local_node_digests(
     let mut digests = DimensionDigests::default();
     for dimension in dimensions {
         let digest = encode::digest_record(policy, *dimension, "node.local", |bytes| {
-            if policy.view_mode == ViewMode::IdentityBound {
+            if policy.keys == Keys::Bound {
                 encode::push_node_key(bytes, &node.key);
             }
             if *dimension == Dimension::Structure {

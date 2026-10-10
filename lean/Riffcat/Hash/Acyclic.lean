@@ -1,23 +1,8 @@
 /-
-Cycle checks and the ordered-children Merkle fold, mirroring
-`crates/riff-catalog-core/src/hash/acyclic.rs`.
-
-The Rust code is an explicit iterative post-order walk (to survive deep ASTs);
-semantically it is a structural recursion over the children DAG, which is how we
-write it here (memoized, fuel-bounded by the node count). The byte output of
-`node.tree` is reproduced exactly:
-
-  payload = local-digest, child-count (u32), then per child entry:
-    if dimension == Structure: ordinal (u32) + label (str)
-    child tree-digest (raw 32)
-
-Child entry ordering:
-  - IdentityBound : (ordinal, label) then child canonical key
-  - AnonymousShape: (ordinal, label, child digest)
-
-`check_acyclic` mirrors the DFS cycle detector: `includeDependency` selects
-between Reject (children + Dependency) and NonRecursiveGraphEdges (children
-only, deduped successor set).
+Cycle checks, mirroring `crates/riff-catalog-core/src/hash/acyclic.rs`.
+`includeDependency` selects between Reject (children + Dependency) and
+NonRecursiveGraphEdges (children only, deduped successor set). The digests
+themselves come from the one condensed fold for every policy.
 -/
 
 import Riffcat.Hash.View
@@ -86,83 +71,6 @@ def checkAcyclic (v : IndexedGraph) (includeDependency : Bool) : Except String U
   match detectCycle (cycleSucc v includeDependency) with
   | some id => .error s!"graph contains a cycle at {v.key id |>.canonicalKey}"
   | none => .ok ()
-
-/-! ## The Merkle fold -/
-
-/-- A child entry at payload time: (ordinal, label, child digest, child id). -/
-private structure Entry where
-  ordinal : UInt32
-  label : String
-  digest : Digest
-  childId : UInt32
-
-private def entryLtIdentity (v : IndexedGraph) (a b : Entry) : Bool :=
-  if a.ordinal != b.ordinal then a.ordinal < b.ordinal
-  else if a.label != b.label then a.label < b.label
-  else (v.key a.childId.toNat).canonicalKey < (v.key b.childId.toNat).canonicalKey
-
-private def entryLtAnon (a b : Entry) : Bool :=
-  if a.ordinal != b.ordinal then a.ordinal < b.ordinal
-  else if a.label != b.label then a.label < b.label
-  else byteLt a.digest.bytes b.digest.bytes
-
-/-- The `node.tree` digest of node `id` for one dimension, given the tree digests
-of its children. -/
-private def nodeTreeDigest (policy : HashPolicy) (v : IndexedGraph)
-    (localDigs : Array DimDigests) (childTree : Array DimDigests)
-    (id : Nat) (dimension : Dimension) : Except String Digest := do
-  let entries : Array Entry := v.children[id]!.map (fun c =>
-    { ordinal := c.ordinal, label := c.label,
-      digest := (childTree[c.child.toNat]!).getD dimension,
-      childId := c.child })
-  let sorted :=
-    match policy.viewMode with
-    | .identityBound  => entries.qsort (entryLtIdentity v)
-    | .anonymousShape => entries.qsort entryLtAnon
-  digestRecord policy dimension "node.tree" fun b =>
-    Id.run do
-      let mut b := pushDigest b ((localDigs[id]!).getD dimension)
-      b := pushU32 b (UInt32.ofNat sorted.size)
-      for e in sorted do
-        if dimension == Dimension.structure_ then
-          b := pushU32 b e.ordinal
-          b := pushStr b e.label
-        b := pushDigest b e.digest
-      return b
-
-/-- Tree digests for every node across all dimensions. Memoized structural
-recursion over the children DAG; fuel = node count (the DAG depth bound on an
-acyclic graph). -/
-def treeDigests (policy : HashPolicy) (v : IndexedGraph) (dimensions : List Dimension)
-    (localDigs : Array DimDigests) : Except String (Array DimDigests) := do
-  let n := v.len
-  -- compute one node's full DimDigests given children already done
-  let computeNode (tree : Array (Option DimDigests)) (id : Nat) : Except String DimDigests :=
-    dimensions.mapM (fun d => do
-      -- materialize the children's DimDigests (all present by recursion order)
-      let childTree : Array DimDigests := (Array.range n).map (fun i =>
-        match tree[i]! with | some dd => dd | none => [])
-      let dig ← nodeTreeDigest policy v localDigs childTree id d
-      return (d, dig))
-  -- recursive resolver with fuel
-  let rec resolve (tree : Array (Option DimDigests)) (id : Nat) (fuel : Nat)
-      : Except String (Array (Option DimDigests)) := do
-    match tree[id]! with
-    | some _ => return tree
-    | none =>
-      match fuel with
-      | 0 => .error "tree fold exceeded fuel (cycle?)"
-      | fuel + 1 =>
-        -- resolve children first
-        let mut tree := tree
-        for c in v.children[id]! do
-          tree ← resolve tree c.child.toNat fuel
-        let dd ← computeNode tree id
-        return tree.set! id (some dd)
-  let mut tree : Array (Option DimDigests) := Array.replicate n none
-  for id in [0:n] do
-    tree ← resolve tree id n
-  return tree.map (fun o => o.getD [])
 
 end Hash
 end Riffcat

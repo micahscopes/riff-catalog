@@ -20,7 +20,7 @@ use crate::error::CatalogError;
 use crate::hash::view::IndexedGraph;
 use crate::hash::wl::{self, InternalEdge};
 use crate::hash::{ComponentHash, DimensionDigests};
-use crate::policy::{HashPolicy, ViewMode};
+use crate::policy::{HashPolicy, Keys};
 use crate::text::Digest;
 
 pub(crate) fn condensed_digests(
@@ -156,7 +156,7 @@ pub(crate) fn condensed_digests(
         for dimension in dimensions {
             let digest =
                 encode::digest_record(policy, *dimension, "node.component_context", |bytes| {
-                    if policy.view_mode == ViewMode::IdentityBound {
+                    if policy.keys == Keys::Bound {
                         encode::push_node_key(bytes, view.key(id));
                     }
                     encode::push_digest(bytes, local[id].get(*dimension).expect("local"));

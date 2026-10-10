@@ -4,8 +4,8 @@
 use std::collections::BTreeSet;
 
 use riff_catalog_core::{
-    CatalogError, CyclePolicy, DigestRequest, Dimension, EdgeRole, EntityKey, Graph, GraphKey,
-    HashPolicy, NodeKey, ViewMode, digest_graph,
+    CatalogError, DigestRequest, Dimension, EdgeRole, EntityKey, Graph, GraphKey,
+    HashPolicy, NodeKey, Keys, check_acyclic, digest_graph,
 };
 
 fn entity(kind: &str, owner: &str, local: &str) -> NodeKey {
@@ -20,26 +20,17 @@ fn graph_key(owner: &str) -> GraphKey {
     .unwrap()
 }
 
-fn policy(view_mode: ViewMode, cycle_policy: CyclePolicy) -> HashPolicy {
-    HashPolicy::new("test/1", view_mode, cycle_policy).unwrap()
+fn policy(keys: Keys) -> HashPolicy {
+    HashPolicy::new("test/1", keys).unwrap()
 }
 
-fn digests(
-    graph: &Graph,
-    view_mode: ViewMode,
-    cycle_policy: CyclePolicy,
-) -> riff_catalog_core::GraphHashes {
-    let request =
-        DigestRequest::all_dimensions(graph.graph_key.clone(), policy(view_mode, cycle_policy));
+fn digests(graph: &Graph, keys: Keys) -> riff_catalog_core::GraphHashes {
+    let request = DigestRequest::all_dimensions(graph.graph_key.clone(), policy(keys));
     digest_graph(&request, graph).unwrap().hashes
 }
 
-fn structure_of(
-    graph: &Graph,
-    view_mode: ViewMode,
-    cycle_policy: CyclePolicy,
-) -> riff_catalog_core::Digest {
-    *digests(graph, view_mode, cycle_policy)
+fn structure_of(graph: &Graph, keys: Keys) -> riff_catalog_core::Digest {
+    *digests(graph, keys)
         .graph
         .get(Dimension::Structure)
         .unwrap()
@@ -66,13 +57,11 @@ fn literal_graph(owner: &str, value: u64) -> Graph {
 fn dimension_purity() {
     let one = digests(
         &literal_graph("demo", 1),
-        ViewMode::AnonymousShape,
-        CyclePolicy::Reject,
+        Keys::Free
     );
     let two = digests(
         &literal_graph("demo", 2),
-        ViewMode::AnonymousShape,
-        CyclePolicy::Reject,
+        Keys::Free
     );
     assert_ne!(
         one.graph.get(Dimension::Constants),
@@ -114,8 +103,8 @@ fn field_insertion_order_independence() {
         graph
     };
     assert_eq!(
-        digests(&build(false), ViewMode::IdentityBound, CyclePolicy::Reject),
-        digests(&build(true), ViewMode::IdentityBound, CyclePolicy::Reject)
+        digests(&build(false), Keys::Bound),
+        digests(&build(true), Keys::Bound)
     );
 }
 
@@ -137,8 +126,8 @@ fn child_order_sensitivity() {
         graph
     };
     assert_ne!(
-        structure_of(&build(false), ViewMode::AnonymousShape, CyclePolicy::Reject),
-        structure_of(&build(true), ViewMode::AnonymousShape, CyclePolicy::Reject)
+        structure_of(&build(false), Keys::Free),
+        structure_of(&build(true), Keys::Free)
     );
 }
 
@@ -167,25 +156,21 @@ fn edge_insertion_order_independent_and_label_sensitive() {
     assert_eq!(
         digests(
             &build(false, "cfg:then"),
-            ViewMode::IdentityBound,
-            CyclePolicy::Reject
+            Keys::Bound
         ),
         digests(
             &build(true, "cfg:then"),
-            ViewMode::IdentityBound,
-            CyclePolicy::Reject
+            Keys::Bound
         )
     );
     assert_ne!(
         structure_of(
             &build(false, "cfg:then"),
-            ViewMode::IdentityBound,
-            CyclePolicy::Reject
+            Keys::Bound
         ),
         structure_of(
             &build(false, "cfg:else"),
-            ViewMode::IdentityBound,
-            CyclePolicy::Reject
+            Keys::Bound
         )
     );
 }
@@ -197,14 +182,14 @@ fn identity_and_anonymous_modes_separate() {
     let left = literal_graph("owner-a", 1);
     let right = literal_graph("owner-b", 1);
     assert_ne!(
-        structure_of(&left, ViewMode::IdentityBound, CyclePolicy::Reject),
-        structure_of(&right, ViewMode::IdentityBound, CyclePolicy::Reject)
+        structure_of(&left, Keys::Bound),
+        structure_of(&right, Keys::Bound)
     );
     // Anonymous graph-level digests fold all node digests, so comparing
     // `.graph` is the whole-graph comparison (nodes maps differ by key only).
     assert_eq!(
-        digests(&left, ViewMode::AnonymousShape, CyclePolicy::Reject).graph,
-        digests(&right, ViewMode::AnonymousShape, CyclePolicy::Reject).graph
+        digests(&left, Keys::Free).graph,
+        digests(&right, Keys::Free).graph
     );
 }
 
@@ -218,8 +203,8 @@ fn node_kind_is_structural() {
     left.add_node(node.clone(), "literal").unwrap();
     right.add_node(node.clone(), "name").unwrap();
     assert_ne!(
-        structure_of(&left, ViewMode::AnonymousShape, CyclePolicy::Reject),
-        structure_of(&right, ViewMode::AnonymousShape, CyclePolicy::Reject)
+        structure_of(&left, Keys::Free),
+        structure_of(&right, Keys::Free)
     );
 }
 
@@ -234,20 +219,17 @@ fn child_cycles_rejected() {
     graph.add_node(b.clone(), "b").unwrap();
     graph.add_child(&a, "next", 0, &b).unwrap();
     graph.add_child(&b, "next", 0, &a).unwrap();
-    for cycle_policy in [CyclePolicy::Reject, CyclePolicy::NonRecursiveGraphEdges] {
-        let request = DigestRequest::all_dimensions(
-            graph.graph_key.clone(),
-            policy(ViewMode::IdentityBound, cycle_policy),
-        );
+    for include_dependency in [true, false] {
         assert!(matches!(
-            digest_graph(&request, &graph),
+            check_acyclic(&graph, include_dependency),
             Err(CatalogError::CycleDetected { .. })
         ));
     }
 }
 
-/// The cycle policies are actually distinct (fix #8): Dependency cycles are
-/// rejected by `Reject`, tolerated by `NonRecursiveGraphEdges`.
+/// The cycle check is actually two checks (fix #8): Dependency cycles are
+/// refused when Dependency edges are included, tolerated otherwise; hashing
+/// accepts them either way.
 #[test]
 fn dependency_cycles_distinguish_policies() {
     let owner = "demo";
@@ -263,20 +245,12 @@ fn dependency_cycles_distinguish_policies() {
         .add_edge(&b, "cfg:back", &a, EdgeRole::Dependency)
         .unwrap();
 
-    let reject = DigestRequest::all_dimensions(
-        graph.graph_key.clone(),
-        policy(ViewMode::IdentityBound, CyclePolicy::Reject),
-    );
     assert!(matches!(
-        digest_graph(&reject, &graph),
+        check_acyclic(&graph, true),
         Err(CatalogError::CycleDetected { .. })
     ));
-
-    let tolerate = DigestRequest::all_dimensions(
-        graph.graph_key.clone(),
-        policy(ViewMode::IdentityBound, CyclePolicy::NonRecursiveGraphEdges),
-    );
-    digest_graph(&tolerate, &graph).unwrap();
+    check_acyclic(&graph, false).unwrap();
+    digests(&graph, Keys::Bound);
 }
 
 // ---------------------------------------------------- M4: SCC + WL refinement
@@ -311,12 +285,12 @@ fn isomorphic_sccs_with_different_keys_match_anonymously() {
     let left = recursive_pair("owner-a", "alpha", 7);
     let right = recursive_pair("owner-b", "zeta", 7);
     assert_eq!(
-        digests(&left, ViewMode::AnonymousShape, CyclePolicy::CondenseScc).graph,
-        digests(&right, ViewMode::AnonymousShape, CyclePolicy::CondenseScc).graph
+        digests(&left, Keys::Free).graph,
+        digests(&right, Keys::Free).graph
     );
     assert_ne!(
-        structure_of(&left, ViewMode::IdentityBound, CyclePolicy::CondenseScc),
-        structure_of(&right, ViewMode::IdentityBound, CyclePolicy::CondenseScc)
+        structure_of(&left, Keys::Bound),
+        structure_of(&right, Keys::Bound)
     );
 }
 
@@ -341,13 +315,11 @@ fn cycle_length_is_structural() {
     assert_ne!(
         structure_of(
             &cycle("demo", 2),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         ),
         structure_of(
             &cycle("demo", 3),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         )
     );
 }
@@ -371,13 +343,11 @@ fn scc_edge_labels_are_structural() {
     assert_ne!(
         structure_of(
             &cycle("cfg:next"),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         ),
         structure_of(
             &cycle("cfg:else"),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         )
     );
 }
@@ -409,13 +379,11 @@ fn symmetric_orbit_determinism() {
     assert_eq!(
         digests(
             &build(false),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         ),
         digests(
             &build(true),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         )
     );
 }
@@ -441,13 +409,11 @@ fn child_ordinals_sensitive_under_condense_scc() {
     assert_ne!(
         structure_of(
             &build(false),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         ),
         structure_of(
             &build(true),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc
+            Keys::Free
         )
     );
 }
@@ -459,8 +425,8 @@ fn mixed_graph_stable_under_key_renames() {
     let left = recursive_pair("owner-a", "spell-one", 9);
     let right = recursive_pair("owner-a", "spell-two", 9);
     assert_eq!(
-        digests(&left, ViewMode::AnonymousShape, CyclePolicy::CondenseScc).graph,
-        digests(&right, ViewMode::AnonymousShape, CyclePolicy::CondenseScc).graph
+        digests(&left, Keys::Free).graph,
+        digests(&right, Keys::Free).graph
     );
 }
 
@@ -469,7 +435,7 @@ fn mixed_graph_stable_under_key_renames() {
 #[test]
 fn component_reporting() {
     let graph = recursive_pair("demo", "alpha", 7);
-    let hashes = digests(&graph, ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    let hashes = digests(&graph, Keys::Free);
     let sizes: Vec<usize> = hashes.components.iter().map(|c| c.members.len()).collect();
     assert!(sizes.contains(&2), "expected a 2-member SCC, got {sizes:?}");
     assert_eq!(
@@ -487,7 +453,7 @@ fn component_reporting() {
 #[test]
 fn wl_separates_asymmetric_members() {
     let graph = recursive_pair("demo", "alpha", 7);
-    let hashes = digests(&graph, ViewMode::AnonymousShape, CyclePolicy::CondenseScc);
+    let hashes = digests(&graph, Keys::Free);
     let component = hashes
         .components
         .iter()
@@ -531,13 +497,11 @@ fn flat_edge_rewiring_visible_outside_structure() {
     };
     let left = digests(
         &build(false),
-        ViewMode::AnonymousShape,
-        CyclePolicy::CondenseScc,
+        Keys::Free
     );
     let right = digests(
         &build(true),
-        ViewMode::AnonymousShape,
-        CyclePolicy::CondenseScc,
+        Keys::Free
     );
     // Structure may legitimately agree; Constants must not.
     assert_eq!(
@@ -585,13 +549,11 @@ fn sibling_constant_order_visible_under_condense_scc() {
     };
     let left = digests(
         &build(false),
-        ViewMode::AnonymousShape,
-        CyclePolicy::CondenseScc,
+        Keys::Free
     );
     let right = digests(
         &build(true),
-        ViewMode::AnonymousShape,
-        CyclePolicy::CondenseScc,
+        Keys::Free
     );
     assert_eq!(
         left.graph.get(Dimension::Structure),
@@ -635,13 +597,11 @@ fn flat_edge_role_swap_visible_outside_structure() {
     };
     let left = digests(
         &build(false),
-        ViewMode::AnonymousShape,
-        CyclePolicy::CondenseScc,
+        Keys::Free
     );
     let right = digests(
         &build(true),
-        ViewMode::AnonymousShape,
-        CyclePolicy::CondenseScc,
+        Keys::Free
     );
     assert_ne!(
         left.graph.get(Dimension::Names),

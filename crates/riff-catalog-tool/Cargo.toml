@@ -1,0 +1,22 @@
+[package]
+name = "riff-catalog-tool"
+description = "The catalog's operations over declared units and worlds: admission, corpus, grouping, roots, views, claims; as a library and as the recipe-free riffcat-core executable"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "riffcat-core"
+path = "src/bin/riffcat-core.rs"
+
+[dependencies]
+riff-catalog-core.workspace = true
+riff-catalog-claims.workspace = true
+riff-catalog-view.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true

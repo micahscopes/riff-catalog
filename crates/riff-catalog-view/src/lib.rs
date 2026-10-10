@@ -516,7 +516,7 @@ fn compare_field_slices(left: &[Field], right: &[Field]) -> Ordering {
 #[cfg(test)]
 mod tests {
     use riff_catalog_core::{
-        CyclePolicy, DigestRequest, EntityKey, Facet, GraphKey, HashPolicy, ViewMode, digest_graph,
+        DigestRequest, EntityKey, Facet, GraphKey, HashPolicy, Keys, digest_graph,
     };
 
     use super::*;
@@ -644,11 +644,7 @@ language "riffcat-view/1"
         let right = plan.materialize(&sample_graph(true)).unwrap();
         assert_eq!(left, right);
 
-        let policy = HashPolicy::new(
-            plan.output_level(),
-            ViewMode::AnonymousShape,
-            CyclePolicy::CondenseScc,
-        )
+        let policy = HashPolicy::new(plan.output_level(), Keys::Free)
         .unwrap();
         let digest = |graph: &Graph| {
             let request = DigestRequest::new(

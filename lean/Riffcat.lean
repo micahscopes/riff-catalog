@@ -22,5 +22,3 @@ import Riffcat.Hash.Blake3
 import Riffcat.Hash.Blake3Test
 import Riffcat.Laws.Sorting
 import Riffcat.Laws
-import Riffcat.ShuffleOracle
-import Riffcat.ArtifactCensus

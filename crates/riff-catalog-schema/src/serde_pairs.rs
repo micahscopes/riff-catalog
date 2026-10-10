@@ -20,6 +20,14 @@ where
     V: Deserialize<'de>,
     D: Deserializer<'de>,
 {
+    // A repeated key is an error, as it is when a map is built in Rust: taking
+    // the last pair silently would let two different inputs mean one map.
     let pairs = Vec::<(K, V)>::deserialize(deserializer)?;
-    Ok(pairs.into_iter().collect())
+    let mut map = BTreeMap::new();
+    for (key, value) in pairs {
+        if map.insert(key, value).is_some() {
+            return Err(serde::de::Error::custom("duplicate key in a pair map"));
+        }
+    }
+    Ok(map)
 }

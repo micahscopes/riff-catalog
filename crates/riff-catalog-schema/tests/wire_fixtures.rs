@@ -135,3 +135,28 @@ fn entity_key_accepts_fe_field_names() {
     assert!(canonical.contains("\"owner\""));
     assert!(!canonical.contains("owner_key"));
 }
+
+/// A producer in any language hands graphs in as JSON, so reading applies the
+/// checks that building a graph in Rust applies.
+#[test]
+fn json_cannot_say_what_rust_construction_refuses() {
+    let mut graph = Graph::new(GraphKey::new(EntityKey::new("t.g", "o", "g").unwrap(), "g").unwrap());
+    let key = NodeKey::entity(EntityKey::new("t.n", "o", "a").unwrap());
+    graph.add_node(key.clone(), "kind").unwrap();
+    let json = serde_json::to_string(&graph).unwrap();
+    let back: Graph = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, graph);
+
+    // An empty name: Name::new refuses it, and so does reading.
+    let empty_kind = json.replace("\"kind\":\"kind\"", "\"kind\":\"\"");
+    assert_ne!(empty_kind, json);
+    assert!(serde_json::from_str::<Graph>(&empty_kind).is_err());
+
+    // The same node key twice: add_node refuses it, and so does reading.
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let mut doubled = value.clone();
+    let nodes = doubled["nodes"].as_array_mut().unwrap();
+    let first = nodes[0].clone();
+    nodes.push(first);
+    assert!(serde_json::from_value::<Graph>(doubled).is_err());
+}

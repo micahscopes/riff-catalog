@@ -135,7 +135,7 @@ def condensedDigests (policy : HashPolicy) (v : IndexedGraph) (dimensions : List
       let dig ← digestRecord policy dimension "node.component_context" fun b =>
         Id.run do
           let mut b := b
-          if policy.viewMode == ViewMode.identityBound then
+          if policy.keys == Keys.bound then
             b := pushNodeKey b (v.key id)
           b := pushDigest b ((localDigs[id]!).getD dimension)
           b := pushDigest b (((acc.memberColors[ci]!).get dimension).get (UInt32.ofNat id))

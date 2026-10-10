@@ -4,8 +4,10 @@ The lockstep comparator: `lake exe check`.
 Reads `lean/golden/vectors.json` (produced by the Rust dumper
 `crates/riff-catalog-core/tests/lean_vectors.rs`), reconstructs each input
 graph, recomputes every digest with the Lean spec, and compares byte for byte
-against the Rust-produced expectations. Also verifies the pure-Lean BLAKE3
-against:
+against the Rust-produced expectations: per-dimension graph digests, the bare
+shape digest, the mixed-pairs mask, the stored joint digests, and every facet
+address (combined or joint, as recorded; Lean's own needs-joint decision must
+agree with the recorded one). Also verifies the pure-Lean BLAKE3 against:
   - the official known-answer vectors baked into the spec, and
   - the `blake3_kats` section of vectors.json (the SAME `blake3` crate riffcat
     ships), so the two BLAKE3s are pinned to each other.
@@ -309,9 +311,8 @@ structure Counters where
 
 def policyOfLabel (label : String) : Except String HashPolicy :=
   match label with
-  | "identity_reject" => HashPolicy.new "test/1" .identityBound .reject
-  | "anon_condense" => HashPolicy.new "test/1" .anonymousShape .condenseScc
-  | "identity_condense" => HashPolicy.new "test/1" .identityBound .condenseScc
+  | "bound" => HashPolicy.new "test/1" .bound
+  | "free" => HashPolicy.new "test/1" .free
   | _ => .error s!"unknown policy label {label}"
 
 /-- Build a facet by name under a policy. -/
@@ -320,6 +321,7 @@ def facetOfName (name : String) (policyId : Digest) : Facet :=
   | "full" => Facet.full policyId
   | "names_blind" => Facet.namesBlind policyId
   | "structure_only" => Facet.structureOnly policyId
+  | "names_types" => { policyId := policyId, dimensions := [Dimension.names, Dimension.types] }
   | _ => Facet.full policyId
 
 partial def main : IO UInt32 := do
@@ -367,7 +369,8 @@ partial def main : IO UInt32 := do
         IO.println s!"policy_id {label}: FAIL expected {expected} got {got}"
         c := { c with fail := c.fail + 1 }
 
-  -- 4. vectors: graph digests + facet ids/addresses
+  -- 4. vectors: graph digests, bare shape + mixed-pairs mask, joint digests,
+  --    facet ids/addresses (combined or joint, as recorded)
   for vec in (json.field "vectors").asArr! do
     let name := (vec.field "name").asStr!
     let gkObj := vec.field "graph_key"
@@ -396,6 +399,37 @@ partial def main : IO UInt32 := do
             else
               IO.println s!"vector {name}/{label} dim={dim.asStr}: FAIL expected {expected} got {got}"
               c := { c with fail := c.fail + 1 }
+          -- bare shape digest
+          let expectedShape := (res.field "shape").asStr!
+          if gh.shape.toHex == expectedShape then c := { c with pass := c.pass + 1 }
+          else
+            IO.println s!"vector {name}/{label} shape: FAIL expected {expectedShape} got {gh.shape.toHex}"
+            c := { c with fail := c.fail + 1 }
+          -- mixed-pairs mask
+          let expectedMask := (res.field "mixed_pairs").asInt!
+          if (gh.mixedPairs.toNat : Int) == expectedMask then c := { c with pass := c.pass + 1 }
+          else
+            IO.println s!"vector {name}/{label} mixed_pairs: FAIL expected {expectedMask} got {gh.mixedPairs.toNat}"
+            c := { c with fail := c.fail + 1 }
+          -- stored joint digests of the flagged dimension sets
+          let expectedJoint := (res.field "joint_digests").asArr!
+          match Hash.jointDigests p g gh with
+          | .error e => do
+            IO.println s!"vector {name}/{label} joint_digests: ERROR {e}"
+            c := { c with fail := c.fail + 1 }
+          | .ok gotJoint =>
+            if gotJoint.length == expectedJoint.size then c := { c with pass := c.pass + 1 }
+            else
+              IO.println s!"vector {name}/{label} joint_digests: FAIL expected {expectedJoint.size} entries got {gotJoint.length}"
+              c := { c with fail := c.fail + 1 }
+            for je in expectedJoint do
+              let key := (je.field "key").asStr!
+              let expected := (je.field "digest").asStr!
+              let got := (gotJoint.find? (fun (k, _) => k == key)).map (·.2.toHex) |>.getD "<none>"
+              if got == expected then c := { c with pass := c.pass + 1 }
+              else
+                IO.println s!"vector {name}/{label} joint digest {key}: FAIL expected {expected} got {got}"
+                c := { c with fail := c.fail + 1 }
           -- facet ids + address digests
           for fe in (res.field "facets").asArr! do
             let fname := (fe.field "name").asStr!
@@ -406,8 +440,22 @@ partial def main : IO UInt32 := do
             else
               IO.println s!"vector {name}/{label} facet {fname} id: FAIL expected {expectedFid} got {gotFid}"
               c := { c with fail := c.fail + 1 }
+            -- Lean's own needs-joint decision agrees with the recorded mode,
+            -- and the combined projection refuses exactly the flagged facets
+            let mode := (fe.field "mode").asStr!
+            if gh.needsJoint facet == (mode == "joint") then c := { c with pass := c.pass + 1 }
+            else
+              IO.println s!"vector {name}/{label} facet {fname} mode: FAIL recorded {mode}, needs_joint {gh.needsJoint facet}"
+              c := { c with fail := c.fail + 1 }
+            let refusal := match gh.facetAddress facet with
+              | .error e => e == Hash.facetNeedsJointPass
+              | .ok _ => false
+            if refusal == gh.needsJoint facet then c := { c with pass := c.pass + 1 }
+            else
+              IO.println s!"vector {name}/{label} facet {fname}: FAIL combined facet_address refusal does not match needs_joint"
+              c := { c with fail := c.fail + 1 }
             let expectedAddr := (fe.field "address_digest").asStr!
-            match gh.facetAddress facet with
+            match Hash.facetAddress p g gh facet with
             | .error e => do
               IO.println s!"vector {name}/{label} facet {fname} address: ERROR {e}"
               c := { c with fail := c.fail + 1 }

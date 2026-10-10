@@ -1,42 +1,31 @@
 /-
-Phase 2: the engine's correctness laws, stated as Lean theorems over the port's
-own types, with the tractable ones proved.
+The engine's laws, stated over the port's own types.
 
-This module mirrors the "engine checks too / to prove" list from the spike. Each
-law is stated against the Phase-1 spec types (`Graph`, `Digest`, `Facet`,
-`FacetAddress`, the per-dimension digest maps), then either PROVED outright (no
-`sorry`) or stated as a clearly-marked TARGET. Targets use a named `axiom` with a
-`TODO` so they typecheck, are greppable, and never masquerade as proofs.
+A law here is either a `theorem` with a proof, or a named proposition (`def ... :
+Prop`) that says what is expected to hold and is not proved. A proposition
+asserts nothing: it cannot make the development inconsistent, and anything that
+needs it must take it as a hypothesis. There are no axioms in this file.
 
-Status table (kept in sync with lean/README.md):
+  Law 1  Order independence. PROVED. Sorting a list gives the same result for
+         every permutation of it (`Riffcat.Laws.Sorting`); packaged here for
+         the record, field and node lists the encoder sorts.
+  Law 2  Facets refine. PROVED. Equal digests in every dimension of a facet give
+         equal digests in every dimension of any facet contained in it.
+  Law 3  Transport. PROVED, both directions. A fact can be read off a facet
+         address exactly when the fact agrees on units the facet identifies.
+  Law 4  Free keys. STATED (`FreeKeysRenameInvariant`). With free keys, renaming
+         node keys by an injection changes no per-dimension graph digest.
+  Law 5  Colour refinement. STATED (`RefinementStabilizes`,
+         `ComponentDigestOrderFree`). Refinement stops splitting within as many
+         rounds as there are members; a component's digest does not depend on
+         the order its members are listed in. Colour refinement cannot tell
+         every two different graphs apart, and no law here says it can.
+  Law 6  Encoding. STATED (`HeaderSeparates`). The record header determines the
+         schema version, recipe, bin, keys mode and tag.
 
-  Law 1  DETERMINISM / order-independence  : PROVED (kernel) + STATED at the
-         encoder boundary. The kernel "sorting canonicalizes" is fully proved in
-         `Riffcat.Laws.Sorting`; here we package it as the engine-facing
-         statement that the canonical record/field/node commitments are
-         permutation-invariant.
-  Law 2  FACET REFINEMENT LATTICE          : PROVED. Equality of the per-dimension
-         digest map at a finer facet forces equality at every coarser facet,
-         because a facet address commits exactly the sorted per-dimension digests
-         and a coarser facet projects to a subset.
-  Law 3  ANCHOR / TRANSPORT (Quot UP)      : PROVED (easy direction) + STATED.
-         "A fact rides facet F iff ~_F ⊆ ker(fact)" is the universal property of
-         the facet quotient. The factor-through-the-quotient direction is
-         `Quot.lift`, proved by `rfl`; the converse (necessity) is stated.
-  Law 4  AnonymousShape (names blind)      : TARGET (axiom). Renaming node keys by
-         an injection leaves every AnonymousShape digest unchanged. Stated
-         precisely; the deepest one (the whole pipeline must be shown key-free in
-         anonymous mode).
-  Law 5  SCC / WL termination + soundness  : TARGET (axiom) for termination, with
-         the honest WL-equivalence (not isomorphism) caveat stated in prose and a
-         soundness/incompleteness target.
-  Law 6  ENCODING INJECTIVITY (mod hash)   : TARGET (axiom). The canonical byte
-         encoding is injective (length prefixes + domain-separating tags), so
-         distinct shapes give distinct pre-image bytes; BLAKE3 collision-freedom
-         stays an explicit, separate axiom.
-
-The proved laws stand on the port's own definitions. The targets are honest
-statements of what remains, not stubs that pretend to be done.
+`CollisionFreeOn` is the hash assumption, as a property of a set of inputs. It
+is false of the set of all byte strings for any hash of fixed size, so it is
+never assumed globally.
 -/
 
 import Riffcat.Schema
@@ -130,11 +119,11 @@ theorem determinism_nodes
 
 Equal at a finer facet implies equal at every coarser one. A facet address over a
 dimension set `D` commits the sorted per-dimension digests for exactly the
-dimensions in `D` (see `FacetAddress.addressDigest`: it iterates `a.digests`,
-which `facetAddress` builds in `facet.dimensions` order, i.e. the canonical
-filter of `D`). So "equal at facet `D`" is "the per-dimension digest map agrees
-pointwise on every dimension in `D`". If `D₂ ⊆ D₁` and two graphs agree on `D₁`,
-they agree on `D₂` by restriction. This is the order-reversing (contravariant)
+dimensions in `D` (see `FacetAddress.addressDigest`: for a combined address it
+iterates the digest list that `facetAddress` builds in `facet.dimensions` order,
+i.e. the canonical filter of `D`). So "equal at facet `D`" is "the per-dimension
+digest map agrees pointwise on every dimension in `D`". If `D₂ ⊆ D₁` and two
+graphs agree on `D₁`, they agree on `D₂` by restriction. This is the order-reversing (contravariant)
 direction of the lattice: smaller dimension set = coarser facet = less
 information committed.
 
@@ -230,25 +219,27 @@ theorem transport_respects {β : Type} (F : List Dimension)
     _ = fact b := hg b
 
 /-! ##############################################################
-    ## Law 4: AnonymousShape correctness (names never enter the digest)
+    ## Law 4: free keys (key renaming never moves a digest)
     ##############################################################
 
-Renaming node keys by an injection leaves every AnonymousShape digest unchanged:
-in `ViewMode.anonymousShape`, no `NodeKey` and no graph key is ever pushed into a
-hash payload (see `localNodeDigest`, `graphDigestForDimension`, the
-`node.component_context` record: the `pushNodeKey`/`pushStr graphKey` calls are
-all guarded by `policy.viewMode == ViewMode.identityBound`). Keys then only order
-traversal (via `IndexedGraph.build`), and an injective renaming is a relabeling
-of that traversal, which the sorts re-canonicalize. So the digest depends only on
-the shape, not the names.
+Renaming node keys by an injection leaves every free-keys digest unchanged: with
+`Keys.free`, no `NodeKey` is ever pushed into a hash payload (see
+`localNodeDigest` and the `node.component_context` record: the `pushNodeKey`
+calls are guarded by `policy.keys == Keys.bound`), and the graph key is never
+hashed. Keys then only order traversal (via `IndexedGraph.build`), and an
+injective renaming is a relabeling of that traversal, which the sorts
+re-canonicalize.
 
-This is the deepest target: a full proof must show the *entire* pipeline
-(`build`, `local`, the fold, `graph.full`) is key-free in anonymous mode, then
+This is about keys, not the `names` dimension: `names` facts still count in a
+free-keys digest. Forgetting names is the facet that leaves out `names`.
+
+A full proof must show the whole pipeline (`build`, `local`, the fold, the
+graph digest) writes no key with free keys, then
 that an injective key renaming induces a permutation of the sorted-by-key order
 that the digest is invariant under (Law 1's renumbering clause feeds this).
 
-We make the statement precise with a key-renaming over a graph, then state the
-invariance as a TARGET axiom. -/
+The statement is made precise with a key renaming over a graph. It is stated,
+not proved. -/
 
 /-- Apply a key renaming `ρ` to every key position in a graph (node keys, child
 endpoints, edge endpoints, and the graph key's owner). Field/kind/label *names*
@@ -264,9 +255,8 @@ def renameChild (ρ : NodeKey → NodeKey) (c : ChildEdge) : ChildEdge :=
 def renameEdge (ρ : NodeKey → NodeKey) (e : Edge) : Edge :=
   { e with source := ρ e.source, target := ρ e.target }
 
-/-- Rename every key in a graph by `ρ`. The graph key is left abstract here (it
-does not enter an anonymous-mode digest); callers supply the matching renamed
-key. -/
+/-- Rename every key in a graph by `ρ`. The graph key is supplied by the caller;
+it is not hashed. -/
 def renameKeys (ρ : NodeKey → NodeKey) (gk : GraphKey) (g : Graph) : Graph :=
   { graphKey := gk
     nodes := g.nodes.map (renameNode ρ)
@@ -278,140 +268,112 @@ ever compares keys by). -/
 def KeyInjective (ρ : NodeKey → NodeKey) : Prop :=
   ∀ a b, (ρ a).canonicalKey = (ρ b).canonicalKey → a.canonicalKey = b.canonicalKey
 
-/-- LAW 4 (TARGET, axiom): in AnonymousShape mode, an injective key renaming
-leaves every per-dimension `graph.full` digest unchanged. Names never enter the
-digest, so the result depends only on the shape.
+/-- LAW 4 (stated, not proved): with free keys, an injective key renaming leaves
+every per-dimension graph digest unchanged. `gk` is the graph's own key and `gk'`
+the renamed graph's key; neither is hashed.
 
-TODO(phase2): prove. Requires (i) a lemma that no payload pusher fires a key
-write when `viewMode = anonymousShape`, threaded through `local`/fold/`graph.full`,
-and (ii) that an injective renaming induces a permutation of the sorted-by-key
-node order that Law 1 (renumbering invariance) absorbs. Flagged as the deepest
-law by the conceptual spike. -/
-axiom anonymousShape_name_blind
-    (policy : HashPolicy) (gk gk' : GraphKey) (g : Graph)
-    (dims : List Dimension) (ρ : NodeKey → NodeKey)
-    (hanon : policy.viewMode = ViewMode.anonymousShape)
-    (hinj : KeyInjective ρ) :
+A proof needs (i) that no key is written into a payload when `keys = free`,
+through `local`, the fold and the graph digest, and (ii) that an injective
+renaming permutes the sorted-by-key node order, which Law 1 absorbs. -/
+def FreeKeysRenameInvariant : Prop :=
+  ∀ (policy : HashPolicy) (gk gk' : GraphKey) (g : Graph)
+    (dims : List Dimension) (ρ : NodeKey → NodeKey),
+    policy.keys = Keys.free →
+    KeyInjective ρ →
+    g.graphKey = gk →
     (Hash.digestGraph policy gk' (renameKeys ρ gk' g) dims).map (·.graph)
       = (Hash.digestGraph policy gk g dims).map (·.graph)
 
 /-! ##############################################################
-    ## Law 5: SCC / WL termination + the cyclic-case spec
+    ## Law 5: colour refinement
     ##############################################################
 
-`CondenseScc` is well-defined and WL refinement terminates. Termination is by
-monotone partition refinement capped at `|members|` rounds (the partition only
-ever splits, so the distinct-class count is non-decreasing and bounded by the
-member count; `refine` stops when it is stable, with fuel = `members.size`).
+Colour refinement gives every member of a strongly connected component a colour,
+then repeatedly recolours each member by its own colour and its neighbours'
+colours. A round can only split colour classes, never merge them. The number of
+classes is at most the number of members, so the splitting stops within that
+many rounds; `refine` runs with that many rounds of fuel.
 
-HONEST CAVEAT (stated, not hidden): the only approximation inside an SCC is the
-1-WL coloring. 1-WL is *sound* (WL-equivalent members get the same color, so the
-digest cannot distinguish graphs that are genuinely WL-equivalent) but
-*iso-incomplete* (there exist non-isomorphic graphs that 1-WL cannot tell apart,
-so the digest may equate them). The honest correctness statement is therefore
-WL-equivalence, NOT graph isomorphism. We do not claim the digest separates all
-non-isomorphic SCCs.
+Members that end with the same colour are treated as interchangeable. That is
+the one approximation in the digest: there are different graphs that colour
+refinement cannot tell apart, and they get equal digests. Nothing here claims
+otherwise. -/
 
-We state termination and the soundness direction as TARGETs. -/
-
-/-- The refinement step over a color map, abstracted to its partition content: a
-"coloring" is a map from members to color classes (here, indices). `refine`
-applies a step that can only split classes, never merge them. -/
+/-- A colouring of the members: a map from members to colour classes. -/
 abbrev MemberColoring := UInt32 → Nat
 
-/-- A coloring `c'` *refines* `c` if same `c'`-color implies same `c`-color
-(`c'` distinguishes at least as much). WL rounds always refine. -/
+/-- `c'` refines `c`: members that `c'` gives one colour, `c` gives one colour.
+A refinement round always refines. -/
 def Refines (members : List UInt32) (c' c : MemberColoring) : Prop :=
   ∀ a ∈ members, ∀ b ∈ members, c' a = c' b → c a = c b
 
-/-- Iterate `f` `n` times (local definition; Lean core has no `Function.iterate`
-without extra imports). -/
+/-- Two colourings split the members into the same classes. -/
+def SamePartition (members : List UInt32) (c' c : MemberColoring) : Prop :=
+  ∀ a ∈ members, ∀ b ∈ members, (c' a = c' b ↔ c a = c b)
+
+/-- Iterate `f` `n` times. -/
 def iter {β : Type} (f : β → β) : Nat → β → β
   | 0,     x => x
   | n + 1, x => iter f n (f x)
 
-/-- LAW 5a (TARGET, axiom): WL refinement reaches a fixpoint within `|members|`
-rounds. The class count is non-decreasing under `Refines` and bounded by
-`members.length`, so a strictly-refining chain has length at most `members.length`;
-`refine`'s fuel cap of `members.size` is sufficient and the loop terminates at a
-stable coloring.
+/-- LAW 5a (stated, not proved): a step that only ever splits classes leaves
+the classes unchanged at some round no later than the number of members. The
+colours themselves may keep changing; the classes are what the digest uses.
 
-TODO(phase2): prove. Requires a measure (the distinct-class count) shown to
-strictly increase on every non-stable round and to be bounded by `members.length`,
-giving termination in `≤ |members|` rounds. The Lean `refine` already carries this
-fuel; this law certifies the cap is not lossy. -/
-axiom wl_refine_terminates
-    (members : List UInt32)
-    (step : MemberColoring → MemberColoring) (c₀ : MemberColoring)
-    (hrefine : ∀ c, Refines members (step c) c) :
+A proof counts classes: the count never drops under `Refines`, rises on every
+round that changes the classes, and is at most `members.length`. -/
+def RefinementStabilizes : Prop :=
+  ∀ (members : List UInt32) (step : MemberColoring → MemberColoring)
+    (c₀ : MemberColoring),
+    (∀ c, Refines members (step c) c) →
     ∃ rounds : Nat, rounds ≤ members.length ∧
-      step (iter step rounds c₀) = iter step rounds c₀
+      SamePartition members (iter step (rounds + 1) c₀) (iter step rounds c₀)
 
-/-- LAW 5b (TARGET, axiom): SOUNDNESS of the 1-WL coloring (the honest, non-iso
-statement). The component digest depends only on the *multiset* of final colors
-and quotient edges, not on member order: WL-equivalent members (same final
-color) are interchangeable. Concretely, `componentDigest` is invariant under
-permuting the `members` array, because it sorts the colors (`byteLt`) before
-committing. This is the property the engine actually guarantees; iso-completeness
-is explicitly NOT claimed (1-WL is iso-incomplete, so distinct non-isomorphic
-SCCs may share a digest).
+/-- LAW 5b (stated, not proved): a component's digest does not depend on the
+order its members are listed in, because the colours are sorted before they are
+hashed.
 
-TODO(phase2): prove. Reduces to Law 1's canonicalization applied to the color
-multiset: permuting `members` permutes the pre-sort color list, and the sort
-canonicalizes it, so the `wl.component` payload (count + sorted colors + sorted
-quotient edges) is unchanged. -/
-axiom wl_coloring_sound
-    (policy : HashPolicy) (dimension : Dimension)
+A proof reduces to Law 1 applied to the colour list. -/
+def ComponentDigestOrderFree : Prop :=
+  ∀ (policy : HashPolicy) (dimension : Dimension)
     (members₁ members₂ : Array UInt32) (internal : Array Hash.InternalEdge)
-    (color : Hash.ColorMap)
-    (hperm : members₁.toList ~ members₂.toList) :
+    (color : Hash.ColorMap),
+    members₁.toList ~ members₂.toList →
     (Hash.componentDigest policy dimension members₁ internal color).map (·.toHex)
       = (Hash.componentDigest policy dimension members₂ internal color).map (·.toHex)
 
 /-! ##############################################################
-    ## Law 6: ENCODING INJECTIVITY (modulo hash collisions)
+    ## Law 6: the encoding, and the hash assumption
     ##############################################################
 
-The canonical byte encoding is injective: distinct graphs at a facet produce
-distinct pre-image byte sequences. The reason is the domain-separation discipline
-in `Encode` (invariant I1): every record is `push_str`-framed (a `u64`
-length-prefix before each variable-length field), every value carries a tag
-string, every record carries a record tag and the full policy context, and
-`pushSortedRecords` prefixes a `u32` count. Length prefixes + tags make the
-encoding prefix-free and self-delimiting, so the byte stream parses back to a
-unique structure: encoding is injective on well-formed inputs.
+Every variable-length field in a record is written with its length first, every
+value with a tag, and every record starts with a header naming the schema
+version, recipe, bin, keys mode and record tag. So the bytes of a record can be
+read back in one way only, and records of different kinds never share bytes.
 
-Therefore distinct shapes give distinct pre-image bytes, and distinct digests
-imply distinct shapes UNLESS BLAKE3 collides. BLAKE3 collision-resistance stays
-an explicit axiom, kept separate from the (provable, but here targeted) encoding
-injectivity. -/
+Equal digests then mean equal records only if the hash does not collide on the
+records in question. That is an assumption about a set of inputs. -/
 
-/-- BLAKE3 collision-resistance, as an explicit AXIOM (never a theorem). This is
-the one named cryptographic assumption the whole lockstep rests on, stated here
-so it is auditable and isolated. Equal digests with distinct pre-images would be
-a collision; we assume none. -/
-axiom blake3_collision_free :
-    ∀ a b : ByteArray,
-      (Encode.digestBytes a).toHex = (Encode.digestBytes b).toHex → a.toList = b.toList
+/-- No two byte strings in `inputs` have the same digest. A statement that
+needs collision freedom takes this as a hypothesis about the inputs it talks
+about. Over all byte strings it is false for any hash of fixed size, so it is
+never an axiom. -/
+def CollisionFreeOn (inputs : ByteArray → Prop) : Prop :=
+  ∀ a b : ByteArray, inputs a → inputs b →
+    (Encode.digestBytes a).toHex = (Encode.digestBytes b).toHex → a.toList = b.toList
 
-/-- LAW 6 (TARGET, axiom): the canonical record encoding `recordBytes` is
-injective in its payload-builder content for a fixed `(policy, dimension, tag)`:
-distinct payloads produce distinct pre-hash bytes, because the header is a fixed
-length-prefixed prefix and the payload is appended verbatim.
+/-- LAW 6 (stated, not proved): the record header determines the schema
+version, recipe, bin, keys mode and record tag. Two headers with the same bytes
+were written for the same things.
 
-TODO(phase2): prove the structural injectivity of `pushStr`/`pushU32`/`pushU64`/
-`pushValue`/`pushSortedRecords` (length prefixes + tags ⇒ unique parse), then
-compose with `blake3_collision_free` to conclude distinct digests imply distinct
-shapes. The composition (distinct shapes ⇒ distinct digests) is the engine-facing
-corollary. -/
-axiom encoding_injective
-    (policy : HashPolicy) (dimension : Dimension) (tag : String)
-    (p₁ p₂ : Encode.Builder → Encode.Builder)
-    (hne : (Encode.recordBytes policy dimension tag p₁).toList
-            ≠ (Encode.recordBytes policy dimension tag p₂).toList) :
-    -- distinct pre-image bytes ⇒ distinct digests, unless blake3 collides:
-    (Encode.digestBytes (Encode.recordBytes policy dimension tag p₁)).toHex
-      ≠ (Encode.digestBytes (Encode.recordBytes policy dimension tag p₂)).toHex
+A proof shows that `pushStr` (a length, then the bytes) and `pushU32` can each
+be read back in one way, and reads the header field by field. -/
+def HeaderSeparates : Prop :=
+  ∀ (p p' : HashPolicy) (bin bin' tag tag' : String),
+    (Encode.recordBytesIn p bin tag id).toList
+      = (Encode.recordBytesIn p' bin' tag' id).toList →
+    p.schemaVersion = p'.schemaVersion ∧ p.recipe.asStr = p'.recipe.asStr ∧
+      bin = bin' ∧ p.keys.asStr = p'.keys.asStr ∧ tag = tag'
 
 end Laws
 end Riffcat
